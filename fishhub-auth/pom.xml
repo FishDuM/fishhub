@@ -30,6 +30,12 @@
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-common</artifactId>
         </dependency>
+
+        <!--  业务接口日志组件    -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
