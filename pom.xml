@@ -13,6 +13,7 @@
 <!--  子模块管理  -->
   <modules>
     <module>fishhub-auth</module>
+    <module>fishhub-framework</module>
   </modules>
 
   <properties>
@@ -61,6 +62,12 @@
         <version>${spring-cloud-alibaba.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-common</artifactId>
+        <version>${version}</version>
       </dependency>
 
     </dependencies>
