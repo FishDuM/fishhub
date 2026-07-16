@@ -17,7 +17,7 @@
   </modules>
 
   <properties>
-    <version>0.0.1-SNAPSHOT</version>
+    <revision>0.0.1-SNAPSHOT</revision>
     <java.version>17</java.version>
     <maven.compiler.source>${java.version}</maven.compiler.source>
     <maven.compiler.target>${java.version}</maven.compiler.target>
@@ -102,14 +102,21 @@
       <dependency>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-common</artifactId>
-        <version>${version}</version>
+        <version>${revision}</version>
       </dependency>
 
       <!--  业务接口日志组件    -->
       <dependency>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
-        <version>${version}</version>
+        <version>${revision}</version>
+      </dependency>
+
+      <!--  全局 Jackson 序列化配置    -->
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
+        <version>${revision}</version>
       </dependency>
 
 
