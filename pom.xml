@@ -4,7 +4,7 @@
 
   <groupId>hk.ljx</groupId>
   <artifactId>fishhub</artifactId>
-  <version>${version}</version>
+  <version>0.0.1-SNAPSHOT</version>
 
   <name>${project.artifactId}</name>
   <description>飞鱼社区 —— 一个汇聚热爱、分享知识、共同成长的交流空间，在这里相遇、交流、进步，遇见同频的伙伴。</description>
@@ -12,7 +12,7 @@
 
 <!--  子模块管理  -->
   <modules>
-
+    <module>fishhub-auth</module>
   </modules>
 
   <properties>
@@ -22,6 +22,11 @@
     <maven.compiler.target>${java.version}</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <lombok.version>1.18.30</lombok.version>
+    <spring-boot.version>3.0.2</spring-boot.version>
+    <spring-cloud.version>2022.0.0</spring-cloud.version>
+    <spring-cloud-alibaba.version>2022.0.0.0</spring-cloud-alibaba.version>
+    <flatten-maven-plugin.version>1.5.0</flatten-maven-plugin.version>
+    <maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>
   </properties>
 
 <!--  统一依赖管理  -->
@@ -34,6 +39,29 @@
         <version>${lombok.version}</version>
       </dependency>
 
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+        <version>${spring-cloud-alibaba.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
 
     </dependencies>
   </dependencyManagement>
@@ -41,6 +69,32 @@
   <build>
     <pluginManagement>
       <plugins>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>flatten-maven-plugin</artifactId>
+          <version>${flatten-maven-plugin.version}</version>
+          <configuration>
+            <flattenMode>resolveCiFriendliesOnly</flattenMode>
+            <updatePomFile>true</updatePomFile>
+          </configuration>
+          <executions>
+            <execution>
+              <id>flatten</id>
+              <phase>process-resources</phase>
+              <goals>
+                <goal>flatten</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>flatten.clean</id>
+              <phase>clean</phase>
+              <goals>
+                <goal>clean</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+
         <plugin>
           <groupId>org.springframework.boot</groupId>
           <artifactId>spring-boot-maven-plugin</artifactId>
