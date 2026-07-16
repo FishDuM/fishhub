@@ -52,6 +52,11 @@
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
         </dependency>
+        <!--  全局 Jackson 序列化配置    -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
