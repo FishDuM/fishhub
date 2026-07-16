@@ -40,3 +40,5 @@ build/
 /.idea/
 /fishhub-auth/src/main/resources/config/application-dev.yaml
 /fishhub-auth/src/main/resources/config/application-prod.yaml
+**/logs/
+**/.flattened-pom.xml
