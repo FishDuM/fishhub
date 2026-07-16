@@ -10,7 +10,7 @@
   <description>飞鱼社区 —— 一个汇聚热爱、分享知识、共同成长的交流空间，在这里相遇、交流、进步，遇见同频的伙伴。</description>
   <packaging>pom</packaging>
 
-<!--  子模块管理  -->
+  <!--  子模块管理  -->
   <modules>
     <module>fishhub-auth</module>
     <module>fishhub-framework</module>
@@ -32,11 +32,32 @@
     <mysql-connector-java.version>8.0.29</mysql-connector-java.version>
     <druid.version>1.2.21</druid.version>
     <mybatis-generator-maven-plugin.version>1.3.5</mybatis-generator-maven-plugin.version>
+    <sa-token.version>1.38.0</sa-token.version>
   </properties>
 
-<!--  统一依赖管理  -->
+  <!--  统一依赖管理  -->
   <dependencyManagement>
     <dependencies>
+
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-common</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
+      <!--  业务接口日志组件    -->
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
+      <!--  全局 Jackson 序列化配置    -->
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
+        <version>${revision}</version>
+      </dependency>
 
       <dependency>
         <groupId>org.projectlombok</groupId>
@@ -99,26 +120,12 @@
         <version>${mysql-connector-java.version}</version>
       </dependency>
 
+      <!-- Sa-Token 权限认证 -->
       <dependency>
-        <groupId>hk.ljx</groupId>
-        <artifactId>fishhub-common</artifactId>
-        <version>${revision}</version>
+        <groupId>cn.dev33</groupId>
+        <artifactId>sa-token-spring-boot3-starter</artifactId>
+        <version>${sa-token.version}</version>
       </dependency>
-
-      <!--  业务接口日志组件    -->
-      <dependency>
-        <groupId>hk.ljx</groupId>
-        <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
-        <version>${revision}</version>
-      </dependency>
-
-      <!--  全局 Jackson 序列化配置    -->
-      <dependency>
-        <groupId>hk.ljx</groupId>
-        <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
-        <version>${revision}</version>
-      </dependency>
-
 
     </dependencies>
   </dependencyManagement>
