@@ -11,28 +11,18 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class UserDO {
+public class RoleDO {
     private Long id;
 
-    private String fishhubId;
+    private String roleName;
 
-    private String password;
+    private String roleKey;
 
-    private String nickname;
+    private Byte status;
 
-    private String avatar;
+    private Integer sort;
 
-    private LocalDateTime birthday;
-
-    private String backgroundImg;
-
-    private String phone;
-
-    private Integer sex;
-
-    private Integer status;
-
-    private String introduction;
+    private String remark;
 
     private LocalDateTime createTime;
 

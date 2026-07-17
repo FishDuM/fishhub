@@ -12,4 +12,5 @@ public interface VerificationCodeService {
      * @return
      */
     Response<?> send(SendVerificationCodeReqVO sendVerificationCodeReqVO);
+
 }
