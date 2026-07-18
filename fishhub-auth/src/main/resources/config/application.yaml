@@ -11,12 +11,13 @@ mybatis:
   mapper-locations: classpath:/mapper/**/*.xml
 
 sa-token:
-  token-name: satoken
+  token-name: Authorization
+  token-prefix: Bearer
   timeout: 2592000
   active-timeout: -1
   is-concurrent: true
   is-share: true
-  token-style: uuid
+  token-style: random-128
   is-log: true
 
 rate-limit:

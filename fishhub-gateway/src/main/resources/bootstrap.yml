@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: fishhub-gateway # 应用名称
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      discovery:
+        enabled: true # 启用服务发现
+        group: DEFAULT_GROUP # 所属组
+        namespace: 0851c2f8-7f2d-4d86-859e-40123550347e # 命名空间 ID
+        server-addr: 127.0.0.1:8848 # Nacos 服务器地址

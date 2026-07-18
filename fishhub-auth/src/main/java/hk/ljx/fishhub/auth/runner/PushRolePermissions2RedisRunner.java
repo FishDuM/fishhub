@@ -75,30 +75,31 @@ public class PushRolePermissions2RedisRunner implements ApplicationRunner {
                 Map<Long, PermissionDO> permissionIdDOMap = permissionDOS.stream().collect(
                         Collectors.toMap(PermissionDO::getId, permissionDO -> permissionDO));
                 // 角色 id - 权限
-                HashMap<Long, List<PermissionDO>> roleIdPermissionDOMap = Maps.newHashMap();
+                HashMap<String, List<String>> roleKeyPermissionsMap = Maps.newHashMap();
 
                 //循环所有角色
                 roleDOS.forEach(roleDO -> {
                     // 当前角色 id
                     Long roleId = roleDO.getId();
+                    String roleKey = roleDO.getRoleKey();
                     // 当前角色对应的权限 id 集合
                     List<Long> permissionIds = roleIdPermissionIdsMap.get(roleId);
                     if (CollUtil.isNotEmpty(permissionIds)) {
-                        List<PermissionDO> perDOS = Lists.newArrayList();
+                        List<String> permissionKeys = Lists.newArrayList();
                         permissionIds.forEach(permissionId -> {
                             // 根据权限 ID 获取具体的权限 DO 对象
                             PermissionDO permissionDO = permissionIdDOMap.get(permissionId);
                             if (Objects.nonNull(permissionDO)) {
-                                perDOS.add(permissionDO);
+                                permissionKeys.add(permissionDO.getPermissionKey());
                             }
                         });
-                        roleIdPermissionDOMap.put(roleId, perDOS);
+                        roleKeyPermissionsMap.put(roleKey, permissionKeys);
                     }
                 });
 
                 // 同步至 Redis 中，方便后续网关查询鉴权使用
-                roleIdPermissionDOMap.forEach((roleId, permissions) -> {
-                    String key = RedisKeyConstants.buildRolePermissionsKey(roleId);
+                roleKeyPermissionsMap.forEach((roleKey, permissions) -> {
+                    String key = RedisKeyConstants.buildRolePermissionsKey(roleKey);
                     redisTemplate.opsForValue().set(key, JsonUtils.toJsonString(permissions));
                 });
             }

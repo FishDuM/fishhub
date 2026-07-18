@@ -5,8 +5,10 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.google.common.base.Preconditions;
 import hk.ljx.fishhub.auth.constant.RedisKeyConstants;
 import hk.ljx.fishhub.auth.constant.RoleConstants;
+import hk.ljx.fishhub.auth.domain.dataobject.RoleDO;
 import hk.ljx.fishhub.auth.domain.dataobject.UserDO;
 import hk.ljx.fishhub.auth.domain.dataobject.UserRoleDO;
+import hk.ljx.fishhub.auth.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.auth.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.auth.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.auth.enums.LoginTypeEnum;
@@ -27,6 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import static hk.ljx.fishhub.auth.constant.RedisKeyConstants.FISHHUB_ID_GENERATOR_KEY;
@@ -46,6 +49,9 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private TransactionTemplate transactionTemplate;
+
+    @Resource
+    private RoleDOMapper roleDOMapper;
 
     @Override
     public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO) {
@@ -122,10 +128,12 @@ public class UserServiceImpl implements UserService {
                         .isDeleted(DeletedEnum.NO.getValue())
                         .build();
                 userRoleDOMapper.insert(userRoleDO);
+
+                RoleDO roleDO = roleDOMapper.selectByPrimaryKey(RoleConstants.COMMON_USER_ROLE_ID);
                 // 将该用户的角色 id 存入 redis 中
-                ArrayList<Long> roles = new ArrayList<>();
-                roles.add(RoleConstants.COMMON_USER_ROLE_ID);
-                String userRolesKey = RedisKeyConstants.buildUserRoleKey(phone);
+                List<String> roles = new ArrayList<>(1);
+                roles.add(roleDO.getRoleKey());
+                String userRolesKey = RedisKeyConstants.buildUserRoleKey(userId);
                 redisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
 
                 return userId;

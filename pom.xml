@@ -14,6 +14,7 @@
   <modules>
     <module>fishhub-auth</module>
     <module>fishhub-framework</module>
+    <module>fishhub-gateway</module>
   </modules>
 
   <properties>
@@ -136,6 +137,12 @@
       <dependency>
         <groupId>cn.dev33</groupId>
         <artifactId>sa-token-redis-jackson</artifactId>
+        <version>${sa-token.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>cn.dev33</groupId>
+        <artifactId>sa-token-reactor-spring-boot3-starter</artifactId>
         <version>${sa-token.version}</version>
       </dependency>
 
