@@ -1,7 +1,9 @@
 package hk.ljx.fishhub.oss.biz.strategy;
 
+import org.springframework.context.annotation.Configuration;
 import org.springframework.web.multipart.MultipartFile;
 
+@Configuration
 public interface FileStrategy {
 
     /**
