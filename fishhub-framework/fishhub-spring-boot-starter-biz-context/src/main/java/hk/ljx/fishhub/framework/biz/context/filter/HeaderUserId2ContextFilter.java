@@ -1,5 +1,6 @@
-package hk.ljx.fishhub.auth.filter;
+package hk.ljx.fishhub.framework.biz.context.filter;
 
+import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.constant.GlobalConstants;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

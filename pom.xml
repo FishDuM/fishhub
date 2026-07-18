@@ -66,6 +66,13 @@
         <version>${revision}</version>
       </dependency>
 
+      <!--  全局上下文组件    -->
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
       <dependency>
         <groupId>org.projectlombok</groupId>
         <artifactId>lombok</artifactId>

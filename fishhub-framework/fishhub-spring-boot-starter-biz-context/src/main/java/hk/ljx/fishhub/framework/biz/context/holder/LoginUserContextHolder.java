@@ -1,4 +1,4 @@
-package hk.ljx.fishhub.auth.filter;
+package hk.ljx.fishhub.framework.biz.context.holder;
 
 import com.alibaba.ttl.TransmittableThreadLocal;
 import hk.ljx.framework.common.constant.GlobalConstants;

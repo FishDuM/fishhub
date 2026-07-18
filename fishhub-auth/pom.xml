@@ -132,10 +132,9 @@
         </dependency>
 
         <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>transmittable-thread-local</artifactId>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
         </dependency>
-
     </dependencies>
 
     <build>
