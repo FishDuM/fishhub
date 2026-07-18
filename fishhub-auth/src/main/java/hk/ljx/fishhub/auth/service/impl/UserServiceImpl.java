@@ -13,6 +13,7 @@ import hk.ljx.fishhub.auth.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.auth.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.auth.enums.LoginTypeEnum;
 import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.auth.modal.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.auth.service.UserService;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
@@ -25,6 +26,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -53,6 +55,9 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private RoleDOMapper roleDOMapper;
+
+    @Resource
+    private PasswordEncoder passwordEncoder;
 
     @Override
     public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO) {
@@ -103,6 +108,21 @@ public class UserServiceImpl implements UserService {
         Long userId = LoginUserContextHolder.getUserId();
         log.info("== 用户退出登录 ID: {}", userId);
         StpUtil.logout(userId);
+        return Response.success();
+    }
+
+    @Override
+    public Response<?> updatePassword(UpdatePasswordReqVO updatePasswordReqVO) {
+        String newPassword = updatePasswordReqVO.getNewPassword();
+        String encodedPassword = passwordEncoder.encode(newPassword);
+        Long userId = LoginUserContextHolder.getUserId();
+        UserDO userDO = UserDO.builder()
+                .id(userId)
+                .password(encodedPassword)
+                .updateTime(LocalDateTime.now())
+                .build();
+
+        userDOMapper.updateByPrimaryKeySelective(userDO);
         return Response.success();
     }
 

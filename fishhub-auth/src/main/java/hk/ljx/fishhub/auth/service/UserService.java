@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.auth.service;
 
+import hk.ljx.fishhub.auth.modal.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
 import hk.ljx.framework.common.response.Response;
 
@@ -18,4 +19,11 @@ public interface UserService {
      * @return
      */
     Response<?> logout();
+
+    /**
+     * 修改密码
+     * @param updatePasswordReqVO
+     * @return
+     */
+    Response<?> updatePassword(UpdatePasswordReqVO updatePasswordReqVO);
 }
