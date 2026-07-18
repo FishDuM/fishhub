@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Objects;
 
 import static hk.ljx.fishhub.auth.constant.RedisKeyConstants.FISHHUB_ID_GENERATOR_KEY;
+import static hk.ljx.fishhub.auth.enums.ResponseCodeEnum.*;
 
 @Service
 @Slf4j
@@ -62,7 +63,6 @@ public class UserServiceImpl implements UserService {
     @Override
     public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO) {
         String phone = userLoginReqVO.getPhone();
-        String password = userLoginReqVO.getPassword();
         Integer type = userLoginReqVO.getType();
         Long userId = null;
 
@@ -89,10 +89,19 @@ public class UserServiceImpl implements UserService {
                 }
                 break;
             case PASSWORD:
-                // todo 密码登录
+                String password = userLoginReqVO.getPassword();
+                UserDO userDo = userDOMapper.selectByPhone(phone);
+                if (Objects.isNull(userDo)){
+                    throw new BizException(USER_NOT_FOUND);
+                }
+
+                if (!passwordEncoder.matches(password, userDo.getPassword())){
+                    throw new BizException(PHONE_OR_PASSWORD_ERROR);
+                }
+                userId = userDo.getId();
                 break;
             default:
-                break;
+                throw new BizException(LOGIN_TYPE_ERROR);
         }
 
         // SaToken 登录用户, 入参为用户 ID
