@@ -29,7 +29,7 @@ public class SaTokenConfigure{
                     ;
 
                     // 不同模块 权限认证
-                    SaRouter.match("/auth/user/logout", r -> StpUtil.checkPermission("user"));
+                    SaRouter.match("/auth/user/logout", r -> StpUtil.checkRole("common_user"));
                 })
                 .setError( e -> {
                     if (e instanceof NotLoginException){

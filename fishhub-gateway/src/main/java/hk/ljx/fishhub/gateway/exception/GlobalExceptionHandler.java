@@ -2,8 +2,6 @@ package hk.ljx.fishhub.gateway.exception;
 
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.NotPermissionException;
-import cn.dev33.satoken.exception.SaTokenException;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import hk.ljx.fishhub.gateway.enums.ResponseCodeEnum;
 import hk.ljx.framework.common.response.Response;

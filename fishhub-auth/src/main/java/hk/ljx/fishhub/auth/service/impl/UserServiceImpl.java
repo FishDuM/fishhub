@@ -13,6 +13,7 @@ import hk.ljx.fishhub.auth.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.auth.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.auth.enums.LoginTypeEnum;
 import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.auth.filter.LoginUserContextHolder;
 import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.auth.service.UserService;
 import hk.ljx.framework.common.enums.DeletedEnum;
@@ -95,6 +96,14 @@ public class UserServiceImpl implements UserService {
         SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
         // 返回 Token 令牌
         return Response.success(tokenInfo.tokenValue);
+    }
+
+    @Override
+    public Response<?> logout() {
+        Long userId = LoginUserContextHolder.getUserId();
+        log.info("== 用户退出登录 ID: {}", userId);
+        StpUtil.logout(userId);
+        return Response.success();
     }
 
     /**
