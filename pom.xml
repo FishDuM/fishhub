@@ -15,6 +15,7 @@
     <module>fishhub-auth</module>
     <module>fishhub-framework</module>
     <module>fishhub-gateway</module>
+    <module>fishhub-oss</module>
   </modules>
 
   <properties>

@@ -38,7 +38,9 @@ build/
 ### Mac OS ###
 .DS_Store
 /.idea/
-/fishhub-auth/src/main/resources/config/application-dev.yaml
-/fishhub-auth/src/main/resources/config/application-prod.yaml
+**/application-prod.yaml
+**/application-prod.yml
 **/logs/
 **/.flattened-pom.xml
+**/application-dev.yml
+**/application-dev.yaml
