@@ -19,7 +19,7 @@ public class PermissionDO {
 
     private String name;
 
-    private Byte type;
+    private Integer type;
 
     private String menuUrl;
 
@@ -29,7 +29,7 @@ public class PermissionDO {
 
     private String permissionKey;
 
-    private Byte status;
+    private Integer status;
 
     private LocalDateTime createTime;
 

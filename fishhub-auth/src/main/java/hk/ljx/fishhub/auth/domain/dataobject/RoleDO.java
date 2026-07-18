@@ -18,7 +18,7 @@ public class RoleDO {
 
     private String roleKey;
 
-    private Byte status;
+    private Integer status;
 
     private Integer sort;
 

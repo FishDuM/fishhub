@@ -1,4 +1,4 @@
-package hk.ljx.fishhub.auth.domain.dataobject;
+package hk.ljx.fishhub.user.biz.domain.dataobject;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Builder
 public class UserDO {
+
     private Long id;
 
     private String fishhubId;

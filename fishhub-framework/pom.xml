@@ -16,6 +16,7 @@
         <module>fishhub-common</module>
         <module>fishhub-spring-boot-starter-biz-operationlog</module>
         <module>fishhub-spring-boot-starter-jackson</module>
+        <module>fishhub-spring-boot-starter-biz-context</module>
     </modules>
 
 </project>
