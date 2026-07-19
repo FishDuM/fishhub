@@ -2,24 +2,37 @@ package hk.ljx.fishhub.user.biz.service.impl;
 
 import com.alibaba.nacos.shaded.com.google.common.base.Preconditions;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.user.biz.constant.RoleConstants;
+import hk.ljx.fishhub.user.biz.domain.dataobject.RoleDO;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
+import hk.ljx.fishhub.user.biz.domain.dataobject.UserRoleDO;
+import hk.ljx.fishhub.user.biz.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
+import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.framework.common.enums.DeletedEnum;
+import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.framework.common.util.ParamUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import static hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum.NICK_NAME_VALID_FAIL;
@@ -34,6 +47,15 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private OssRpcService ossRpcService;
+
+    @Resource
+    private UserRoleDOMapper userRoleDOMapper;
+
+    @Resource
+    private RoleDOMapper roleDOMapper;
+
+    @Resource
+    private RedisTemplate<String, Object> redisTemplate;
 
     @Override
     public Response<?> updateUserInfo(UpdateUserInfoReqVO updateUserInfoReqVO) {
@@ -106,5 +128,60 @@ public class UserServiceImpl implements UserService {
             userDOMapper.updateByPrimaryKeySelective(userDO);
         }
         return Response.success();
+    }
+
+    @Override
+    public Response<Long> register(RegisterUserReqDTO registerUserReqDTO) {
+        String phone = registerUserReqDTO.getPhone();
+        // 先判断该手机号是否已被注册
+        UserDO userDO1 = userDOMapper.selectByPhone(phone);
+
+        log.info("==> 用户是否注册, phone: {}, userDO: {}", phone, JsonUtils.toJsonString(userDO1));
+
+        // 若已注册，则直接返回用户 ID
+        if (Objects.nonNull(userDO1)) {
+            return Response.success(userDO1.getId());
+        }
+
+        // 否则注册新用户
+        // 获取全局自增的fishhub书 ID
+        Long fishhubId = redisTemplate.opsForValue().increment(RedisKeyConstants.FISHHUB_ID_GENERATOR_KEY);
+
+        UserDO userDO = UserDO.builder()
+                .phone(phone)
+                .fishhubId(String.valueOf(fishhubId)) // 自动生成 fishhub 号 ID
+                .nickname("小鱼" + fishhubId) // 自动生成昵称, 如：小鱼10000
+                .status(StatusEnum.ENABLE.getValue()) // 状态为启用
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now())
+                .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
+                .build();
+
+        // 添加入库
+        userDOMapper.insert(userDO);
+
+        // 获取刚刚添加入库的用户 ID
+        Long userId = userDO.getId();
+
+        // 给该用户分配一个默认角色
+        UserRoleDO userRoleDO = UserRoleDO.builder()
+                .userId(userId)
+                .roleId(RoleConstants.COMMON_USER_ROLE_ID)
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now())
+                .isDeleted(DeletedEnum.NO.getValue())
+                .build();
+        userRoleDOMapper.insert(userRoleDO);
+
+        RoleDO roleDO = roleDOMapper.selectByPrimaryKey(RoleConstants.COMMON_USER_ROLE_ID);
+
+        // 将该用户的角色 ID 存入 Redis 中
+        List<String> roles = new ArrayList<>(1);
+        roles.add(roleDO.getRoleKey());
+
+        String userRolesKey = RedisKeyConstants.buildUserRoleKey(userId);
+        redisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
+
+        return Response.success(userId);
     }
 }

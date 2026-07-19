@@ -5,35 +5,31 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class UserDO {
+public class PermissionDO {
     private Long id;
 
-    private String fishhubId;
+    private Long parentId;
 
-    private String password;
+    private String name;
 
-    private String nickname;
+    private Integer type;
 
-    private String avatar;
+    private String menuUrl;
 
-    private LocalDate birthday;
+    private String menuIcon;
 
-    private String backgroundImg;
+    private Integer sort;
 
-    private String phone;
-
-    private Integer sex;
+    private String permissionKey;
 
     private Integer status;
-
-    private String introduction;
 
     private LocalDateTime createTime;
 

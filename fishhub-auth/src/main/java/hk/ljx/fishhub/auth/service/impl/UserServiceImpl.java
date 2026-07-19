@@ -15,6 +15,7 @@ import hk.ljx.fishhub.auth.enums.LoginTypeEnum;
 import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.auth.modal.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
+import hk.ljx.fishhub.auth.rpc.UserRpcService;
 import hk.ljx.fishhub.auth.service.UserService;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.enums.DeletedEnum;
@@ -60,6 +61,9 @@ public class UserServiceImpl implements UserService {
     @Resource
     private PasswordEncoder passwordEncoder;
 
+    @Resource
+    private UserRpcService userRpcService;
+
     @Override
     public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO) {
         String phone = userLoginReqVO.getPhone();
@@ -77,16 +81,14 @@ public class UserServiceImpl implements UserService {
                 if (!StringUtils.equals(verificationCode, sentCode)) {
                     throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
                 }
-                // 校验用户是否存在
-                UserDO userDO = userDOMapper.selectByPhone(phone);
-                log.info("用户是否注册, phone: {}, userDO: {}", phone, JsonUtils.toJsonString(userDO));
-                if (Objects.isNull(userDO)) {
-                    // 未注册则创建用户
-                    userId = registerUser(phone);
-                } else {
-                    // 已注册则获取
-                    userId = userDO.getId();
+                // RPC: 调用用户服务，注册用户
+                Long userIdTmp = userRpcService.registerUser(phone);
+
+                // 若调用用户服务，返回的用户 ID 为空，则提示登录失败
+                if (Objects.isNull(userIdTmp)) {
+                    throw new BizException(ResponseCodeEnum.LOGIN_FAIL);
                 }
+                userId = userIdTmp;
                 break;
             case PASSWORD:
                 String password = userLoginReqVO.getPassword();
