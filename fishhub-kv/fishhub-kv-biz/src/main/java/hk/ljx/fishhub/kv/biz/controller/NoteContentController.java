@@ -2,6 +2,8 @@ package hk.ljx.fishhub.kv.biz.controller;
 
 import hk.ljx.fishhub.kv.biz.service.NoteContentService;
 import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,11 @@ public class NoteContentController {
     @PostMapping(value = "/note/content/add")
     public Response<?> addNoteContent(@Validated @RequestBody AddNoteContentReqDTO addNoteContentReqDTO) {
         return noteContentService.addNoteContent(addNoteContentReqDTO);
+    }
+
+    @PostMapping(value = "/note/content/find")
+    public Response<FindNoteContentRspDTO> findNoteContent(@Validated @RequestBody FindNoteContentReqDTO findNoteContentReqDTO) {
+        return noteContentService.findNoteContent(findNoteContentReqDTO);
     }
 
 }

@@ -4,9 +4,14 @@ import hk.ljx.fishhub.kv.biz.domain.dataobject.NoteContentDO;
 import hk.ljx.fishhub.kv.biz.domain.repository.NoteContentRepository;
 import hk.ljx.fishhub.kv.biz.service.NoteContentService;
 import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
+import hk.ljx.fishhub.kv.dto.req.enums.ResponseCodeEnum;
+import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public class NoteContentServiceImpl implements NoteContentService {
@@ -25,5 +30,22 @@ public class NoteContentServiceImpl implements NoteContentService {
                 .build();
         noteContentRepository.save(contentDO);
         return Response.success();
+    }
+
+    @Override
+    public Response<FindNoteContentRspDTO> findNoteContent(FindNoteContentReqDTO findNoteContentReqDTO) {
+        String noteId = findNoteContentReqDTO.getNoteId();
+        Optional<NoteContentDO> optional = noteContentRepository.findById(UUID.fromString(noteId));
+        // 判断数据是否存在
+        if (!optional.isPresent()) {
+            throw new BizException(ResponseCodeEnum.NOTE_CONTENT_NOT_FOUND);
+        }
+        NoteContentDO noteContentDO = optional.get();
+        FindNoteContentRspDTO findNoteContentRspDTO = FindNoteContentRspDTO.builder()
+                .noteId(noteContentDO.getId())
+                .content(noteContentDO.getContent())
+                .build();
+
+        return Response.success(findNoteContentRspDTO);
     }
 }

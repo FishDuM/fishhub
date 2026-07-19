@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.kv.dto.req.api;
 
 import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,4 +18,6 @@ public interface KeyValueFeignApi {
     @PostMapping(value = PREFIX + "/note/content/add")
     Response<?> addNoteContent(@RequestBody AddNoteContentReqDTO addNoteContentReqDTO);
 
+    @PostMapping(value = PREFIX + "/note/content/find")
+    Response<FindNoteContentRspDTO> findNoteContent(@RequestBody FindNoteContentReqDTO findNoteContentReqDTO);
 }
