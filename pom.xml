@@ -17,6 +17,7 @@
     <module>fishhub-gateway</module>
     <module>fishhub-oss</module>
     <module>fishhub-user</module>
+    <module>fishhub-kv</module>
   </modules>
 
   <properties>

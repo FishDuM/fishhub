@@ -1,6 +1,6 @@
 spring:
   application:
-    name: fishhub-user
+    name: fishhub-kv
   profiles:
     active: dev
   cloud:
