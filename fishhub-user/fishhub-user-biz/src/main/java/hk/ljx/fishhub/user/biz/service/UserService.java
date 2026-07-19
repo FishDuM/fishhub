@@ -1,7 +1,9 @@
 package hk.ljx.fishhub.user.biz.service;
 
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
+import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 
 public interface UserService {
@@ -19,4 +21,11 @@ public interface UserService {
      * @return
      */
     Response<Long> register(RegisterUserReqDTO registerUserReqDTO);
+
+    /**
+     * 根据手机号查询用户
+     * @param findUserByPhoneReqDTO
+     * @return
+     */
+    Response<FindUserByPhoneRspDTO> findByPhone(FindUserByPhoneReqDTO findUserByPhoneReqDTO);
 }

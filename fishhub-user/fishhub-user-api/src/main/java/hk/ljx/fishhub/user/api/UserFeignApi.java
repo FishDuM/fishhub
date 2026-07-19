@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.user.api;
 
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,4 +17,13 @@ public interface UserFeignApi {
 
     @PostMapping(value = PREFIX + "/register")
     Response<Long> registerUser(@RequestBody RegisterUserReqDTO registerUserReqDTO);
+
+    /**
+     * 根据手机号查询用户信息
+     * @param findUserByPhoneReqDTO
+     * @return
+     */
+    @PostMapping(value = PREFIX + "/findByPhone")
+    Response<FindUserByPhoneRspDTO> findByPhone(@RequestBody FindUserByPhoneReqDTO findUserByPhoneReqDTO);
+
 }

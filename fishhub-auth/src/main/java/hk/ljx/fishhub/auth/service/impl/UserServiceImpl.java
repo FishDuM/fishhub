@@ -18,6 +18,7 @@ import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.auth.rpc.UserRpcService;
 import hk.ljx.fishhub.auth.service.UserService;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.framework.common.exception.BizException;
@@ -92,15 +93,20 @@ public class UserServiceImpl implements UserService {
                 break;
             case PASSWORD:
                 String password = userLoginReqVO.getPassword();
-                UserDO userDo = userDOMapper.selectByPhone(phone);
-                if (Objects.isNull(userDo)){
+
+                FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
+                // 若用户不存在，则提示登录失败
+                if (Objects.isNull(findUserByPhoneRspDTO)){
                     throw new BizException(USER_NOT_FOUND);
                 }
-
-                if (!passwordEncoder.matches(password, userDo.getPassword())){
-                    throw new BizException(PHONE_OR_PASSWORD_ERROR);
+                String encodePassword = findUserByPhoneRspDTO.getPassword();
+                // 匹配密码是否一致
+                boolean isPasswordCorrect = passwordEncoder.matches(password, encodePassword);
+                // 如果不正确，则抛出业务异常，提示用户名或者密码不正确
+                if (!isPasswordCorrect) {
+                    throw new BizException(ResponseCodeEnum.PHONE_OR_PASSWORD_ERROR);
                 }
-                userId = userDo.getId();
+                userId = findUserByPhoneRspDTO.getId();
                 break;
             default:
                 throw new BizException(LOGIN_TYPE_ERROR);

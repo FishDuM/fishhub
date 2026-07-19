@@ -1,9 +1,11 @@
 package hk.ljx.fishhub.user.biz.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
+import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
@@ -42,5 +44,11 @@ public class UserController {
     @ApiOperationLog(description = "用户注册")
     public Response<Long> register(@Valid @RequestBody RegisterUserReqDTO registerUserReqDTO) {
         return userService.register(registerUserReqDTO);
+    }
+
+    @PostMapping("/findByPhone")
+    @ApiOperationLog(description = "手机号查询用户信息")
+    public Response<FindUserByPhoneRspDTO> findByPhone(@Validated @RequestBody FindUserByPhoneReqDTO findUserByPhoneReqDTO) {
+        return userService.findByPhone(findUserByPhoneReqDTO);
     }
 }

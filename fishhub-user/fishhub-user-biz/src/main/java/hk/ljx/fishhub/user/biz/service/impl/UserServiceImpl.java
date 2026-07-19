@@ -2,6 +2,7 @@ package hk.ljx.fishhub.user.biz.service.impl;
 
 import com.alibaba.nacos.shaded.com.google.common.base.Preconditions;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.biz.constant.RoleConstants;
@@ -16,6 +17,7 @@ import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.framework.common.exception.BizException;
@@ -35,8 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import static hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum.NICK_NAME_VALID_FAIL;
-import static hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum.UPLOAD_AVATAR_FAIL;
+import static hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum.*;
 
 @Service
 @Slf4j
@@ -183,5 +184,19 @@ public class UserServiceImpl implements UserService {
         redisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
 
         return Response.success(userId);
+    }
+
+    @Override
+    public Response<FindUserByPhoneRspDTO> findByPhone(FindUserByPhoneReqDTO findUserByPhoneReqDTO) {
+        String phone = findUserByPhoneReqDTO.getPhone();
+        UserDO userDO = userDOMapper.selectByPhone(phone);
+
+        if (Objects.isNull(userDO)){
+            throw new BizException(USER_NOT_FOUND);
+        }
+        return Response.success(FindUserByPhoneRspDTO.builder()
+                .id(userDO.getId())
+                .password(userDO.getPassword())
+                .build());
     }
 }

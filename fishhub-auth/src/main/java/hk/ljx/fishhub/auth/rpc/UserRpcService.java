@@ -1,7 +1,9 @@
 package hk.ljx.fishhub.auth.rpc;
 
 import hk.ljx.fishhub.user.api.UserFeignApi;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -26,7 +28,24 @@ public class UserRpcService {
         if (!response.isSuccess()) {
             return null;
         }
+        return response.getData();
+    }
 
+    /**
+     * 根据手机号查询用户信息
+     *
+     * @param phone
+     * @return
+     */
+    public FindUserByPhoneRspDTO findUserByPhone(String phone) {
+        FindUserByPhoneReqDTO findUserByPhoneReqDTO = new FindUserByPhoneReqDTO();
+        findUserByPhoneReqDTO.setPhone(phone);
+
+        Response<FindUserByPhoneRspDTO> response = userFeignApi.findByPhone(findUserByPhoneReqDTO);
+
+        if (!response.isSuccess()) {
+            return null;
+        }
         return response.getData();
     }
 
