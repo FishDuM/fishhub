@@ -7,7 +7,9 @@ import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
+import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.ParamUtils;
 import jakarta.annotation.Resource;
@@ -21,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.Objects;
 
 import static hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum.NICK_NAME_VALID_FAIL;
+import static hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum.UPLOAD_AVATAR_FAIL;
 
 @Service
 @Slf4j
@@ -28,6 +31,9 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private UserDOMapper userDOMapper;
+
+    @Resource
+    private OssRpcService ossRpcService;
 
     @Override
     public Response<?> updateUserInfo(UpdateUserInfoReqVO updateUserInfoReqVO) {
@@ -38,7 +44,13 @@ public class UserServiceImpl implements UserService {
         // 头像
         MultipartFile avatar = updateUserInfoReqVO.getAvatar();
         if (Objects.nonNull(avatar)) {
-            // todo 调用文件上传接口
+            // 调用文件上传接口
+            String avatarUrl = ossRpcService.uploadFile(avatar);
+            if (StringUtils.isBlank(avatarUrl)){
+                throw new BizException(UPLOAD_AVATAR_FAIL);
+            }
+            userDO.setAvatar(avatarUrl);
+            needUpdate = true;
         }
         // 昵称
         String nickname = updateUserInfoReqVO.getNickname();
@@ -79,7 +91,13 @@ public class UserServiceImpl implements UserService {
         // 背景图
         MultipartFile backgroundImgFile = updateUserInfoReqVO.getBackgroundImg();
         if (Objects.nonNull(backgroundImgFile)) {
-            // todo: 调用对象存储服务上传文件
+            // 调用对象存储服务上传文件
+            String backgroundImgUrl = ossRpcService.uploadFile(backgroundImgFile);
+            if (StringUtils.isBlank(backgroundImgUrl)){
+                throw new BizException(ResponseCodeEnum.UPLOAD_BACKGROUND_IMG_FAIL);
+            }
+            userDO.setBackgroundImg(backgroundImgUrl);
+            needUpdate = true;
         }
 
         if (needUpdate) {

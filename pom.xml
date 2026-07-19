@@ -43,6 +43,7 @@
     <nacos-config.version>0.3.0-RC</nacos-config.version>
     <transmittable-thread-local.version>2.14.2</transmittable-thread-local.version>
     <minio.version>8.2.1</minio.version>
+    <feign-form.version>3.8.0</feign-form.version>
   </properties>
 
   <!--  统一依赖管理  -->
@@ -73,6 +74,12 @@
       <dependency>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-oss-api</artifactId>
         <version>${revision}</version>
       </dependency>
 
@@ -201,6 +208,13 @@
         <groupId>io.minio</groupId>
         <artifactId>minio</artifactId>
         <version>${minio.version}</version>
+      </dependency>
+
+      <!-- Feign 表单提交 -->
+      <dependency>
+        <groupId>io.github.openfeign.form</groupId>
+        <artifactId>feign-form</artifactId>
+        <version>${feign-form.version}</version>
       </dependency>
 
     </dependencies>

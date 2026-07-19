@@ -1,1 +1,2 @@
 hk.ljx.fishhub.framework.biz.context.config.ContextAutoConfiguration
+hk.ljx.fishhub.framework.biz.context.config.FeignContextAutoConfiguration
