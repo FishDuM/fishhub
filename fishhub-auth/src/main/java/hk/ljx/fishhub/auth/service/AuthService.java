@@ -4,7 +4,7 @@ import hk.ljx.fishhub.auth.modal.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
 import hk.ljx.framework.common.response.Response;
 
-public interface UserService {
+public interface AuthService {
 
     /**
      * 登录与注册

@@ -3,6 +3,7 @@ package hk.ljx.fishhub.auth.rpc;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
@@ -33,7 +34,6 @@ public class UserRpcService {
 
     /**
      * 根据手机号查询用户信息
-     *
      * @param phone
      * @return
      */
@@ -47,6 +47,16 @@ public class UserRpcService {
             return null;
         }
         return response.getData();
+    }
+
+    /**
+     * 密码更新
+     * @param encodePassword
+     */
+    public void updatePassword(String encodePassword) {
+        UpdateUserPasswordReqDTO updateUserPasswordReqDTO = new UpdateUserPasswordReqDTO();
+        updateUserPasswordReqDTO.setEncodePassword(encodePassword);
+        userFeignApi.updatePassword(updateUserPasswordReqDTO);
     }
 
 }

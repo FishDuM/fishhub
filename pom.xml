@@ -89,6 +89,12 @@
         <version>${revision}</version>
       </dependency>
 
+    <dependency>
+      <groupId>hk.ljx.fishhub.user.biz</groupId>
+      <artifactId>fishhub-user-biz</artifactId>
+      <version>${revision}</version>
+    </dependency>
+
       <dependency>
         <groupId>org.projectlombok</groupId>
         <artifactId>lombok</artifactId>
