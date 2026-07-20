@@ -2,6 +2,8 @@ package hk.ljx.fishhub.user.biz.service.impl;
 
 import cn.hutool.core.util.RandomUtil;
 import com.alibaba.nacos.shaded.com.google.common.base.Preconditions;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.biz.constant.RoleConstants;
@@ -70,6 +72,15 @@ public class UserServiceImpl implements UserService {
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
+
+    /**
+     * 用户信息本地缓存
+     */
+    private static final Cache<Long, FindUserByIdRspDTO> LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(10000)
+            .maximumSize(10000)
+            .expireAfterWrite(1, TimeUnit.HOURS)
+            .build();
 
     @Override
     public Response<?> updateUserInfo(UpdateUserInfoReqVO updateUserInfoReqVO) {
@@ -239,12 +250,26 @@ public class UserServiceImpl implements UserService {
     public Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO) {
         Long userId = findUserByIdReqDTO.getId();
 
+        // 先从本地缓存中查询
+        FindUserByIdRspDTO findUserByIdRspDTOLocalCache = LOCAL_CACHE.getIfPresent(userId);
+        if (Objects.nonNull(findUserByIdRspDTOLocalCache)) {
+            log.info("==> 命中了本地缓存；{}", findUserByIdRspDTOLocalCache);
+            return Response.success(findUserByIdRspDTOLocalCache);
+        }
+
         // 从 redis 中查询用户信息
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
         String userInfoRedisValue = (String) redisTemplate.opsForValue().get(userInfoRedisKey);
         if (StringUtils.isNotBlank(userInfoRedisValue)) {
             // 将存储的 Json 字符串转换成对象，并返回
             FindUserByIdRspDTO findUserByIdRspDTO = JsonUtils.parseObject(userInfoRedisValue, FindUserByIdRspDTO.class);
+            // 异步线程中将用户信息存入本地缓存
+            threadPoolTaskExecutor.submit(() -> {
+                if (Objects.nonNull(findUserByIdRspDTO)) {
+                    // 写入本地缓存
+                    LOCAL_CACHE.put(userId, findUserByIdRspDTO);
+                }
+            });
             return Response.success(findUserByIdRspDTO);
         }
 
