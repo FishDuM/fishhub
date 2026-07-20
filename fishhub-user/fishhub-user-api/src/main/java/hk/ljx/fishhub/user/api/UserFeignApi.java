@@ -1,8 +1,10 @@
 package hk.ljx.fishhub.user.api;
 
+import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -35,4 +37,11 @@ public interface UserFeignApi {
     @PostMapping(value = PREFIX + "/password/update")
     Response<?> updatePassword(@RequestBody UpdateUserPasswordReqDTO updateUserPasswordReqDTO);
 
+    /**
+     * 根据用户ID查询用户信息
+     * @param findUserByIdReqDTO
+     * @return
+     */
+    @PostMapping(value = PREFIX + "/findById")
+    Response<FindUserByIdRspDTO> findById(@RequestBody FindUserByIdReqDTO findUserByIdReqDTO);
 }

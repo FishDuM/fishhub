@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.note.biz.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.PublishNoteReqVO;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.framework.common.response.Response;
@@ -26,4 +28,9 @@ public class NoteController {
         return noteService.publishNote(publishNoteReqVO);
     }
 
+    @PostMapping(value = "/detail")
+    @ApiOperationLog(description = "笔记详情")
+    public Response<FindNoteDetailRspVO> findNoteDetail(@Validated @RequestBody FindNoteDetailReqVO findNoteDetailReqVO) {
+        return noteService.findNoteDetail(findNoteDetailReqVO);
+    }
 }
