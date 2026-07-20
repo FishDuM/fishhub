@@ -3,9 +3,11 @@ package hk.ljx.fishhub.user.biz.controller;
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
@@ -57,5 +59,11 @@ public class UserController {
     @ApiOperationLog(description = "密码更新")
     public Response<?> updatePassword(@Validated @RequestBody UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
         return userService.updatePassword(updateUserPasswordReqDTO);
+    }
+
+    @PostMapping("/findById")
+    @ApiOperationLog(description = "查询用户信息")
+    public Response<FindUserByIdRspDTO> findById(@Validated @RequestBody FindUserByIdReqDTO findUserByIdReqDTO) {
+        return userService.findById(findUserByIdReqDTO);
     }
 }

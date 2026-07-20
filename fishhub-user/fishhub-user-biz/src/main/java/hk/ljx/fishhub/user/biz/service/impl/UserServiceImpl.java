@@ -16,9 +16,11 @@ import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
@@ -219,5 +221,33 @@ public class UserServiceImpl implements UserService {
         userDOMapper.updateByPrimaryKeySelective(userDO);
 
         return Response.success();
+    }
+
+    /**
+     * 根据用户 ID 查询用户信息
+     *
+     * @param findUserByIdReqDTO
+     * @return
+     */
+    @Override
+    public Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO) {
+        Long userId = findUserByIdReqDTO.getId();
+
+        // 根据用户 ID 查询用户信息
+        UserDO userDO = userDOMapper.selectByPrimaryKey(userId);
+
+        // 判空
+        if (Objects.isNull(userDO)) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+        }
+
+        // 构建返参
+        FindUserByIdRspDTO findUserByIdRspDTO = FindUserByIdRspDTO.builder()
+                .id(userDO.getId())
+                .nickName(userDO.getNickname())
+                .avatar(userDO.getAvatar())
+                .build();
+
+        return Response.success(findUserByIdRspDTO);
     }
 }

@@ -1,9 +1,11 @@
 package hk.ljx.fishhub.user.biz.service;
 
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
+import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 
@@ -36,4 +38,11 @@ public interface UserService {
      * @return
      */
     Response<?> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO);
+
+    /**
+     * 根据用户 ID 查询用户信息
+     * @param findUserByIdReqDTO
+     * @return
+     */
+    Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO);
 }
