@@ -7,7 +7,6 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <groupId>hk.ljx.fishhub.note</groupId>
     <artifactId>fishhub-note-api</artifactId>
     <name>${project.artifactId}</name>
     <description>RPC层, 供其他服务调用</description>

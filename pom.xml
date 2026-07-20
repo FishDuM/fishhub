@@ -111,6 +111,12 @@
       </dependency>
 
       <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-note-api</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
+      <dependency>
         <groupId>org.projectlombok</groupId>
         <artifactId>lombok</artifactId>
         <version>${lombok.version}</version>
