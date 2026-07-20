@@ -18,6 +18,7 @@
     <module>fishhub-oss</module>
     <module>fishhub-user</module>
     <module>fishhub-kv</module>
+    <module>fishhub-distributed-id-generator</module>
   </modules>
 
   <properties>

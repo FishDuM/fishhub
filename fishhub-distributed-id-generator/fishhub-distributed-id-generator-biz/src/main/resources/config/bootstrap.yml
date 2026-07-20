@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: fishhub-distributed-id-generator # 应用名称
+  profiles:
+    active: dev # 默认激活 dev 本地开发环境
+  cloud:
+    nacos:
+      discovery:
+        enabled: true # 启用服务发现
+        group: DEFAULT_GROUP # 所属组
+        namespace: b52ecbcd-3654-4388-9790-7a9f984de112 # 命名空间
+        server-addr: 127.0.0.1:8848 #

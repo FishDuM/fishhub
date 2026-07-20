@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.kv.dto.req.api;
 
-import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
@@ -20,4 +21,8 @@ public interface KeyValueFeignApi {
 
     @PostMapping(value = PREFIX + "/note/content/find")
     Response<FindNoteContentRspDTO> findNoteContent(@RequestBody FindNoteContentReqDTO findNoteContentReqDTO);
+
+    @PostMapping(value = PREFIX + "/note/content/delete")
+    Response<?> deleteNoteContent (@RequestBody DeleteNoteContentReqDTO deleteNoteContentReqDTO);
+
 }

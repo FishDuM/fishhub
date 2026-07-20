@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.kv.biz.controller;
 
 import hk.ljx.fishhub.kv.biz.service.NoteContentService;
-import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
@@ -29,6 +30,11 @@ public class NoteContentController {
     @PostMapping(value = "/note/content/find")
     public Response<FindNoteContentRspDTO> findNoteContent(@Validated @RequestBody FindNoteContentReqDTO findNoteContentReqDTO) {
         return noteContentService.findNoteContent(findNoteContentReqDTO);
+    }
+
+    @PostMapping(value = "/note/content/delete")
+    public Response<?> deleteNoteContent(@Validated @RequestBody DeleteNoteContentReqDTO deleteNoteContentReqDTO) {
+        return noteContentService.deleteNoteContent(deleteNoteContentReqDTO);
     }
 
 }

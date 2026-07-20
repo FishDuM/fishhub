@@ -3,17 +3,22 @@ package hk.ljx.fishhub.kv.biz.service.impl;
 import hk.ljx.fishhub.kv.biz.domain.dataobject.NoteContentDO;
 import hk.ljx.fishhub.kv.biz.domain.repository.NoteContentRepository;
 import hk.ljx.fishhub.kv.biz.service.NoteContentService;
-import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.fishhub.kv.dto.req.enums.ResponseCodeEnum;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 import java.util.UUID;
 
+@Service
+@Slf4j
 public class NoteContentServiceImpl implements NoteContentService {
 
     @Resource
@@ -47,5 +52,14 @@ public class NoteContentServiceImpl implements NoteContentService {
                 .build();
 
         return Response.success(findNoteContentRspDTO);
+    }
+
+    @Override
+    public Response<?> deleteNoteContent(DeleteNoteContentReqDTO deleteNoteContentReqDTO) {
+        String noteId = deleteNoteContentReqDTO.getNoteId();
+
+        noteContentRepository.deleteById(UUID.fromString(noteId));
+
+        return Response.success();
     }
 }

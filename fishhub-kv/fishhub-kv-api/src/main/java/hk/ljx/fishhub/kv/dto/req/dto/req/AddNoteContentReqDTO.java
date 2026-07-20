@@ -1,4 +1,4 @@
-package hk.ljx.fishhub.kv.dto.req;
+package hk.ljx.fishhub.kv.dto.req.dto.req;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
