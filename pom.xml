@@ -92,14 +92,20 @@
       </dependency>
 
       <dependency>
-        <groupId>hk.ljx.fishhub.user.biz</groupId>
+        <groupId>hk.ljx</groupId>
         <artifactId>fishhub-user-biz</artifactId>
         <version>${revision}</version>
       </dependency>
 
       <dependency>
-        <groupId>hk.ljx.fishhub.kv.api</groupId>
+        <groupId>hk.ljx</groupId>
         <artifactId>fishhub-kv-api</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-distributed-id-generator-api</artifactId>
         <version>${revision}</version>
       </dependency>
 

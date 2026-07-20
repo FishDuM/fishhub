@@ -7,7 +7,6 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <groupId>hk.ljx.fishhub.user.biz</groupId>
     <artifactId>fishhub-user-biz</artifactId>
     <name>${project.artifactId}</name>
     <description>用户服务业务模块</description>
@@ -98,6 +97,10 @@
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-user-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-distributed-id-generator-api</artifactId>
         </dependency>
     </dependencies>
 

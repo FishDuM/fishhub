@@ -2,8 +2,6 @@ package hk.ljx.fishhub.user.biz.service.impl;
 
 import com.alibaba.nacos.shaded.com.google.common.base.Preconditions;
 import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
-import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.biz.constant.RoleConstants;
 import hk.ljx.fishhub.user.biz.domain.dataobject.RoleDO;
@@ -15,8 +13,11 @@ import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
+import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
+import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.enums.DeletedEnum;
@@ -58,6 +59,9 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Resource
+    private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
 
     @Override
     public Response<?> updateUserInfo(UpdateUserInfoReqVO updateUserInfoReqVO) {
@@ -146,12 +150,17 @@ public class UserServiceImpl implements UserService {
         }
 
         // 否则注册新用户
-        // 获取全局自增的fishhub书 ID
-        Long fishhubId = redisTemplate.opsForValue().increment(RedisKeyConstants.FISHHUB_ID_GENERATOR_KEY);
+        // 获取全局自增的fishhub ID
+        String fishhubId = distributedIdGeneratorRpcService.getFishhubId();
+
+        // RPC: 调用分布式 ID 生成服务生成用户 ID
+        String userIdStr = distributedIdGeneratorRpcService.getUserId();
+        Long userId = Long.valueOf(userIdStr);
 
         UserDO userDO = UserDO.builder()
+                .id(userId)
                 .phone(phone)
-                .fishhubId(String.valueOf(fishhubId)) // 自动生成 fishhub 号 ID
+                .fishhubId(fishhubId) // 自动生成 fishhub 号 ID
                 .nickname("小鱼" + fishhubId) // 自动生成昵称, 如：小鱼10000
                 .status(StatusEnum.ENABLE.getValue()) // 状态为启用
                 .createTime(LocalDateTime.now())
@@ -161,9 +170,6 @@ public class UserServiceImpl implements UserService {
 
         // 添加入库
         userDOMapper.insert(userDO);
-
-        // 获取刚刚添加入库的用户 ID
-        Long userId = userDO.getId();
 
         // 给该用户分配一个默认角色
         UserRoleDO userRoleDO = UserRoleDO.builder()

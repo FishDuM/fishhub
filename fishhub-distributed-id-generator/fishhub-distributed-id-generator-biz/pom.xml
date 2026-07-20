@@ -29,6 +29,11 @@
             <artifactId>fishhub-common</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-distributed-id-generator-api</artifactId>
+        </dependency>
+
         <!-- MySQL 驱动 -->
         <dependency>
             <groupId>mysql</groupId>
