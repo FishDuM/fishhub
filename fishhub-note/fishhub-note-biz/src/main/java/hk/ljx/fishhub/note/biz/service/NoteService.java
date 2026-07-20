@@ -3,6 +3,7 @@ package hk.ljx.fishhub.note.biz.service;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.PublishNoteReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.UpdateNoteReqVO;
 import hk.ljx.framework.common.response.Response;
 
 public interface NoteService {
@@ -20,4 +21,11 @@ public interface NoteService {
      * @return
      */
     Response<FindNoteDetailRspVO> findNoteDetail(FindNoteDetailReqVO findNoteDetailReqVO);
+
+    /**
+     * 笔记更新
+     * @param updateNoteReqVO
+     * @return
+     */
+    Response<?> updateNote(UpdateNoteReqVO updateNoteReqVO);
 }

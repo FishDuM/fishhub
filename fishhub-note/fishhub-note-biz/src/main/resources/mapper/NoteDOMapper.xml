@@ -134,51 +134,20 @@
       </if>
     </trim>
   </insert>
+
   <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
     update t_note
-    <set>
-      <if test="title != null">
-        title = #{title,jdbcType=VARCHAR},
-      </if>
-      <if test="isContentEmpty != null">
+    set title = #{title,jdbcType=VARCHAR},
         is_content_empty = #{isContentEmpty,jdbcType=BIT},
-      </if>
-      <if test="creatorId != null">
-        creator_id = #{creatorId,jdbcType=BIGINT},
-      </if>
-      <if test="topicId != null">
         topic_id = #{topicId,jdbcType=BIGINT},
-      </if>
-      <if test="topicName != null">
         topic_name = #{topicName,jdbcType=VARCHAR},
-      </if>
-      <if test="isTop != null">
-        is_top = #{isTop,jdbcType=BIT},
-      </if>
-      <if test="type != null">
         `type` = #{type,jdbcType=TINYINT},
-      </if>
-      <if test="imgUris != null">
         img_uris = #{imgUris,jdbcType=VARCHAR},
-      </if>
-      <if test="videoUri != null">
         video_uri = #{videoUri,jdbcType=VARCHAR},
-      </if>
-      <if test="visible != null">
-        visible = #{visible,jdbcType=TINYINT},
-      </if>
-      <if test="createTime != null">
-        create_time = #{createTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="updateTime != null">
-        update_time = #{updateTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="status != null">
-        `status` = #{status,jdbcType=TINYINT},
-      </if>
-    </set>
+        update_time = #{updateTime,jdbcType=TIMESTAMP}
     where id = #{id,jdbcType=BIGINT}
   </update>
+
   <update id="updateByPrimaryKey" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
     update t_note
     set title = #{title,jdbcType=VARCHAR},

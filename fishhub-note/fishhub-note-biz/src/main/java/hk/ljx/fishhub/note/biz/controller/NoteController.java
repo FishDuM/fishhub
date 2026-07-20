@@ -4,6 +4,7 @@ import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.PublishNoteReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.UpdateNoteReqVO;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
@@ -32,5 +33,11 @@ public class NoteController {
     @ApiOperationLog(description = "笔记详情")
     public Response<FindNoteDetailRspVO> findNoteDetail(@Validated @RequestBody FindNoteDetailReqVO findNoteDetailReqVO) {
         return noteService.findNoteDetail(findNoteDetailReqVO);
+    }
+
+    @PostMapping(value = "/update")
+    @ApiOperationLog(description = "笔记修改")
+    public Response<?> updateNote(@Validated @RequestBody UpdateNoteReqVO updateNoteReqVO) {
+        return noteService.updateNote(updateNoteReqVO);
     }
 }
