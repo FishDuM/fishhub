@@ -7,7 +7,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
 @MapperScan("hk.ljx.fishhub.user.biz.domain.mapper")
-@EnableFeignClients(basePackages = "hk.ljx.fishhub")
+@EnableFeignClients(basePackages = "hk.ljx")
 public class FishhubUserBizApplication {
     public static void main( String[] args ) {
         SpringApplication.run(FishhubUserBizApplication.class, args);

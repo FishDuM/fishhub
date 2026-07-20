@@ -7,7 +7,6 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <groupId>hk.ljx.fishhub.kv.biz</groupId>
     <artifactId>fishhub-kv-biz</artifactId>
     <name>${project.artifactId}</name>
     <description>Key-Value 键值存储业务层</description>
@@ -23,7 +22,7 @@
         </dependency>
 
         <dependency>
-            <groupId>hk.ljx.fishhub.kv.api</groupId>
+            <groupId>hk.ljx</groupId>
             <artifactId>fishhub-kv-api</artifactId>
         </dependency>
 
@@ -54,6 +53,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-cassandra</artifactId>
         </dependency>
+
         <dependency>
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>

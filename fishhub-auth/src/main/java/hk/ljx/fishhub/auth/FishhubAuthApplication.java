@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
-@EnableFeignClients(basePackages = "hk.ljx.fishhub")
+@EnableFeignClients(basePackages = "hk.ljx")
 public class FishhubAuthApplication {
 
     public static void main(String[] args) {
