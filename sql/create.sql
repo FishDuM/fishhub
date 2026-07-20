@@ -139,4 +139,5 @@ CREATE TABLE `t_note` (
                           KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='笔记表';
 
+ALTER table t_note add column `content_uuid` varchar(36) DEFAULT '' COMMENT '笔记内容UUID';
 
