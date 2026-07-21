@@ -15,10 +15,7 @@ import hk.ljx.fishhub.note.biz.enums.NoteStatusEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.enums.ResponseCodeEnum;
-import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
-import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailRspVO;
-import hk.ljx.fishhub.note.biz.model.vo.PublishNoteReqVO;
-import hk.ljx.fishhub.note.biz.model.vo.UpdateNoteReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
@@ -474,4 +471,41 @@ public class NoteServiceImpl implements NoteService {
     public void deleteNoteLocalCache(Long noteId) {
         LOCAL_CACHE.invalidate(noteId);
     }
+
+    /**
+     * 删除笔记
+     * @param deleteNoteReqVO
+     * @return
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Response<?> deleteNote(DeleteNoteReqVO deleteNoteReqVO) {
+        // 笔记 ID
+        Long noteId = deleteNoteReqVO.getId();
+
+        // 逻辑删除
+        NoteDO noteDO = NoteDO.builder()
+                .id(noteId)
+                .status(NoteStatusEnum.DELETED.getCode())
+                .updateTime(LocalDateTime.now())
+                .build();
+
+        int count = noteDOMapper.updateByPrimaryKeySelective(noteDO);
+
+        // 若影响的行数为 0，则表示该笔记不存在
+        if (count == 0) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
+        }
+
+        // 删除缓存
+        String noteDetailRedisKey = RedisKeyConstants.buildNoteDetailKey(noteId);
+        redisTemplate.delete(noteDetailRedisKey);
+
+        // 同步发送广播模式 MQ，将所有实例中的本地缓存都删除掉
+        rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_NOTE_LOCAL_CACHE, noteId);
+        log.info("====> MQ：删除笔记本地缓存发送成功...");
+
+        return Response.success();
+    }
+
 }

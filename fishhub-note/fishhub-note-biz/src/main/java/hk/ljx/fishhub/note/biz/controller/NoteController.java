@@ -1,10 +1,7 @@
 package hk.ljx.fishhub.note.biz.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
-import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
-import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailRspVO;
-import hk.ljx.fishhub.note.biz.model.vo.PublishNoteReqVO;
-import hk.ljx.fishhub.note.biz.model.vo.UpdateNoteReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
@@ -39,5 +36,11 @@ public class NoteController {
     @ApiOperationLog(description = "笔记修改")
     public Response<?> updateNote(@Validated @RequestBody UpdateNoteReqVO updateNoteReqVO) {
         return noteService.updateNote(updateNoteReqVO);
+    }
+
+    @PostMapping(value = "/delete")
+    @ApiOperationLog(description = "删除笔记")
+    public Response<?> deleteNote(@Validated @RequestBody DeleteNoteReqVO deleteNoteReqVO) {
+        return noteService.deleteNote(deleteNoteReqVO);
     }
 }
