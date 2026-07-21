@@ -20,6 +20,7 @@
     <module>fishhub-kv</module>
     <module>fishhub-distributed-id-generator</module>
     <module>fishhub-note</module>
+    <module>fishhub-user-relation</module>
   </modules>
 
   <properties>

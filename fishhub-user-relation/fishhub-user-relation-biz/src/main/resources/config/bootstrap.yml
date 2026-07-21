@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: fishhub-user-relation
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      discovery:
+        enabled: true # 启用服务发现
+        group: DEFAULT_GROUP # 所属组
+        namespace: b52ecbcd-3654-4388-9790-7a9f984de112 # 命名空间
+        server-addr: 127.0.0.1:8848 # 指定 Nacos 配置中心的服务器地址
