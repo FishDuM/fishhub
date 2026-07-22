@@ -1,9 +1,12 @@
 package hk.ljx.fishhub.user.relation.biz.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingListReqVO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingUserRspVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
+import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +34,12 @@ public class RelationController {
     @ApiOperationLog(description = "取关用户")
     public Response<?> unfollow(@Validated @RequestBody UnfollowUserReqVO unfollowUserReqVO) {
         return relationService.unfollow(unfollowUserReqVO);
+    }
+
+    @PostMapping("/following/list")
+    @ApiOperationLog(description = "查询用户关注列表")
+    public PageResponse<FindFollowingUserRspVO> findFollowingList(@Validated @RequestBody FindFollowingListReqVO findFollowingListReqVO) {
+        return relationService.findFollowingList(findFollowingListReqVO);
     }
 
 }

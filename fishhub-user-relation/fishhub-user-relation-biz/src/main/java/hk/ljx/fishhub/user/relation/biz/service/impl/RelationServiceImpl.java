@@ -12,11 +12,14 @@ import hk.ljx.fishhub.user.relation.biz.enums.LuaResultEnum;
 import hk.ljx.fishhub.user.relation.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.UnfollowUserMqDTO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingListReqVO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingUserRspVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
 import hk.ljx.framework.common.exception.BizException;
+import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
@@ -30,6 +33,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +41,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 @Slf4j
@@ -53,6 +58,9 @@ public class RelationServiceImpl implements RelationService {
 
     @Resource
     private RocketMQTemplate rocketMQTemplate;
+
+    @Resource
+    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
 
     /**
      * 关注用户
@@ -277,4 +285,100 @@ public class RelationServiceImpl implements RelationService {
         luaArgs[argsLength - 1] = expireSeconds; // 最后一个参数是 ZSet 的过期时间
         return luaArgs;
     }
+
+    /**
+     * 查询关注列表
+     *
+     * @param findFollowingListReqVO
+     * @return
+     */
+    @Override
+    public PageResponse<FindFollowingUserRspVO> findFollowingList(FindFollowingListReqVO findFollowingListReqVO) {
+        Long userId = findFollowingListReqVO.getUserId();
+        Integer pageNo = findFollowingListReqVO.getPageNo();
+
+        String followingListRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
+
+        long total = redisTemplate.opsForZSet().zCard(followingListRedisKey);
+
+        List<FindFollowingUserRspVO> findFollowingUserRspVOS = null;
+
+        long limit = 10;
+
+        if (total > 0) {
+            long totalPage = PageResponse.getTotalPage(total, limit);
+            if (pageNo > totalPage) return PageResponse.success(null, pageNo, total);
+            long offset = PageResponse.getOffset(pageNo, limit);
+            Set<Object> followingUserIdsSet = redisTemplate.opsForZSet()
+                    .reverseRangeByScore(followingListRedisKey, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, offset, limit);
+
+            if (CollUtil.isNotEmpty(followingUserIdsSet)) {
+                List<Long> userIds = followingUserIdsSet.stream().map(object -> Long.valueOf(object.toString())).toList();
+
+                findFollowingUserRspVOS = rpcUserServiceAndDTO2VO(userIds, findFollowingUserRspVOS);
+            }
+        } else {
+            long count = followingDOMapper.selectCountByUserId(userId);
+
+            long totalPage = PageResponse.getTotalPage(count, limit);
+
+            if (pageNo > totalPage) return PageResponse.success(null, pageNo, count);
+
+            long offset = PageResponse.getOffset(pageNo, limit);
+
+            List<FollowingDO> followingDOS = followingDOMapper.selectPageListByUserId(userId, offset, limit);
+            total = count;
+
+            if (CollUtil.isNotEmpty(followingDOS)) {
+                List<Long> userIds = followingDOS.stream().map(FollowingDO::getFollowingUserId).toList();
+                findFollowingUserRspVOS = rpcUserServiceAndDTO2VO(userIds, findFollowingUserRspVOS);
+                threadPoolTaskExecutor.submit(() -> syncFollowingList2Redis(userId));
+            }
+
+
+        }
+
+        return PageResponse.success(findFollowingUserRspVOS, pageNo, total);
+    }
+
+    /**
+     * 全量同步关注列表至 Redis 中
+     * @param userId
+     */
+    private void syncFollowingList2Redis(Long userId) {
+        List<FollowingDO> followingDOS = followingDOMapper.selectAllByUserId(userId);
+        if (CollUtil.isNotEmpty(followingDOS)) {
+            String followingListRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
+            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
+            Object[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
+
+            DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+            script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_batch_add_and_expire.lua")));
+            script.setResultType(Long.class);
+            redisTemplate.execute(script, Collections.singletonList(followingListRedisKey), luaArgs);
+        }
+    }
+
+    /**
+     * RPC: 调用用户服务，并将 DTO 转换为 VO
+     * @param userIds
+     * @param findFollowingUserRspVOS
+     * @return
+     */
+    private List<FindFollowingUserRspVO> rpcUserServiceAndDTO2VO(List<Long> userIds, List<FindFollowingUserRspVO> findFollowingUserRspVOS) {
+        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds);
+
+        if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
+            findFollowingUserRspVOS = findUserByIdRspDTOS.stream()
+                    .map(dto -> FindFollowingUserRspVO.builder()
+                            .userId(dto.getId())
+                            .avatar(dto.getAvatar())
+                            .nickname(dto.getNickName())
+                            .introduction(dto.getIntroduction())
+                            .build())
+                    .toList();
+        }
+        return findFollowingUserRspVOS;
+    }
+
 }
