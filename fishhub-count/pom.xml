@@ -1,0 +1,23 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>fishhub-count</artifactId>
+    <name>${project.artifactId}</name>
+    <description>计数服务</description>
+
+    <packaging>pom</packaging>
+
+    <modules>
+
+        <module>fishhub-count-api</module>
+        <module>fishhub-count-biz</module>
+    </modules>
+
+
+</project>

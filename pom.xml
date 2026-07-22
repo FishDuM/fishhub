@@ -21,6 +21,7 @@
     <module>fishhub-distributed-id-generator</module>
     <module>fishhub-note</module>
     <module>fishhub-user-relation</module>
+      <module>fishhub-count</module>
   </modules>
 
   <properties>
