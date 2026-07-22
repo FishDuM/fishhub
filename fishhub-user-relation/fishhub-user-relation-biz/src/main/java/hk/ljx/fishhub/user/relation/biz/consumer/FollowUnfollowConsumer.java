@@ -14,6 +14,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.core.io.ClassPathResource;
@@ -29,7 +30,8 @@ import java.util.Objects;
 
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group",
-        topic = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW
+        topic = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW,
+        consumeMode = ConsumeMode.ORDERLY
 )
 @Slf4j
 public class FollowUnfollowConsumer implements RocketMQListener<Message> {
