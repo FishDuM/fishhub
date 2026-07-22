@@ -2,6 +2,7 @@ package hk.ljx.fishhub.user.relation.biz.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
@@ -24,6 +25,12 @@ public class RelationController {
     @ApiOperationLog(description = "关注用户")
     public Response<?> follow(@Validated @RequestBody FollowUserReqVO followUserReqVO) {
         return relationService.follow(followUserReqVO);
+    }
+
+    @PostMapping("/unfollow")
+    @ApiOperationLog(description = "取关用户")
+    public Response<?> unfollow(@Validated @RequestBody UnfollowUserReqVO unfollowUserReqVO) {
+        return relationService.unfollow(unfollowUserReqVO);
     }
 
 }

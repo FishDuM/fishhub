@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.user.relation.biz.service;
 
 import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
 import hk.ljx.framework.common.response.Response;
 
 public interface RelationService {
@@ -11,5 +12,12 @@ public interface RelationService {
      * @return
      */
     Response<?> follow(FollowUserReqVO followUserReqVO);
+
+    /**
+     * 取关用户
+     * @param unfollowUserReqVO
+     * @return
+     */
+    Response<?> unfollow(UnfollowUserReqVO unfollowUserReqVO);
 
 }
