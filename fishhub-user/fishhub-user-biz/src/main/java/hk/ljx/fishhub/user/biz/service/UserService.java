@@ -1,13 +1,12 @@
 package hk.ljx.fishhub.user.biz.service;
 
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
-import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
-import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
-import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
+
+import java.util.List;
 
 public interface UserService {
 
@@ -45,4 +44,11 @@ public interface UserService {
      * @return
      */
     Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO);
+
+    /**
+     * 批量根据用户 ID 查询用户信息
+     * @param findUsersByIdsReqDTO
+     * @return
+     */
+    Response<List<FindUserByIdRspDTO>> findByIds(FindUsersByIdsReqDTO findUsersByIdsReqDTO);
 }

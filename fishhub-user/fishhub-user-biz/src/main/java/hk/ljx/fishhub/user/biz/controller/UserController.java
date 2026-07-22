@@ -3,10 +3,7 @@ package hk.ljx.fishhub.user.biz.controller;
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.service.UserService;
-import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
-import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
-import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
@@ -19,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/user")
@@ -66,4 +65,11 @@ public class UserController {
     public Response<FindUserByIdRspDTO> findById(@Validated @RequestBody FindUserByIdReqDTO findUserByIdReqDTO) {
         return userService.findById(findUserByIdReqDTO);
     }
+
+    @PostMapping("/findByIds")
+    @ApiOperationLog(description = "批量查询用户信息")
+    public Response<List<FindUserByIdRspDTO>> findByIds(@Validated @RequestBody FindUsersByIdsReqDTO findUsersByIdsReqDTO) {
+        return userService.findByIds(findUsersByIdsReqDTO);
+    }
+
 }

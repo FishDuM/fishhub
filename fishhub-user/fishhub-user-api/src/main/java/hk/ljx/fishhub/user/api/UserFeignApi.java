@@ -1,15 +1,14 @@
 package hk.ljx.fishhub.user.api;
 
-import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
-import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
-import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
+import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.response.Response;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.List;
 
 import static hk.ljx.fishhub.user.constant.ApiConstants.SERVICE_NAME;
 
@@ -44,4 +43,13 @@ public interface UserFeignApi {
      */
     @PostMapping(value = PREFIX + "/findById")
     Response<FindUserByIdRspDTO> findById(@RequestBody FindUserByIdReqDTO findUserByIdReqDTO);
+
+    /**
+     * 批量查询用户信息
+     * @param findUsersByIdsReqDTO
+     * @return
+     */
+    @PostMapping(value = PREFIX + "/findByIds")
+    Response<List<FindUserByIdRspDTO>> findByIds(@RequestBody FindUsersByIdsReqDTO findUsersByIdsReqDTO);
+
 }
