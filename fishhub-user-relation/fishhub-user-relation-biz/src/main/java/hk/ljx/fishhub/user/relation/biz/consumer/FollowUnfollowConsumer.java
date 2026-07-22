@@ -29,7 +29,7 @@ import java.util.Collections;
 import java.util.Objects;
 
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group",
+@RocketMQMessageListener(consumerGroup = "fishhub_group_",
         topic = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW,
         consumeMode = ConsumeMode.ORDERLY
 )
