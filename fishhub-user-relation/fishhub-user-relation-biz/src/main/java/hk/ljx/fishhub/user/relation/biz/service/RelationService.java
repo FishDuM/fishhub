@@ -1,9 +1,6 @@
 package hk.ljx.fishhub.user.relation.biz.service;
 
-import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingListReqVO;
-import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingUserRspVO;
-import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
-import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.*;
 import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 
@@ -29,5 +26,12 @@ public interface RelationService {
      * @return
      */
     PageResponse<FindFollowingUserRspVO> findFollowingList(FindFollowingListReqVO findFollowingListReqVO);
+
+    /**
+     * 查询粉丝列表
+     * @param findFansListReqVO
+     * @return
+     */
+    PageResponse<FindFansUserRspVO> findFansList(FindFansListReqVO findFansListReqVO);
 
 }
