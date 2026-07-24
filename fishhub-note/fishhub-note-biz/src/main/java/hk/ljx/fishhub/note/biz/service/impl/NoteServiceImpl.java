@@ -912,7 +912,36 @@ public class NoteServiceImpl implements NoteService {
         String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
         redisTemplate.opsForZSet().remove(userNoteLikeZSetKey, noteId);
 
-        // TODO: 发送 MQ, 数据更新落库
+        // 发送 MQ, 数据更新落库
+        // 构建消息体 DTO
+        LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
+                .userId(userId)
+                .noteId(noteId)
+                .type(LikeUnlikeNoteTypeEnum.UNLIKE.getCode()) // 取消点赞笔记
+                .createTime(LocalDateTime.now())
+                .build();
+
+        // 构建消息对象，并将 DTO 转成 Json 字符串设置到消息体中
+        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeNoteMqDTO))
+                .build();
+
+        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
+        String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
+        String hashKey = String.valueOf(userId);
+
+        // 异步发送 MQ 消息，提升接口响应速度
+        rocketMQTemplate.asyncSendOrderly(destination, message, hashKey, new SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("==> 【笔记取消点赞】MQ 发送成功，SendResult: {}", sendResult);
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                log.error("==> 【笔记取消点赞】MQ 发送异常: ", throwable);
+            }
+        });
+
 
         return Response.success();
     }
