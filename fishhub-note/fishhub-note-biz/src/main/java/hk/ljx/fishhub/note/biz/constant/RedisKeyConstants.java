@@ -65,4 +65,17 @@ public class RedisKeyConstants {
         return COUNT_NOTE_KEY_PREFIX + noteId;
     }
 
+    /**
+     * 布隆过滤器：用户笔记收藏 前缀
+     */
+    public static final String BLOOM_USER_NOTE_COLLECT_LIST_KEY = "bloom:note:collects:";
+
+    /**
+     * 构建完整的布隆过滤器：用户笔记收藏 KEY
+     * @param userId
+     * @return
+     */
+    public static String buildBloomUserNoteCollectListKey(Long userId) {
+        return BLOOM_USER_NOTE_COLLECT_LIST_KEY + userId;
+    }
 }
