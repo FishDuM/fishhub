@@ -15,6 +15,7 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
 import hk.ljx.fishhub.note.biz.enums.*;
+import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
@@ -665,9 +666,12 @@ public class NoteServiceImpl implements NoteService {
                 // 目标笔记已经被点赞
                 if (count > 0) {
                     // 异步初始化布隆过滤器
-                    asynBatchAddNoteLike2BloomAndExpire(userId, expireSeconds, bloomUserNoteLikeListKey);
+                    batchAddNoteLike2BloomAndExpire(userId, expireSeconds, bloomUserNoteLikeListKey);
                     throw new BizException(ResponseCodeEnum.NOTE_ALREADY_LIKED);
                 }
+
+                // 若目标笔记未被点赞，查询当前用户是否有点赞其他笔记，有则同步初始化布隆过滤器
+                batchAddNoteLike2BloomAndExpire(userId, expireSeconds, bloomUserNoteLikeListKey);
 
                 // 若数据库中也没有点赞记录，说明该用户还未点赞过任何笔记
                 script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_add_note_like_and_expire.lua")));
@@ -725,8 +729,33 @@ public class NoteServiceImpl implements NoteService {
             }
         }
 
-        // TODO: 发送 MQ, 将点赞数据落库
+        // 发送 MQ, 将点赞数据落库
+        // 构建消息体 DTO
+        LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
+                .userId(userId)
+                .noteId(noteId)
+                .type(LikeUnlikeNoteTypeEnum.LIKE.getCode()) // 点赞笔记
+                .createTime(now)
+                .build();
 
+        // 构建消息对象，并将 DTO 转成 Json 字符串设置到消息体中
+        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeNoteMqDTO))
+                .build();
+        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
+        String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
+        String hashKey = String.valueOf(userId);
+        // 异步发送 MQ 消息
+        rocketMQTemplate.asyncSendOrderly(destination, message, hashKey, new SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("==> 【笔记点赞】MQ 发送成功，SendResult: {}", sendResult);
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                log.error("==> 【笔记点赞】MQ 发送异常: ", throwable);
+            }
+        });
         return Response.success();
     }
 
@@ -816,12 +845,11 @@ public class NoteServiceImpl implements NoteService {
      * @param expireSeconds
      * @param bloomUserNoteLikeListKey
      */
-    private void asynBatchAddNoteLike2BloomAndExpire(Long userId, long expireSeconds, String bloomUserNoteLikeListKey) {
+    private void batchAddNoteLike2BloomAndExpire(Long userId, long expireSeconds, String bloomUserNoteLikeListKey) {
         threadPoolTaskExecutor.submit(() -> {
             try {
                 // 异步全量同步一下，并设置过期时间
                 List<NoteLikeDO> noteLikeDOS = noteLikeDOMapper.selectByUserId(userId);
-
                 if (CollUtil.isNotEmpty(noteLikeDOS)) {
                     DefaultRedisScript<Long> script = new DefaultRedisScript<>();
                     script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_batch_add_note_like_and_expire.lua")));
