@@ -1146,6 +1146,83 @@ public class NoteServiceImpl implements NoteService {
         luaArgs[argsLength - 1] = expireSeconds; // 最后一个参数是 ZSet 的过期时间
         return luaArgs;
     }
+
+    /**
+     * 取消收藏笔记
+     * @param unCollectNoteReqVO
+     * @return
+     */
+    @Override
+    public Response<?> unCollectNote(UnCollectNoteReqVO unCollectNoteReqVO) {
+        Long noteId = unCollectNoteReqVO.getId();
+
+        // 校验笔记是否真实存在
+        checkNoteIsExist(noteId);
+
+        // 校验笔记是否被收藏过
+        Long userId = LoginUserContextHolder.getUserId();
+        // 布隆过滤器 Key
+        String bloomUserNoteCollectListKey = RedisKeyConstants.buildBloomUserNoteCollectListKey(userId);
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_note_uncollect_check.lua")));
+        script.setResultType(Long.class);
+        // 执行 Lua 脚本，拿到返回结果
+        Long result = redisTemplate.execute(script, Collections.singletonList(bloomUserNoteCollectListKey), noteId);
+        NoteUnCollectLuaResultEnum noteUnCollectLuaResultEnum = NoteUnCollectLuaResultEnum.valueOf(result);
+        switch (noteUnCollectLuaResultEnum) {
+            // 布隆过滤器不存在
+            case NOT_EXIST -> {
+                // 异步初始化布隆过滤器
+                threadPoolTaskExecutor.submit(() -> {
+                    // 保底1天+随机秒数
+                    long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
+                    batchAddNoteCollect2BloomAndExpire(userId, expireSeconds, bloomUserNoteCollectListKey);
+                });
+                // 从数据库中校验笔记是否被收藏
+                int count = noteCollectionDOMapper.selectCountByUserIdAndNoteId(userId, noteId);
+                // 未收藏，无法取消收藏操作，抛出业务异常
+                if (count == 0) throw new BizException(ResponseCodeEnum.NOTE_NOT_COLLECTED);
+            }
+            // 布隆过滤器校验目标笔记未被收藏（判断绝对正确）
+            case NOTE_NOT_COLLECTED -> throw new BizException(ResponseCodeEnum.NOTE_NOT_COLLECTED);
+        }
+        // 删除 ZSET 中已收藏的笔记 ID
+        // 用户收藏列表 ZSet Key
+        String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
+        redisTemplate.opsForZSet().remove(userNoteCollectZSetKey, noteId);
+
+        // 发送 MQ, 数据更新落库
+        // 构建消息体 DTO
+        CollectUnCollectNoteMqDTO unCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
+                .userId(userId)
+                .noteId(noteId)
+                .type(CollectUnCollectNoteTypeEnum.UN_COLLECT.getCode()) // 取消收藏笔记
+                .createTime(LocalDateTime.now())
+                .build();
+
+        // 构建消息对象，并将 DTO 转成 Json 字符串设置到消息体中
+        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(unCollectNoteMqDTO))
+                .build();
+        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
+        String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_UN_COLLECT;
+        String hashKey = String.valueOf(userId);
+
+        // 异步发送顺序 MQ 消息，提升接口响应速度
+        rocketMQTemplate.asyncSendOrderly(destination, message, hashKey, new SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("==> 【笔记取消收藏】MQ 发送成功，SendResult: {}", sendResult);
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                log.error("==> 【笔记取消收藏】MQ 发送异常: ", throwable);
+            }
+        });
+
+
+        return Response.success();
+    }
 }
 
 
