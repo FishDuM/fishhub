@@ -14,4 +14,8 @@ public interface NoteCountDOMapper {
     int updateByPrimaryKeySelective(NoteCountDO record);
 
     int updateByPrimaryKey(NoteCountDO record);
+
+    int insertOrUpdateLikeTotalByNoteId(@org.apache.ibatis.annotations.Param("count") Integer count, @org.apache.ibatis.annotations.Param("noteId") Long noteId);
+
+    int insertOrUpdateCollectTotalByNoteId(@org.apache.ibatis.annotations.Param("count") Integer count, @org.apache.ibatis.annotations.Param("noteId") Long noteId);
 }

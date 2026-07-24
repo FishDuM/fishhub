@@ -1,9 +1,9 @@
 package hk.ljx.fishhub.kv.biz.service;
 
-import hk.ljx.fishhub.kv.dto.req.dto.req.AddNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.dto.req.DeleteNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
+import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
 
 public interface NoteContentService {

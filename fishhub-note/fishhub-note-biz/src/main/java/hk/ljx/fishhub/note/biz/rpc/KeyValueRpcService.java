@@ -1,10 +1,10 @@
 package hk.ljx.fishhub.note.biz.rpc;
 
-import hk.ljx.fishhub.kv.dto.req.api.KeyValueFeignApi;
-import hk.ljx.fishhub.kv.dto.req.dto.req.AddNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.dto.req.DeleteNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.dto.req.FindNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.dto.rsp.FindNoteContentRspDTO;
+import hk.ljx.fishhub.kv.api.KeyValueFeignApi;
+import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;

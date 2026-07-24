@@ -2,7 +2,7 @@ package hk.ljx.fishhub.user.relation.biz.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.RandomUtil;
-import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;

@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.kv.biz.exception;
 
-import hk.ljx.fishhub.kv.dto.req.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.kv.biz.enums.ResponseCodeEnum;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import jakarta.servlet.http.HttpServletRequest;

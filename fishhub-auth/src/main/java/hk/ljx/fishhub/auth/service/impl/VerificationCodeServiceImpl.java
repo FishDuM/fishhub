@@ -3,7 +3,7 @@ package hk.ljx.fishhub.auth.service.impl;
 import cn.hutool.core.util.RandomUtil;
 import hk.ljx.fishhub.auth.constant.RedisKeyConstants;
 import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
-import hk.ljx.fishhub.auth.modal.vo.verificationcode.SendVerificationCodeReqVO;
+import hk.ljx.fishhub.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
 import hk.ljx.fishhub.auth.service.VerificationCodeService;
 import hk.ljx.fishhub.auth.sms.AliyunSmsHelper;
 import hk.ljx.framework.common.exception.BizException;

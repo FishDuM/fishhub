@@ -6,7 +6,7 @@ import com.alibaba.nacos.shaded.com.google.common.base.Preconditions;
 import com.alibaba.nacos.shaded.com.google.common.collect.Lists;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import hk.ljx.fishhub.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
@@ -1224,5 +1224,4 @@ public class NoteServiceImpl implements NoteService {
         return Response.success();
     }
 }
-
 

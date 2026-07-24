@@ -5,7 +5,7 @@ import com.google.common.collect.Maps;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
-import hk.ljx.fishhub.count.biz.model.vo.CountFollowUnfollowMqDTO;
+import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;

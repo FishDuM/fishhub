@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.auth.controller;
 
-import hk.ljx.fishhub.auth.modal.vo.verificationcode.SendVerificationCodeReqVO;
+import hk.ljx.fishhub.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
 import hk.ljx.fishhub.auth.service.VerificationCodeService;
 import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;

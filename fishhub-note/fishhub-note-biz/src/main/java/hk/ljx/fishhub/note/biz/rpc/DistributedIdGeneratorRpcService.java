@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.note.biz.rpc;
 
-import hk.ljx.distributed.id.generator.api.DistributedIdGeneratorFeignApi;
+import hk.ljx.fishhub.distributed.id.generator.api.DistributedIdGeneratorFeignApi;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 

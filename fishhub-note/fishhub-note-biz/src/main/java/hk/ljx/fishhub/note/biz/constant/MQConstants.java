@@ -33,9 +33,9 @@ public interface MQConstants {
     String TOPIC_COUNT_NOTE_LIKE = "CountNoteLikeTopic";
 
     /**
-     * Topic: 计数 - 笔记点赞数落库
+     * Topic: 计数 - 笔记收藏数
      */
-    String TOPIC_COUNT_NOTE_LIKE_2_DB = "CountNoteLike2DBTTopic";
+    String TOPIC_COUNT_NOTE_COLLECT = "CountNoteCollectTopic";
 
     /**
      * Topic: 收藏、取消收藏共用一个
@@ -51,4 +51,5 @@ public interface MQConstants {
      * Tag 标签：取消收藏
      */
     String TAG_UN_COLLECT = "UnCollect";
+
 }

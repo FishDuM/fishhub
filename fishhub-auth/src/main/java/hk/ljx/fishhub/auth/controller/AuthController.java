@@ -1,7 +1,7 @@
 package hk.ljx.fishhub.auth.controller;
 
-import hk.ljx.fishhub.auth.modal.vo.user.UpdatePasswordReqVO;
-import hk.ljx.fishhub.auth.modal.vo.user.UserLoginReqVO;
+import hk.ljx.fishhub.auth.model.vo.user.UpdatePasswordReqVO;
+import hk.ljx.fishhub.auth.model.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.auth.service.AuthService;
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.framework.common.response.Response;
