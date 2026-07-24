@@ -87,7 +87,13 @@
     ON DUPLICATE KEY UPDATE fans_total = fans_total + (#{count});
   </insert>
 
-    <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO">
+  <insert id="insertOrUpdateFollowingTotalByUserId" parameterType="map">
+    INSERT INTO t_user_count (user_id, following_total)
+    VALUES (#{userId}, #{count})
+    ON DUPLICATE KEY UPDATE following_total = following_total + (#{count});
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO">
     update t_user_count
     <set>
       <if test="userId != null">
