@@ -866,5 +866,56 @@ public class NoteServiceImpl implements NoteService {
             }
         });
     }
+
+    /**
+     * 取消点赞笔记
+     * @param unlikeNoteReqVO
+     * @return
+     */
+    @Override
+    public Response<?> unlikeNote(UnlikeNoteReqVO unlikeNoteReqVO) {
+        Long noteId = unlikeNoteReqVO.getId();
+        // 校验笔记是否真实存在
+        checkNoteIsExist(noteId);
+        // 校验笔记是否被点赞过
+        Long userId = LoginUserContextHolder.getUserId();
+        // 布隆过滤器 Key
+        String bloomUserNoteLikeListKey = RedisKeyConstants.buildBloomUserNoteLikeListKey(userId);
+
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_note_unlike_check.lua")));
+        script.setResultType(Long.class);
+
+        // 执行 Lua 脚本，拿到返回结果
+        Long result = redisTemplate.execute(script, Collections.singletonList(bloomUserNoteLikeListKey), noteId);
+        NoteUnlikeLuaResultEnum noteUnlikeLuaResultEnum = NoteUnlikeLuaResultEnum.valueOf(result);
+
+        switch (noteUnlikeLuaResultEnum) {
+            // 布隆过滤器不存在
+            case NOT_EXIST -> {
+                // 异步初始化布隆过滤器
+                threadPoolTaskExecutor.submit(() -> {
+                    // 保底1天+随机秒数
+                    long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
+                    batchAddNoteLike2BloomAndExpire(userId, expireSeconds, bloomUserNoteLikeListKey);
+                });
+                // 从数据库中校验笔记是否被点赞
+                int count = noteLikeDOMapper.selectCountByUserIdAndNoteId(userId, noteId);
+                // 未点赞，无法取消点赞操作，抛出业务异常
+                if (count == 0) throw new BizException(ResponseCodeEnum.NOTE_NOT_LIKED);
+            }
+            // 布隆过滤器校验目标笔记未被点赞（判断绝对正确）
+            case NOTE_NOT_LIKED -> throw new BizException(ResponseCodeEnum.NOTE_NOT_LIKED);
+        }
+
+        // 删除 ZSET 中已点赞的笔记 ID
+        String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
+        redisTemplate.opsForZSet().remove(userNoteLikeZSetKey, noteId);
+
+        // TODO: 发送 MQ, 数据更新落库
+
+        return Response.success();
+    }
+
 }
 
