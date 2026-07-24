@@ -49,4 +49,10 @@ public class NoteController {
     public Response<?> visibleOnlyMe(@Validated @RequestBody UpdateNoteVisibleOnlyMeReqVO updateNoteVisibleOnlyMeReqVO) {
         return noteService.visibleOnlyMe(updateNoteVisibleOnlyMeReqVO);
     }
+
+    @PostMapping(value = "/like")
+    @ApiOperationLog(description = "点赞笔记")
+    public Response<?> likeNote(@Validated @RequestBody LikeNoteReqVO likeNoteReqVO) {
+        return noteService.likeNote(likeNoteReqVO);
+    }
 }

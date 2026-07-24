@@ -27,6 +27,11 @@
     from t_note
     where id = #{id,jdbcType=BIGINT} and status = 1
   </select>
+
+  <select id="selectCountByNoteId" resultType="int">
+    select count(1) from t_note where id = #{noteId} and status = 1
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_note
     where id = #{id,jdbcType=BIGINT}
