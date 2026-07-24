@@ -17,6 +17,7 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
 import hk.ljx.fishhub.note.biz.enums.*;
+import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
@@ -1008,9 +1009,65 @@ public class NoteServiceImpl implements NoteService {
                 }
             }
         }
-        // TODO: 更新用户 ZSET 收藏列表
+        // 更新用户 ZSET 收藏列表
+        LocalDateTime now = LocalDateTime.now();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_collect_check_and_update_zset.lua")));
+        script.setResultType(Long.class);
+        result = redisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), noteId, DateUtils.localDateTime2Timestamp(now));
 
-        // TODO: 发送 MQ, 将收藏数据落库
+        // 若 ZSet 列表不存在，需要重新初始化
+        if (Objects.equals(result, NoteCollectLuaResultEnum.NOT_EXIST.getCode())) {
+            // 查询当前用户最新收藏的 300 篇笔记
+            List<NoteCollectionDO> noteCollectionDOS = noteCollectionDOMapper.selectCollectedByUserIdAndLimit(userId, 300);
+            // 保底1天+随机秒数
+            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
+            DefaultRedisScript<Long> script2 = new DefaultRedisScript<>();
+            script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/batch_add_note_collect_zset_and_expire.lua")));
+            script2.setResultType(Long.class);
+
+            // 若数据库中存在历史收藏笔记，需要批量同步
+            if (CollUtil.isNotEmpty(noteCollectionDOS)) {
+                // 构建 Lua 参数
+                Object[] luaArgs = buildNoteCollectZSetLuaArgs(noteCollectionDOS, expireSeconds);
+                redisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs);
+                // 将当前收藏的笔记添加到 zset 中
+                redisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), noteId, DateUtils.localDateTime2Timestamp(now));
+            } else { // 若无历史收藏的笔记，则直接将当前收藏的笔记 ID 添加到 ZSet 中，随机过期时间
+                List<Object> luaArgs = Lists.newArrayList();
+                luaArgs.add(DateUtils.localDateTime2Timestamp(LocalDateTime.now())); // score：收藏时间戳
+                luaArgs.add(noteId); // 当前收藏的笔记 ID
+                luaArgs.add(expireSeconds); // 随机过期时间
+                redisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs.toArray());
+            }
+        }
+        // 发送 MQ, 将收藏数据落库
+        // 构建消息体 DTO
+        CollectUnCollectNoteMqDTO collectUnCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
+                .userId(userId)
+                .noteId(noteId)
+                .type(CollectUnCollectNoteTypeEnum.COLLECT.getCode()) // 收藏笔记
+                .createTime(now)
+                .build();
+
+        // 构建消息对象，并将 DTO 转成 Json 字符串设置到消息体中
+        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(collectUnCollectNoteMqDTO))
+                .build();
+        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
+        String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_COLLECT;
+        String hashKey = String.valueOf(userId);
+
+        // 异步发送顺序 MQ 消息，提升接口响应速度
+        rocketMQTemplate.asyncSendOrderly(destination, message, hashKey, new SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("==> 【笔记收藏】MQ 发送成功，SendResult: {}", sendResult);
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                log.error("==> 【笔记收藏】MQ 发送异常: ", throwable);
+            }
+        });
 
         return Response.success();
     }
