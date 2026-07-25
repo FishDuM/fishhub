@@ -6,4 +6,10 @@
         update t_user_count set following_total = #{followingTotal}
         where user_id = #{userId}
     </update>
+
+    <update id="updateNoteLikeTotalByUserId" parameterType="map">
+        update t_note_count set like_total = #{noteLikeTotal}
+        where note_id = #{noteId}
+    </update>
+
 </mapper>

@@ -14,4 +14,10 @@ public interface UpdateMapper {
      */
     int updateUserFollowingTotalByUserId(@Param("userId") long userId,
                                          @Param("followingTotal") int followingTotal);
+
+    /**
+     * 更新 t_note_count 计数表笔记点赞数
+     */
+    int updateNoteLikeTotalByUserId(@Param("noteId") long noteId,
+                                    @Param("noteLikeTotal") int noteLikeTotal);
 }

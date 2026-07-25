@@ -10,4 +10,13 @@
     <select id="selectCountFromFollowingTableByUserId" parameterType="map" resultType="int">
         select count(*) from t_following where user_id = #{userId}
     </select>
+
+    <select id="selectBatchFromDataAlignNoteLikeCountTempTable" resultType="long" parameterType="map">
+        select note_id from `t_data_align_note_like_count_temp_${tableNameSuffix}` order by id
+        limit #{batchSize}
+    </select>
+
+    <select id="selectCountFromNoteLikeTableByUserId" parameterType="map" resultType="int">
+        select count(*) from t_note_like where note_id = #{noteId} and status = 1
+    </select>
 </mapper>

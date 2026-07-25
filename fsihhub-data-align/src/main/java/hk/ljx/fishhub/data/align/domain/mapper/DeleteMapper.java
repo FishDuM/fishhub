@@ -12,4 +12,10 @@ public interface DeleteMapper {
      */
     void batchDeleteDataAlignFollowingCountTempTable(@Param("tableNameSuffix") String tableNameSuffix,
                                                      @Param("userIds") List<Long> userIds);
+
+    /**
+     * 日增量表：笔记点赞计数变更 - 批量删除
+     */
+    void batchDeleteDataAlignNoteLikeCountTempTable(@Param("tableNameSuffix") String tableNameSuffix,
+                                                    @Param("noteIds") List<Long> noteIds);
 }

@@ -9,4 +9,12 @@
             #{userId}
         </foreach>
     </delete>
+
+    <delete id="batchDeleteDataAlignNoteLikeCountTempTable" parameterType="list">
+        delete from `t_data_align_note_like_count_temp_${tableNameSuffix}`
+        where note_id in
+        <foreach collection="noteIds" open="(" item="noteId" close=")" separator=",">
+            #{noteId}
+        </foreach>
+    </delete>
 </mapper>
