@@ -3,7 +3,7 @@ package hk.ljx.fishhub.data.align.consumer;
 import hk.ljx.fishhub.data.align.constant.MQConstants;
 import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.constant.TableConstants;
-import hk.ljx.fishhub.data.align.domain.mapper.InsertRecordMapper;
+import hk.ljx.fishhub.data.align.domain.mapper.InsertMapper;
 import hk.ljx.fishhub.data.align.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
@@ -38,7 +38,7 @@ public class TodayNoteCollectIncrementData2DBConsumer implements RocketMQListene
     private TransactionTemplate transactionTemplate;
 
     @Resource
-    private InsertRecordMapper insertRecordMapper;
+    private InsertMapper insertMapper;
 
     /**
      * 表总分片数
@@ -74,8 +74,8 @@ public class TodayNoteCollectIncrementData2DBConsumer implements RocketMQListene
             transactionTemplate.execute(status -> {
                 try {
                     // 将日增量变更数据，分别写入两张表
-                    insertRecordMapper.insert2DataAlignNoteCollectCountTempTable(TableConstants.buildTableNameSuffix(date, noteIdHashKey), noteId);
-                    insertRecordMapper.insert2DataAlignUserCollectCountTempTable(TableConstants.buildTableNameSuffix(date, userIdHashKey), noteCreatorId);
+                    insertMapper.insert2DataAlignNoteCollectCountTempTable(TableConstants.buildTableNameSuffix(date, noteIdHashKey), noteId);
+                    insertMapper.insert2DataAlignUserCollectCountTempTable(TableConstants.buildTableNameSuffix(date, userIdHashKey), noteCreatorId);
                     return true;
                 } catch (Exception ex) {
                     status.setRollbackOnly(); // 标记事务为回滚

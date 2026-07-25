@@ -3,7 +3,7 @@ package hk.ljx.fishhub.data.align.consumer;
 import hk.ljx.fishhub.data.align.constant.MQConstants;
 import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.constant.TableConstants;
-import hk.ljx.fishhub.data.align.domain.mapper.InsertRecordMapper;
+import hk.ljx.fishhub.data.align.domain.mapper.InsertMapper;
 import hk.ljx.fishhub.data.align.model.dto.NoteOperateMqDTO;
 import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
@@ -40,7 +40,7 @@ public class TodayNotePublishIncrementData2DBConsumer implements RocketMQListene
     private RedisTemplate<String, Object> redisTemplate;
 
     @Resource
-    private InsertRecordMapper insertRecordMapper;
+    private InsertMapper insertMapper;
 
     @Override
     public void onMessage(String body) {
@@ -69,7 +69,7 @@ public class TodayNotePublishIncrementData2DBConsumer implements RocketMQListene
             // 根据分片总数，取模，分别获取对应的分片序号
             long userIdHashKey = noteCreatorId % tableShards;
             // 将日增量变更数据，写入日增量表中
-            insertRecordMapper.insert2DataAlignUserNotePublishCountTempTable(TableConstants.buildTableNameSuffix(date, userIdHashKey), noteCreatorId);
+            insertMapper.insert2DataAlignUserNotePublishCountTempTable(TableConstants.buildTableNameSuffix(date, userIdHashKey), noteCreatorId);
             // 数据库写入成功后，再添加布隆过滤器中
             RedisScript<Long> bloomAddScript = RedisScript.of("return redis.call('BF.ADD', KEYS[1], ARGV[1])", Long.class);
             redisTemplate.execute(bloomAddScript, Collections.singletonList(bloomKey), noteCreatorId);

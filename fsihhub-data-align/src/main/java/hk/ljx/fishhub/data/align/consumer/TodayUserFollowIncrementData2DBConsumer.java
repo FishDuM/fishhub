@@ -3,7 +3,7 @@ package hk.ljx.fishhub.data.align.consumer;
 import hk.ljx.fishhub.data.align.constant.MQConstants;
 import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.constant.TableConstants;
-import hk.ljx.fishhub.data.align.domain.mapper.InsertRecordMapper;
+import hk.ljx.fishhub.data.align.domain.mapper.InsertMapper;
 import hk.ljx.fishhub.data.align.model.dto.FollowUnfollowMqDTO;
 import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
@@ -31,7 +31,7 @@ import java.util.Objects;
 public class TodayUserFollowIncrementData2DBConsumer implements RocketMQListener<String> {
 
     @Resource
-    private InsertRecordMapper insertRecordMapper;
+    private InsertMapper insertMapper;
 
     /**
      * 表总分片数
@@ -70,7 +70,7 @@ public class TodayUserFollowIncrementData2DBConsumer implements RocketMQListener
             long userIdHashKey = userId % tableShards;
             try {
                 // 将日增量变更数据写入表
-                insertRecordMapper.insert2DataAlignUserFollowingCountTempTable(
+                insertMapper.insert2DataAlignUserFollowingCountTempTable(
                         TableConstants.buildTableNameSuffix(date, userIdHashKey), userId);
             } catch (Exception e) {
                 log.error("", e);
@@ -89,7 +89,7 @@ public class TodayUserFollowIncrementData2DBConsumer implements RocketMQListener
             long targetUserIdHashKey = targetUserId % tableShards;
             try {
                 // 将日增量变更数据写入表
-                insertRecordMapper.insert2DataAlignUserFansCountTempTable(
+                insertMapper.insert2DataAlignUserFansCountTempTable(
                         TableConstants.buildTableNameSuffix(date, targetUserIdHashKey), targetUserId);
             } catch (Exception e) {
                 log.error("", e);

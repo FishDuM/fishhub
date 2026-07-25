@@ -5,7 +5,7 @@ import org.apache.ibatis.annotations.Param;
 /**
  * 添加记录
  */
-public interface InsertRecordMapper {
+public interface InsertMapper {
 
     /**
      * 笔记点赞数：计数变更
