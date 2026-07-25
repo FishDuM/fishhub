@@ -23,9 +23,6 @@ public class CreateTableXxlJob {
     @Resource
     private CreateTableMapper createTableMapper;
 
-    /**
-     * 1、简单任务示例（Bean模式）
-     */
     @XxlJob("createTableJobHandler")
     public void createTableJobHandler() throws Exception {
         // 表后缀
