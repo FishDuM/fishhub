@@ -3,32 +3,59 @@ package hk.ljx.fishhub.data.align.constant;
 public class RedisKeyConstants {
 
     /**
-     * 布隆过滤器：日增量变更数据，用户笔记点赞，取消点赞 前缀
+     * 布隆过滤器：日增量变更数据，用户笔记点赞，取消点赞（笔记ID） 前缀
      */
-    public static final String BLOOM_TODAY_NOTE_LIKE_LIST_KEY = "bloom:dataAlign:note:likes:";
-
+    public static final String BLOOM_TODAY_NOTE_LIKE_NOTE_ID_LIST_KEY = "bloom:dataAlign:note:like:noteIds";
 
     /**
-     * 构建完整的布隆过滤器：日增量变更数据，用户笔记点赞，取消点赞 KEY
+     * 布隆过滤器：日增量变更数据，用户笔记点赞，取消点赞（笔记发布者ID） 前缀
+     */
+    public static final String BLOOM_TODAY_NOTE_LIKE_USER_ID_LIST_KEY = "bloom:dataAlign:note:like:userIds";
+
+    /**
+     * 构建完整的布隆过滤器：日增量变更数据，用户笔记点赞，取消点赞(笔记ID) KEY
      * @param date
      * @return
      */
-    public static String buildBloomUserNoteLikeListKey(String date) {
-        return BLOOM_TODAY_NOTE_LIKE_LIST_KEY + date;
+    public static String buildBloomUserNoteLikeNoteIdListKey(String date) {
+        return BLOOM_TODAY_NOTE_LIKE_NOTE_ID_LIST_KEY + date;
     }
 
     /**
-     * 布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏 前缀
-     */
-    public static final String BLOOM_TODAY_NOTE_COLLECT_LIST_KEY = "bloom:dataAlign:note:collects:";
-
-    /**
-     * 构建完整的布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏 KEY
+     * 构建完整的布隆过滤器：日增量变更数据，用户笔记点赞，取消点赞(笔记发布者ID) KEY
      * @param date
      * @return
      */
-    public static String buildBloomUserNoteCollectListKey(String date) {
-        return BLOOM_TODAY_NOTE_COLLECT_LIST_KEY + date;
+    public static String buildBloomUserNoteLikeUserIdListKey(String date) {
+        return BLOOM_TODAY_NOTE_LIKE_USER_ID_LIST_KEY + date;
+    }
+
+    /**
+     * 布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏（笔记ID） 前缀
+     */
+    public static final String BLOOM_TODAY_NOTE_COLLECT_NOTE_ID_LIST_KEY = "bloom:dataAlign:note:collect:noteIds";
+
+    /**
+     * 布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏（笔记发布者ID） 前缀
+     */
+    public static final String BLOOM_TODAY_NOTE_COLLECT_USER_ID_LIST_KEY = "bloom:dataAlign:note:collect:userIds";
+
+    /**
+     * 构建完整的布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏(笔记ID) KEY
+     * @param date
+     * @return
+     */
+    public static String buildBloomUserNoteCollectNoteIdListKey(String date) {
+        return BLOOM_TODAY_NOTE_COLLECT_NOTE_ID_LIST_KEY + date;
+    }
+
+    /**
+     * 构建完整的布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏(笔记发布者ID) KEY
+     * @param date
+     * @return
+     */
+    public static String buildBloomUserNoteCollectUserIdListKey(String date) {
+        return BLOOM_TODAY_NOTE_COLLECT_USER_ID_LIST_KEY + date;
     }
 
     /**
