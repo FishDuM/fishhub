@@ -6,7 +6,6 @@ import com.alibaba.nacos.shaded.com.google.common.base.Preconditions;
 import com.alibaba.nacos.shaded.com.google.common.collect.Lists;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
@@ -19,12 +18,14 @@ import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
 import hk.ljx.fishhub.note.biz.enums.*;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
+import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
@@ -110,10 +111,8 @@ public class NoteServiceImpl implements NoteService {
     public Response<?> publishNote(PublishNoteReqVO publishNoteReqVO) {
         // 笔记类型
         Integer type = publishNoteReqVO.getType();
-
         // 获取对应类型的枚举
         NoteTypeEnum noteTypeEnum = NoteTypeEnum.valueOf(type);
-
         // 若非图文、视频，抛出业务业务异常
         if (Objects.isNull(noteTypeEnum)) {
             throw new BizException(ResponseCodeEnum.NOTE_TYPE_ERROR);
@@ -207,6 +206,33 @@ public class NoteServiceImpl implements NoteService {
                 keyValueRpcService.deleteNoteContent(contentUuid);
             }
         }
+
+        // 发送 MQ
+        // 构建消息体 DTO
+        NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
+                .creatorId(creatorId)
+                .noteId(Long.valueOf(snowflakeIdId))
+                .type(NoteOperateEnum.PUBLISH.getCode()) // 发布笔记
+                .build();
+
+        // 构建消息对象
+        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(noteOperateMqDTO))
+                .build();
+        String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_PUBLISH;
+
+        // 异步发送 MQ 消息
+        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("==> 【笔记发布】MQ 发送成功，SendResult: {}", sendResult);
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                log.error("==> 【笔记发布】MQ 发送异常: ", throwable);
+            }
+        });
+
 
         return Response.success();
     }
@@ -508,16 +534,12 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Response<?> deleteNote(DeleteNoteReqVO deleteNoteReqVO) {
-        // 笔记 ID
         Long noteId = deleteNoteReqVO.getId();
-
         NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
-
         // 判断笔记是否存在
         if (Objects.isNull(selectNoteDO)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
-
         // 判断权限：非笔记发布者不允许删除笔记
         Long currUserId = LoginUserContextHolder.getUserId();
         if (!Objects.equals(currUserId, selectNoteDO.getCreatorId())) {
@@ -530,10 +552,8 @@ public class NoteServiceImpl implements NoteService {
                 .status(NoteStatusEnum.DELETED.getCode())
                 .updateTime(LocalDateTime.now())
                 .build();
-
         int count = noteDOMapper.updateByPrimaryKeySelective(noteDO);
-
-        // 若影响的行数为 0，则表示该笔记不存在
+        // 该笔记不存在
         if (count == 0) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
@@ -546,6 +566,30 @@ public class NoteServiceImpl implements NoteService {
         rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_NOTE_LOCAL_CACHE, noteId);
         log.info("====> MQ：删除笔记本地缓存发送成功...");
 
+        // 发送 MQ
+        // 构建消息体 DTO
+        NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
+                .creatorId(selectNoteDO.getCreatorId())
+                .noteId(noteId)
+                .type(NoteOperateEnum.DELETE.getCode()) // 删除笔记
+                .build();
+        // 构建消息对象
+        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(noteOperateMqDTO))
+                .build();
+        String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_DELETE;
+
+        // 异步发送 MQ 消息
+        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
+            @Override
+            public void onSuccess(SendResult sendResult) {
+                log.info("==> 【笔记删除】MQ 发送成功，SendResult: {}", sendResult);
+            }
+
+            @Override
+            public void onException(Throwable throwable) {
+                log.error("==> 【笔记删除】MQ 发送异常: ", throwable);
+            }
+        });
         return Response.success();
     }
 
