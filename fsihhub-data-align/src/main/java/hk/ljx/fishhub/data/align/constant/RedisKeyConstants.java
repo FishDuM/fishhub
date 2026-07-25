@@ -17,4 +17,17 @@ public class RedisKeyConstants {
         return BLOOM_TODAY_NOTE_LIKE_LIST_KEY + date;
     }
 
+    /**
+     * 布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏 前缀
+     */
+    public static final String BLOOM_TODAY_NOTE_COLLECT_LIST_KEY = "bloom:dataAlign:note:collects:";
+
+    /**
+     * 构建完整的布隆过滤器：日增量变更数据，用户笔记收藏，取消收藏 KEY
+     * @param date
+     * @return
+     */
+    public static String buildBloomUserNoteCollectListKey(String date) {
+        return BLOOM_TODAY_NOTE_COLLECT_LIST_KEY + date;
+    }
 }
