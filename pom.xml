@@ -23,6 +23,7 @@
     <module>fishhub-user-relation</module>
       <module>fishhub-count</module>
       <module>fishhub-data-align</module>
+      <module>fishhub-search-api</module>
       <module>fishhub-search</module>
   </modules>
 
@@ -56,6 +57,7 @@
     <buffertrigger.version>0.2.21</buffertrigger.version>
     <xxl-job.version>2.4.1</xxl-job.version>
     <elasticsearch.version>7.3.0</elasticsearch.version>
+    <canal.version>1.1.8</canal.version>
   </properties>
 
   <!--  统一依赖管理  -->
@@ -122,6 +124,12 @@
       <dependency>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-note-api</artifactId>
+        <version>${revision}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>hk.ljx</groupId>
+        <artifactId>fishhub-search-api</artifactId>
         <version>${revision}</version>
       </dependency>
 
@@ -304,6 +312,23 @@
         <groupId>org.elasticsearch</groupId>
         <artifactId>elasticsearch</artifactId>
         <version>${elasticsearch.version}</version>
+      </dependency>
+
+      <!-- Canal -->
+      <dependency>
+        <groupId>com.alibaba.otter</groupId>
+        <artifactId>canal.client</artifactId>
+        <version>${canal.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.otter</groupId>
+        <artifactId>canal.common</artifactId>
+        <version>${canal.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.alibaba.otter</groupId>
+        <artifactId>canal.protocol</artifactId>
+        <version>${canal.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

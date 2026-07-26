@@ -2,15 +2,19 @@ package hk.ljx.fishhub.search.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import com.alibaba.nacos.shaded.com.google.common.collect.Lists;
+import hk.ljx.fishhub.search.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.index.UserIndex;
+import hk.ljx.fishhub.search.dto.req.RebuildUserDocumentReqDTO;
 import hk.ljx.fishhub.search.model.vo.SearchUserReqVO;
 import hk.ljx.fishhub.search.model.vo.SearchUserRspVO;
 import hk.ljx.fishhub.search.service.UserService;
 import hk.ljx.framework.common.response.PageResponse;
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.NumberUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
@@ -26,6 +30,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.io.IOException;
 
 @Service
 @Slf4j
@@ -33,6 +38,8 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private RestHighLevelClient restHighLevelClient;
+    @Resource
+    private SelectMapper selectMapper;
 
     /**
      * 搜索用户
@@ -135,5 +142,22 @@ public class UserServiceImpl implements UserService {
         }
 
         return PageResponse.success(searchUserRspVOS, pageNo, total);
+    }
+
+    @Override
+    public Response<Long> rebuildDocument(RebuildUserDocumentReqDTO request) {
+        Long userId = request.getId();
+        List<Map<String, Object>> documents = selectMapper.selectEsUserIndexData(userId);
+        try {
+            for (Map<String, Object> document : documents) {
+                restHighLevelClient.index(new IndexRequest(UserIndex.NAME)
+                        .id(String.valueOf(document.get(UserIndex.FIELD_USER_ID)))
+                        .source(document), RequestOptions.DEFAULT);
+            }
+            return Response.success();
+        } catch (IOException e) {
+            log.error("重建用户搜索文档失败, userId={}", userId, e);
+            return Response.fail("重建用户搜索文档失败");
+        }
     }
 }

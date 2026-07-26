@@ -1,10 +1,12 @@
 package hk.ljx.fishhub.search.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.fishhub.search.dto.req.RebuildUserDocumentReqDTO;
 import hk.ljx.fishhub.search.model.vo.SearchUserReqVO;
 import hk.ljx.fishhub.search.model.vo.SearchUserRspVO;
 import hk.ljx.fishhub.search.service.UserService;
 import hk.ljx.framework.common.response.PageResponse;
+import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
@@ -26,6 +28,10 @@ public class UserController {
     public PageResponse<SearchUserRspVO> searchUser(@RequestBody @Validated SearchUserReqVO searchUserReqVO) {
         return userService.searchUser(searchUserReqVO);
     }
+
+    @PostMapping("/user/document/rebuild")
+    @ApiOperationLog(description = "重建用户搜索文档")
+    public Response<Long> rebuildDocument(@RequestBody @Validated RebuildUserDocumentReqDTO request) {
+        return userService.rebuildDocument(request);
+    }
 }
-
-

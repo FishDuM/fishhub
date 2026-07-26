@@ -9,4 +9,7 @@ import org.springframework.stereotype.Component;
 @Data
 public class ElasticsearchProperties {
     private String address;
+
+    /** IK 插件热更新词典的本地文件路径 */
+    private String hotUpdateExtDict;
 }

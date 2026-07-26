@@ -2,19 +2,23 @@ package hk.ljx.fishhub.search.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import com.alibaba.nacos.shaded.com.google.common.collect.Lists;
+import hk.ljx.fishhub.search.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.enums.NotePublishTimeRangeEnum;
 import hk.ljx.fishhub.search.enums.NoteSortTypeEnum;
 import hk.ljx.fishhub.search.index.NoteIndex;
+import hk.ljx.fishhub.search.dto.req.RebuildNoteDocumentReqDTO;
 import hk.ljx.fishhub.search.model.vo.SearchNoteReqVO;
 import hk.ljx.fishhub.search.model.vo.SearchNoteRspVO;
 import hk.ljx.fishhub.search.service.NoteService;
 import hk.ljx.framework.common.constant.DateConstants;
 import hk.ljx.framework.common.response.PageResponse;
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.NumberUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
@@ -46,6 +50,8 @@ public class NoteServiceImpl implements NoteService {
 
     @Resource
     private RestHighLevelClient restHighLevelClient;
+    @Resource
+    private SelectMapper selectMapper;
 
     /**
      * 搜索笔记
@@ -243,5 +249,22 @@ public class NoteServiceImpl implements NoteService {
         }
 
         return PageResponse.success(searchNoteRspVOS, pageNo, total);
+    }
+
+    @Override
+    public Response<Long> rebuildDocument(RebuildNoteDocumentReqDTO request) {
+        Long noteId = request.getId();
+        List<Map<String, Object>> documents = selectMapper.selectEsNoteIndexData(noteId, null);
+        try {
+            for (Map<String, Object> document : documents) {
+                restHighLevelClient.index(new IndexRequest(NoteIndex.NAME)
+                        .id(String.valueOf(document.get(NoteIndex.FIELD_NOTE_ID)))
+                        .source(document), RequestOptions.DEFAULT);
+            }
+            return Response.success();
+        } catch (IOException e) {
+            log.error("重建笔记搜索文档失败, noteId={}", noteId, e);
+            return Response.fail("重建笔记搜索文档失败");
+        }
     }
 }
