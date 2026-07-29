@@ -16,6 +16,11 @@
     <dependencies>
         <dependency>
             <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-count-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
             <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
         </dependency>
 

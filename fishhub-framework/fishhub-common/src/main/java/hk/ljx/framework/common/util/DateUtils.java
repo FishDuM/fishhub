@@ -2,9 +2,12 @@ package hk.ljx.framework.common.util;
 
 import hk.ljx.framework.common.constant.DateConstants;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Period;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 
 public class DateUtils {
 
@@ -24,6 +27,19 @@ public class DateUtils {
      */
     public static String localDateTime2String(LocalDateTime time) {
         return time.format(DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
+    }
+
+    /**
+     * LocalDateTime 转日期字符串。
+     *
+     * @param time 时间
+     * @return 日期字符串；时间为空时返回 {@code null}
+     */
+    public static String parse2DateStr(LocalDateTime time) {
+        if (Objects.isNull(time)) {
+            return null;
+        }
+        return time.format(DateConstants.DATE_FORMAT_Y_M_D);
     }
 
     /**
@@ -55,6 +71,16 @@ public class DateUtils {
         } else {  // 如果是去年或更早
             return dateTime.format(DateConstants.DATE_FORMAT_Y_M_D);
         }
+    }
+
+    /**
+     * 计算年龄。
+     *
+     * @param birthDate 出生日期
+     * @return 年龄
+     */
+    public static int calculateAge(LocalDate birthDate) {
+        return Period.between(birthDate, LocalDate.now()).getYears();
     }
 
     public static void main(String[] args) {

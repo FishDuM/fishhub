@@ -17,6 +17,12 @@
     from t_note_count
     where id = #{id,jdbcType=BIGINT}
   </select>
+
+  <select id="selectByNoteId" resultMap="BaseResultMap">
+    select note_id, like_total, collect_total, comment_total
+    from t_note_count where note_id = #{noteId}
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_note_count
     where id = #{id,jdbcType=BIGINT}
@@ -27,6 +33,25 @@
     values (#{id,jdbcType=BIGINT}, #{noteId,jdbcType=BIGINT}, #{likeTotal,jdbcType=BIGINT}, 
       #{collectTotal,jdbcType=BIGINT}, #{commentTotal,jdbcType=BIGINT})
   </insert>
+
+  <insert id="insertOrUpdateLikeTotalByNoteId" parameterType="map">
+    INSERT INTO t_note_count (note_id, like_total)
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE like_total = like_total + (#{count});
+  </insert>
+
+  <insert id="insertOrUpdateCollectTotalByNoteId" parameterType="map">
+    INSERT INTO t_note_count (note_id, collect_total)
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE collect_total = collect_total + (#{count});
+  </insert>
+
+  <insert id="insertOrUpdateCommentTotalByNoteId" parameterType="map">
+    INSERT INTO t_note_count (note_id, comment_total)
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE comment_total = comment_total + (#{count});
+  </insert>
+
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO">
     insert into t_note_count
     <trim prefix="(" suffix=")" suffixOverrides=",">
@@ -63,16 +88,6 @@
         #{commentTotal,jdbcType=BIGINT},
       </if>
     </trim>
-  </insert>
-  <insert id="insertOrUpdateLikeTotalByNoteId" parameterType="map">
-    INSERT INTO t_note_count (note_id, like_total)
-    VALUES (#{noteId}, #{count})
-    ON DUPLICATE KEY UPDATE like_total = like_total + (#{count});
-  </insert>
-  <insert id="insertOrUpdateCollectTotalByNoteId" parameterType="map">
-    INSERT INTO t_note_count (note_id, collect_total)
-    VALUES (#{noteId}, #{count})
-    ON DUPLICATE KEY UPDATE collect_total = collect_total + (#{count});
   </insert>
   <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO">
     update t_note_count

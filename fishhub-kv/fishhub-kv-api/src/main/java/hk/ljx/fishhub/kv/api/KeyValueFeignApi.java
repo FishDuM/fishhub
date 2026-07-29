@@ -1,13 +1,14 @@
 package hk.ljx.fishhub.kv.api;
 
-import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.*;
+import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
 import hk.ljx.framework.common.response.Response;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+
+import java.util.List;
 
 import static hk.ljx.fishhub.kv.constant.ApiConstants.SERVICE_NAME;
 
@@ -23,6 +24,15 @@ public interface KeyValueFeignApi {
     Response<FindNoteContentRspDTO> findNoteContent(@RequestBody FindNoteContentReqDTO findNoteContentReqDTO);
 
     @PostMapping(value = PREFIX + "/note/content/delete")
-    Response<?> deleteNoteContent (@RequestBody DeleteNoteContentReqDTO deleteNoteContentReqDTO);
+    Response<?> deleteNoteContent(@RequestBody DeleteNoteContentReqDTO deleteNoteContentReqDTO);
+
+    @PostMapping(value = PREFIX + "/comment/content/batchAdd")
+    Response<?> batchAddCommentContent(@RequestBody BatchAddCommentContentReqDTO batchAddCommentContentReqDTO);
+
+    @PostMapping(value = PREFIX + "/comment/content/batchFind")
+    Response<List<FindCommentContentRspDTO>> batchFindCommentContent(@RequestBody BatchFindCommentContentReqDTO batchFindCommentContentReqDTO);
+
+    @PostMapping(value = PREFIX + "/comment/content/delete")
+    Response<?> deleteCommentContent(@RequestBody DeleteCommentContentReqDTO deleteCommentContentReqDTO);
 
 }

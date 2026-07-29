@@ -17,18 +17,24 @@ import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.enums.SexEnum;
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
+import hk.ljx.fishhub.user.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.count.dto.FindUserCountByIdRspDTO;
 import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.framework.common.util.DateUtils;
+import hk.ljx.framework.common.util.NumberUtils;
 import hk.ljx.framework.common.util.ParamUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +78,9 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
+
+    @Resource
+    private CountRpcService countRpcService;
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
@@ -414,5 +423,47 @@ public class UserServiceImpl implements UserService {
         }
 
         return Response.success(findUserByIdRspDTOS);
+    }
+
+    @Override
+    public Response<FindUserProfileRspVO> findUserProfile(FindUserProfileReqVO findUserProfileReqVO) {
+        Long userId = findUserProfileReqVO.getUserId();
+        if (Objects.isNull(userId)) {
+            userId = LoginUserContextHolder.getUserId();
+        }
+
+        UserDO userDO = userDOMapper.selectByPrimaryKey(userId);
+        if (Objects.isNull(userDO)) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+        }
+
+        FindUserProfileRspVO findUserProfileRspVO = FindUserProfileRspVO.builder()
+                .userId(userDO.getId())
+                .avatar(userDO.getAvatar())
+                .nickname(userDO.getNickname())
+                .fishhubId(userDO.getFishhubId())
+                .sex(userDO.getSex())
+                .introduction(userDO.getIntroduction())
+                .build();
+
+        LocalDate birthday = userDO.getBirthday();
+        if (Objects.nonNull(birthday)) {
+            findUserProfileRspVO.setAge(DateUtils.calculateAge(birthday));
+            findUserProfileRspVO.setBirthday(birthday);
+        }
+
+        FindUserCountByIdRspDTO countData = countRpcService.findUserCountById(userId);
+        if (Objects.nonNull(countData)) {
+            long fansTotal = Objects.requireNonNullElse(countData.getFansTotal(), 0L);
+            long followingTotal = Objects.requireNonNullElse(countData.getFollowingTotal(), 0L);
+            long likeTotal = Objects.requireNonNullElse(countData.getLikeTotal(), 0L);
+            long collectTotal = Objects.requireNonNullElse(countData.getCollectTotal(), 0L);
+
+            findUserProfileRspVO.setFansTotal(NumberUtils.formatNumberString(fansTotal));
+            findUserProfileRspVO.setFollowingTotal(NumberUtils.formatNumberString(followingTotal));
+            findUserProfileRspVO.setLikeAndCollectTotal(NumberUtils.formatNumberString(likeTotal + collectTotal));
+        }
+
+        return Response.success(findUserProfileRspVO);
     }
 }

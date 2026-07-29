@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.user.biz.controller;
 
 import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
@@ -35,6 +37,17 @@ public class UserController {
     @PostMapping(value = "/update", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Response<?> updateUserInfo(@Validated UpdateUserInfoReqVO updateUserInfoReqVO) {
         return userService.updateUserInfo(updateUserInfoReqVO);
+    }
+
+    /**
+     * 获取用户主页信息
+     *
+     * @param findUserProfileReqVO 查询条件
+     * @return 用户主页信息
+     */
+    @PostMapping("/profile")
+    public Response<FindUserProfileRspVO> findUserProfile(@Validated @RequestBody FindUserProfileReqVO findUserProfileReqVO) {
+        return userService.findUserProfile(findUserProfileReqVO);
     }
 
     /**

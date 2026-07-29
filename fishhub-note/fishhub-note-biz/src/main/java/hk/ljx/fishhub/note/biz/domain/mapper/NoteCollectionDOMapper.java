@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.note.biz.domain.mapper;
 
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
+import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
@@ -12,11 +13,14 @@ public interface NoteCollectionDOMapper {
 
     int insertSelective(NoteCollectionDO record);
 
+    /**
+     * 新增笔记收藏记录，若已存在，则更新笔记收藏记录
+     * @param noteCollectionDO
+     * @return
+     */
+    int insertOrUpdate(NoteCollectionDO noteCollectionDO);
+
     NoteCollectionDO selectByPrimaryKey(Long id);
-
-    int updateByPrimaryKeySelective(NoteCollectionDO record);
-
-    int updateByPrimaryKey(NoteCollectionDO record);
 
     /**
      * 查询笔记是否被收藏
@@ -49,19 +53,21 @@ public interface NoteCollectionDOMapper {
      */
     List<NoteCollectionDO> selectCollectedByUserIdAndLimit(@Param("userId") Long userId, @Param("limit")  int limit);
 
-    /**
-     * 新增笔记收藏记录，若已存在，则更新笔记收藏记录
-     * @param noteCollectionDO
-     * @return
-     */
-    int insertOrUpdate(NoteCollectionDO noteCollectionDO);
+    int selectTotalCountByUserId(@Param("userId") Long userId);
+
+    List<Long> selectPageListByUserId(@Param("userId") Long userId,
+                                      @Param("offset") long offset,
+                                      @Param("pageSize") long pageSize);
+
+    int updateByPrimaryKeySelective(NoteCollectionDO record);
+
+    int updateByPrimaryKey(NoteCollectionDO record);
 
     /**
-     * 取消收藏
+     * 取消点赞
      * @param noteCollectionDO
      * @return
      */
     int update2UnCollectByUserIdAndNoteId(NoteCollectionDO noteCollectionDO);
-
 
 }

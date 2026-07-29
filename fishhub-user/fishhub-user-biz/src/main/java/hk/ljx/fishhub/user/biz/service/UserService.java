@@ -1,5 +1,7 @@
 package hk.ljx.fishhub.user.biz.service;
 
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
@@ -51,4 +53,12 @@ public interface UserService {
      * @return
      */
     Response<List<FindUserByIdRspDTO>> findByIds(FindUsersByIdsReqDTO findUsersByIdsReqDTO);
+
+    /**
+     * 获取用户主页信息
+     *
+     * @param findUserProfileReqVO 查询条件
+     * @return 用户主页信息
+     */
+    Response<FindUserProfileRspVO> findUserProfile(FindUserProfileReqVO findUserProfileReqVO);
 }

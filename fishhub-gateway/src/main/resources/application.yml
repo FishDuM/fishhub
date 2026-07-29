@@ -22,6 +22,12 @@ spring:
             - Path=/note/**
           filters:
             - StripPrefix=1
+        - id: comment
+          uri: lb://fishhub-comment
+          predicates:
+            - Path=/comment/**
+          filters:
+            - StripPrefix=1
         - id: user-relation
           uri: lb://fishhub-user-relation
           predicates:

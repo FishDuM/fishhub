@@ -1,6 +1,9 @@
 package hk.ljx.fishhub.note.biz.domain.mapper;
 
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
+import org.apache.ibatis.annotations.Param;
+
+import java.util.List;
 
 public interface NoteDOMapper {
     int deleteByPrimaryKey(Long id);
@@ -11,14 +14,6 @@ public interface NoteDOMapper {
 
     NoteDO selectByPrimaryKey(Long id);
 
-    int updateByPrimaryKeySelective(NoteDO record);
-
-    int updateByPrimaryKey(NoteDO record);
-
-    int updateVisibleOnlyMe(NoteDO noteDO);
-
-    int updateIsTop(NoteDO noteDO);
-
     int selectCountByNoteId(Long noteId);
 
     /**
@@ -27,4 +22,27 @@ public interface NoteDOMapper {
      * @return
      */
     Long selectCreatorIdByNoteId(Long noteId);
+
+    int selectTotalCount(Long channelId);
+
+    List<NoteDO> selectPageList(@Param("channelId") Long channelId,
+                                @Param("offset") long offset,
+                                @Param("pageSize") long pageSize);
+
+    int selectTotalCountByCreatorId(Long creatorId);
+
+    List<NoteDO> selectPageListByCreatorId(@Param("creatorId") Long creatorId,
+                                           @Param("offset") long offset,
+                                           @Param("pageSize") long pageSize);
+
+    List<NoteDO> selectByNoteIds(@Param("noteIds") List<Long> noteIds);
+
+    int updateByPrimaryKeySelective(NoteDO record);
+
+    int updateByPrimaryKey(NoteDO record);
+
+    int updateVisibleOnlyMe(NoteDO noteDO);
+
+    int updateIsTop(NoteDO noteDO);
+
 }

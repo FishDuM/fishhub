@@ -15,6 +15,11 @@
     <dependencies>
         <dependency>
             <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-search-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
             <artifactId>fishhub-common</artifactId>
         </dependency>
 

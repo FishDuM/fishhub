@@ -19,6 +19,11 @@
             <artifactId>fishhub-common</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-count-api</artifactId>
+        </dependency>
+
         <!-- 业务接口日志组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>

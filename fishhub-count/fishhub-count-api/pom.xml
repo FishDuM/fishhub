@@ -7,7 +7,6 @@
         <version>0.0.1-SNAPSHOT</version>
     </parent>
 
-    <groupId>hk.ljx.fishhub.count</groupId>
     <artifactId>fishhub-count-api</artifactId>
     <name>${project.artifactId}</name>
     <description>RPC层, 供其他服务调用</description>
@@ -18,6 +17,16 @@
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-common</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-loadbalancer</artifactId>
         </dependency>
     </dependencies>
 </project>

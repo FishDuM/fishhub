@@ -10,27 +10,13 @@ public interface UserCountDOMapper {
 
     int insertSelective(UserCountDO record);
 
-    UserCountDO selectByPrimaryKey(Long id);
-
-    int updateByPrimaryKeySelective(UserCountDO record);
-
-    int updateByPrimaryKey(UserCountDO record);
-
     /**
      * 添加或更新粉丝总数
      * @param count
      * @param userId
      * @return
-             */
-    int insertOrUpdateFansTotalByUserId(@Param("count") Integer count, @Param("userId") Long userId);
-
-    /**
-     * 添加或更新关注总数
-     * @param count
-     * @param userId
-     * @return
      */
-    int insertOrUpdateFollowingTotalByUserId(@Param("count") Integer count, @Param("userId") Long userId);
+    int insertOrUpdateFansTotalByUserId(@Param("count") Integer count, @Param("userId") Long userId);
 
     /**
      * 添加记录或更新笔记点赞数
@@ -47,5 +33,29 @@ public interface UserCountDOMapper {
      * @return
      */
     int insertOrUpdateNoteTotalByUserId(@Param("count") Long count, @Param("userId") Long userId);
+    /**
+     * 添加记录或更新笔记收藏数
+     * @param count
+     * @param userId
+     * @return
+     */
+    int insertOrUpdateCollectTotalByUserId(@Param("count") Integer count, @Param("userId") Long userId);
+
+    /**
+     * 添加或更新关注总数
+     * @param count
+     * @param userId
+     * @return
+     */
+    int insertOrUpdateFollowingTotalByUserId(@Param("count") Integer count, @Param("userId") Long userId);
+
+    UserCountDO selectByPrimaryKey(Long id);
+
+    UserCountDO selectByUserId(Long userId);
+
+    int updateByPrimaryKeySelective(UserCountDO record);
+
+    int updateByPrimaryKey(UserCountDO record);
+
 
 }

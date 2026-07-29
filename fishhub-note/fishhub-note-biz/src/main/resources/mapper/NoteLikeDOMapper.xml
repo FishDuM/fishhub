@@ -36,6 +36,18 @@
     where user_id = #{userId} and status = 1 order by create_time desc limit #{limit}
   </select>
 
+  <select id="selectTotalCountByUserId" resultType="int">
+    select count(*) from t_note_like
+    where user_id = #{userId} and status = 1
+  </select>
+
+  <select id="selectPageListByUserId" resultType="long">
+    select note_id from t_note_like
+    where user_id = #{userId} and status = 1
+    order by create_time desc
+    limit #{offset}, #{pageSize}
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_note_like
     where id = #{id,jdbcType=BIGINT}
@@ -46,6 +58,14 @@
     values (#{id,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{noteId,jdbcType=BIGINT}, 
       #{createTime,jdbcType=TIMESTAMP}, #{status,jdbcType=TINYINT})
   </insert>
+
+  <insert id="insertOrUpdate" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
+    INSERT INTO t_note_like (user_id, note_id, create_time, status)
+    VALUES (#{userId}, #{noteId}, #{createTime}, #{status})
+      ON DUPLICATE KEY UPDATE
+          create_time = #{createTime}, status = #{status};
+  </insert>
+
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
     insert into t_note_like
     <trim prefix="(" suffix=")" suffixOverrides=",">
@@ -83,14 +103,6 @@
       </if>
     </trim>
   </insert>
-
-  <insert id="insertOrUpdate" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
-    INSERT INTO t_note_like (user_id, note_id, create_time, status)
-    VALUES (#{userId}, #{noteId}, #{createTime}, #{status})
-    ON DUPLICATE KEY UPDATE
-                       create_time = #{createTime}, status = #{status};
-  </insert>
-
   <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
     update t_note_like
     <set>

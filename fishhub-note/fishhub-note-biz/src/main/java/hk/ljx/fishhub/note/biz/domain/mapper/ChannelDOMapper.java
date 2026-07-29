@@ -2,6 +2,8 @@ package hk.ljx.fishhub.note.biz.domain.mapper;
 
 import hk.ljx.fishhub.note.biz.domain.dataobject.ChannelDO;
 
+import java.util.List;
+
 public interface ChannelDOMapper {
     int deleteByPrimaryKey(Long id);
 
@@ -11,7 +13,10 @@ public interface ChannelDOMapper {
 
     ChannelDO selectByPrimaryKey(Long id);
 
+    List<ChannelDO> selectAll();
+
     int updateByPrimaryKeySelective(ChannelDO record);
 
     int updateByPrimaryKey(ChannelDO record);
+
 }

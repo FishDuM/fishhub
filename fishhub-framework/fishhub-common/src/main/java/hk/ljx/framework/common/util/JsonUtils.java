@@ -24,6 +24,7 @@ import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class JsonUtils {
 
@@ -99,6 +100,18 @@ public class JsonUtils {
             @Override
             public CollectionType getType() {
                 return OBJECT_MAPPER.getTypeFactory().constructCollectionType(List.class, clazz);
+            }
+        });
+    }
+
+    /**
+     * 将 JSON 字符串解析为指定类型的 Set 对象。
+     */
+    public static <T> Set<T> parseSet(String jsonStr, Class<T> clazz) throws Exception {
+        return OBJECT_MAPPER.readValue(jsonStr, new TypeReference<>() {
+            @Override
+            public CollectionType getType() {
+                return OBJECT_MAPPER.getTypeFactory().constructCollectionType(Set.class, clazz);
             }
         });
     }
