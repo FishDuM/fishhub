@@ -9,6 +9,7 @@ import org.springframework.data.cassandra.core.mapping.Table;
 
 import java.util.UUID;
 
+
 @Table("note_content")
 @Data
 @NoArgsConstructor

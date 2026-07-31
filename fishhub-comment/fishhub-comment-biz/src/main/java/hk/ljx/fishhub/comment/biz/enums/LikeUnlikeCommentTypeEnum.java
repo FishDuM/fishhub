@@ -3,6 +3,7 @@ package hk.ljx.fishhub.comment.biz.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+
 @Getter
 @AllArgsConstructor
 public enum LikeUnlikeCommentTypeEnum {

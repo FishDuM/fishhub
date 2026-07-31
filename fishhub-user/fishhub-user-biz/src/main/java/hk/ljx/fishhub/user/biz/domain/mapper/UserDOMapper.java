@@ -14,12 +14,8 @@ public interface UserDOMapper {
 
     UserDO selectByPrimaryKey(Long id);
 
-    int updateByPrimaryKeySelective(UserDO record);
-
-    int updateByPrimaryKey(UserDO record);
-
     /**
-     * 根据手机号查询用户
+     * 根据手机号查询记录
      * @param phone
      * @return
      */
@@ -27,8 +23,13 @@ public interface UserDOMapper {
 
     /**
      * 批量查询用户信息
+     *
      * @param ids
      * @return
      */
     List<UserDO> selectByIds(@Param("ids") List<Long> ids);
+
+    int updateByPrimaryKeySelective(UserDO record);
+
+    int updateByPrimaryKey(UserDO record);
 }

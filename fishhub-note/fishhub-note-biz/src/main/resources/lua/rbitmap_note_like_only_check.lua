@@ -16,4 +16,3 @@ return redis.call('R.GETBIT', key, noteId)
 
 
 
-

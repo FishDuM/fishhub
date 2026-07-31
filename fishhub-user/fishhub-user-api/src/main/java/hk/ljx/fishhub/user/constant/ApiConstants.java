@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.user.constant;
 
+
 public interface ApiConstants {
 
     /**

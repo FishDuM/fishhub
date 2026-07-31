@@ -1,10 +1,10 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.model.dto.NoteOperateMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.Message;
@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_NOTE_OPERATE, // Group 组
         topic = MQConstants.TOPIC_NOTE_OPERATE // 主题 Topic
@@ -24,7 +25,6 @@ public class CountNotePublishConsumer implements RocketMQListener<Message> {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
     @Resource
     private UserCountDOMapper userCountDOMapper;
 
@@ -50,7 +50,9 @@ public class CountNotePublishConsumer implements RocketMQListener<Message> {
      * @param bodyJsonStr
      */
     private void handleTagMessage(String bodyJsonStr, long count) {
+        // 消息体 JSON 字符串转 DTO
         NoteOperateMqDTO noteOperateMqDTO = JsonUtils.parseObject(bodyJsonStr, NoteOperateMqDTO.class);
+
         if (Objects.isNull(noteOperateMqDTO)) return;
 
         // 笔记发布者 ID
@@ -60,12 +62,15 @@ public class CountNotePublishConsumer implements RocketMQListener<Message> {
         String countUserRedisKey = RedisKeyConstants.buildCountUserKey(creatorId);
         // 判断 Redis 中 Hash 是否存在
         boolean isCountUserExisted = redisTemplate.hasKey(countUserRedisKey);
+
         // 若存在才会更新
+        // (因为缓存设有过期时间，考虑到过期后，缓存会被删除，这里需要判断一下，存在才会去更新，而初始化工作放在查询计数来做)
         if (isCountUserExisted) {
             // 对目标用户 Hash 中的笔记发布总数，进行加减操作
             redisTemplate.opsForHash().increment(countUserRedisKey, RedisKeyConstants.FIELD_NOTE_TOTAL, count);
         }
-        // 更新数据库
+
+        // 更新 t_user_count 表
         userCountDOMapper.insertOrUpdateNoteTotalByUserId(count, creatorId);
     }
 

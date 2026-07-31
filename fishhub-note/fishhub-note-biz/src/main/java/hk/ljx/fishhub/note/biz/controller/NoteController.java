@@ -1,9 +1,9 @@
 package hk.ljx.fishhub.note.biz.controller;
 
-import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.service.NoteService;
-import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 @RequestMapping("/note")
@@ -81,10 +82,14 @@ public class NoteController {
     }
 
     @PostMapping(value = "/isLikedAndCollectedData")
-    @ApiOperationLog(description = "获取当前用户笔记互动状态")
-    public Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(
-            @Validated @RequestBody FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO) {
+    @ApiOperationLog(description = "获取当前用户是否点赞、收藏数据")
+    public Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(@Validated @RequestBody FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO) {
         return noteService.isLikedAndCollectedData(findNoteIsLikedAndCollectedReqVO);
     }
 
+    @PostMapping(value = "/published/list")
+    @ApiOperationLog(description = "用户主页 - 已发布笔记列表")
+    public Response<FindPublishedNoteListRspVO> findPublishedNoteList(@Validated @RequestBody FindPublishedNoteListReqVO findPublishedNoteListReqVO) {
+        return noteService.findPublishedNoteList(findPublishedNoteListReqVO);
+    }
 }

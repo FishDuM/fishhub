@@ -1,10 +1,10 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -19,20 +19,18 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
+import java.util.concurrent.Executors;
 
-/**
- * 计数 - 关注数
- */
+
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING,
-        topic = MQConstants.TOPIC_COUNT_FOLLOWING
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING, // Group 组
+        topic = MQConstants.TOPIC_COUNT_FOLLOWING // 主题 Topic
         )
 @Slf4j
-public class CountFollowingConsumer implements RocketMQListener<String> {
+public class CountFollowingConsumer implements RocketMQListener<String> { // TODO: Message
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
@@ -44,6 +42,7 @@ public class CountFollowingConsumer implements RocketMQListener<String> {
 
         // 关注数和粉丝数计数场景不同，单个用户无法短时间内关注大量用户，所以无需聚合
         // 直接对 Redis 中的 Hash 进行 +1 或 -1 操作即可
+
         CountFollowUnfollowMqDTO countFollowUnfollowMqDTO = JsonUtils.parseObject(body, CountFollowUnfollowMqDTO.class);
 
         // 操作类型：关注 or 取关

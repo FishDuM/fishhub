@@ -1,11 +1,11 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
-import com.alibaba.nacos.shaded.com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.RateLimiter;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -15,9 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
-/**
- * 计数：关注数入库
- */
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING_2_DB, // Group 组
         topic = MQConstants.TOPIC_COUNT_FOLLOWING_2_DB // 主题 Topic

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_count_" + MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE, // Group 组
         topic = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE // 主题 Topic
@@ -136,4 +137,3 @@ public class CountCommentLikeConsumer implements RocketMQListener<String> {
         });
     }
 }
-

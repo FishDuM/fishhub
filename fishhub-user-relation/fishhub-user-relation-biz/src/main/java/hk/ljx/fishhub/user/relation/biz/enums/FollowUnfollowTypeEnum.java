@@ -3,6 +3,7 @@ package hk.ljx.fishhub.user.relation.biz.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+
 @Getter
 @AllArgsConstructor
 public enum FollowUnfollowTypeEnum {

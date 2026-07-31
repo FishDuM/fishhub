@@ -40,6 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+
 @Component
 @Slf4j
 public class Comment2DBConsumer {
@@ -173,7 +174,7 @@ public class Comment2DBConsumer {
                 log.info("## 清洗后的 CommentBOS: {}", JsonUtils.toJsonString(commentBOS));
 
                 // 编程式事务，保证整体操作的原子性
-                Integer insertedRows = transactionTemplate.execute(status -> {
+                Integer insertedRows =transactionTemplate.execute(status -> {
                     try {
                         // 先批量存入评论元数据
                         int count = commentDOMapper.batchInsert(commentBOS);

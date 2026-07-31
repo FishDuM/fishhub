@@ -18,3 +18,8 @@ end
 -- 未被点赞，添加点赞数据
 redis.call('BF.ADD', key, noteId)
 return 0
+
+
+
+
+

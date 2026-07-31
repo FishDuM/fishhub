@@ -1,10 +1,10 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
-import com.alibaba.nacos.shaded.com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.RateLimiter;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -13,9 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
-/**
- * 计数：粉丝数入库 消费者
- */
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FANS_2_DB, // Group 组
         topic = MQConstants.TOPIC_COUNT_FANS_2_DB // 主题 Topic
@@ -33,7 +31,9 @@ public class CountFans2DBConsumer implements RocketMQListener<String> {
     public void onMessage(String body) {
         // 流量削峰：通过获取令牌，如果没有令牌可用，将阻塞，直到获得
         rateLimiter.acquire();
+
         log.info("## 消费到了 MQ 【计数: 粉丝数入库】, {}...", body);
+
         Map<Long, Integer> countMap = null;
         try {
             countMap = JsonUtils.parseMap(body, Long.class, Integer.class);
@@ -46,4 +46,5 @@ public class CountFans2DBConsumer implements RocketMQListener<String> {
             countMap.forEach((k, v) -> userCountDOMapper.insertOrUpdateFansTotalByUserId(v, k));
         }
     }
+
 }

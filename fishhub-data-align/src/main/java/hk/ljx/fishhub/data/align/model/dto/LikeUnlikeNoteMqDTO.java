@@ -7,9 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/**
- * 点赞、取消点赞笔记 MQ 消息DTO
- */
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

@@ -1,8 +1,6 @@
 package hk.ljx.fishhub.data.align.constant;
 
-/**
- * 表常量
- */
+
 public class TableConstants {
 
     /**

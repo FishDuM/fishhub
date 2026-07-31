@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.kv.constant;
 
+
 public interface ApiConstants {
 
     /**

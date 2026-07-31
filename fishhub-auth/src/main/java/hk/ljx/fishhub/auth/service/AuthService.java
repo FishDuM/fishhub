@@ -1,14 +1,14 @@
 package hk.ljx.fishhub.auth.service;
 
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.auth.model.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.auth.model.vo.user.UserLoginReqVO;
-import hk.ljx.framework.common.response.Response;
+
 
 public interface AuthService {
 
     /**
      * 登录与注册
-     *
      * @param userLoginReqVO
      * @return
      */

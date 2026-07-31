@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.data.align.constant;
 
+
 public interface MQConstants {
 
     /**
@@ -21,4 +22,5 @@ public interface MQConstants {
      * Topic: 关注数计数
      */
     String TOPIC_COUNT_FOLLOWING = "CountFollowingTopic";
+
 }

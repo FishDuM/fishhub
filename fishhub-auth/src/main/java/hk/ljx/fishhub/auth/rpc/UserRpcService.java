@@ -1,13 +1,14 @@
 package hk.ljx.fishhub.auth.rpc;
 
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
-import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
+
 
 @Component
 public class UserRpcService {
@@ -17,6 +18,7 @@ public class UserRpcService {
 
     /**
      * 用户注册
+     *
      * @param phone
      * @return
      */
@@ -29,11 +31,13 @@ public class UserRpcService {
         if (!response.isSuccess()) {
             return null;
         }
+
         return response.getData();
     }
 
     /**
      * 根据手机号查询用户信息
+     *
      * @param phone
      * @return
      */
@@ -46,16 +50,19 @@ public class UserRpcService {
         if (!response.isSuccess()) {
             return null;
         }
+
         return response.getData();
     }
 
     /**
      * 密码更新
+     *
      * @param encodePassword
      */
     public void updatePassword(String encodePassword) {
         UpdateUserPasswordReqDTO updateUserPasswordReqDTO = new UpdateUserPasswordReqDTO();
         updateUserPasswordReqDTO.setEncodePassword(encodePassword);
+
         userFeignApi.updatePassword(updateUserPasswordReqDTO);
     }
 

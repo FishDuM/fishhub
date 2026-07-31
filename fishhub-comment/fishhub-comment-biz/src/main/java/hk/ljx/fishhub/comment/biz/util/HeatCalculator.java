@@ -3,6 +3,7 @@ package hk.ljx.fishhub.comment.biz.util;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+
 public class HeatCalculator {
 
     // 热度计算的权重配置

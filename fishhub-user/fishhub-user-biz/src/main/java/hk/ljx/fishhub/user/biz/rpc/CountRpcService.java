@@ -2,14 +2,13 @@ package hk.ljx.fishhub.user.biz.rpc;
 
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.api.CountFeignApi;
-import hk.ljx.fishhub.count.dto.FindNoteCountByIdReqDTO;
-import hk.ljx.fishhub.count.dto.FindNoteCountByIdRspDTO;
-import hk.ljx.fishhub.count.dto.FindUserCountByIdReqDTO;
-import hk.ljx.fishhub.count.dto.FindUserCountByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
+import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
+
 
 @Component
 public class CountRpcService {
@@ -22,11 +21,11 @@ public class CountRpcService {
      * @param userId
      * @return
      */
-    public FindUserCountByIdRspDTO findUserCountById(Long userId) {
-        FindUserCountByIdReqDTO findUserCountByIdReqDTO = new FindUserCountByIdReqDTO();
-        findUserCountByIdReqDTO.setUserId(userId);
+    public FindUserCountsByIdRspDTO findUserCountById(Long userId) {
+        FindUserCountsByIdReqDTO findUserCountsByIdReqDTO = new FindUserCountsByIdReqDTO();
+        findUserCountsByIdReqDTO.setUserId(userId);
 
-        Response<FindUserCountByIdRspDTO> response = countFeignApi.findUserCount(findUserCountByIdReqDTO);
+        Response<FindUserCountsByIdRspDTO> response = countFeignApi.findUserCount(findUserCountsByIdReqDTO);
 
         if (Objects.isNull(response) || !response.isSuccess()) {
             return null;
@@ -36,4 +35,3 @@ public class CountRpcService {
     }
 
 }
-

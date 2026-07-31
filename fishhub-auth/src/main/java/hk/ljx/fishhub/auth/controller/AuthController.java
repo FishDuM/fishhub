@@ -1,16 +1,15 @@
 package hk.ljx.fishhub.auth.controller;
 
+import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.auth.model.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.auth.model.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.auth.service.AuthService;
-import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
-import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
 
 @RestController
 @Slf4j
@@ -36,4 +35,5 @@ public class AuthController {
     public Response<?> updatePassword(@Validated @RequestBody UpdatePasswordReqVO updatePasswordReqVO) {
         return authService.updatePassword(updatePasswordReqVO);
     }
+
 }

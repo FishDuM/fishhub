@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_child_comment_total" + MQConstants.TOPIC_COUNT_NOTE_COMMENT, // Group 组
         topic = MQConstants.TOPIC_COUNT_NOTE_COMMENT // 主题 Topic
@@ -122,4 +123,3 @@ public class CountNoteChildCommentConsumer implements RocketMQListener<String> {
         });
     }
 }
-

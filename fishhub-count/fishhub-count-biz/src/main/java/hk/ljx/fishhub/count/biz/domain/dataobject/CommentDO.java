@@ -45,4 +45,3 @@ public class CommentDO {
     private Long childCommentTotal;
 
 }
-

@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.user.relation.biz.consumer;
 
-import com.alibaba.nacos.shaded.com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.RateLimiter;
+import hk.ljx.framework.common.util.DateUtils;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FansDO;
@@ -11,8 +13,6 @@ import hk.ljx.fishhub.user.relation.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.user.relation.biz.model.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.UnfollowUserMqDTO;
-import hk.ljx.framework.common.util.DateUtils;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -34,29 +34,25 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.Objects;
 
+
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_",
-        topic = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW,
-        consumeMode = ConsumeMode.ORDERLY
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW, // Group 组
+        topic = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW, // 消费的主题 Topic
+        consumeMode = ConsumeMode.ORDERLY // 设置为顺序消费模式
 )
 @Slf4j
 public class FollowUnfollowConsumer implements RocketMQListener<Message> {
 
     @Resource
-    private TransactionTemplate transactionTemplate;
-
-    @Resource
     private FollowingDOMapper followingDOMapper;
-
     @Resource
     private FansDOMapper fansDOMapper;
-
+    @Resource
+    private TransactionTemplate transactionTemplate;
     @Resource
     private RateLimiter rateLimiter;
-
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
@@ -64,11 +60,14 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     public void onMessage(Message message) {
         // 流量削峰：通过获取令牌，如果没有令牌可用，将阻塞，直到获得
         rateLimiter.acquire();
+
         // 消息体
         String bodyJsonStr = new String(message.getBody());
         // 标签
         String tags = message.getTags();
+
         log.info("==> FollowUnfollowConsumer 消费了消息 {}, tags: {}", bodyJsonStr, tags);
+
         // 根据 MQ 标签，判断操作类型
         if (Objects.equals(tags, MQConstants.TAG_FOLLOW)) { // 关注
             handleFollowTagMessage(bodyJsonStr);
@@ -84,12 +83,16 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     private void handleFollowTagMessage(String bodyJsonStr) {
         // 将消息体 Json 字符串转为 DTO 对象
         FollowUserMqDTO followUserMqDTO = JsonUtils.parseObject(bodyJsonStr, FollowUserMqDTO.class);
+
         // 判空
         if (Objects.isNull(followUserMqDTO)) return;
+
         // 幂等性：通过联合唯一索引保证
+
         Long userId = followUserMqDTO.getUserId();
         Long followUserId = followUserMqDTO.getFollowUserId();
         LocalDateTime createTime = followUserMqDTO.getCreateTime();
+
         // 编程式提交事务
         boolean isSuccess = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             try {
@@ -116,7 +119,6 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             }
             return false;
         }));
-        log.info("## 数据库添加记录结果：{}", isSuccess);
 
         // 若数据库操作成功，更新 Redis 中被关注用户的 ZSet 粉丝列表
         if (isSuccess) {
@@ -124,19 +126,24 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             DefaultRedisScript<Long> script = new DefaultRedisScript<>();
             script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_check_and_update_fans_zset.lua")));
             script.setResultType(Long.class);
+
             // 时间戳
             long timestamp = DateUtils.localDateTime2Timestamp(createTime);
+
             // 构建被关注用户的粉丝列表 Redis Key
             String fansRedisKey = RedisKeyConstants.buildUserFansKey(followUserId);
             // 执行脚本
             redisTemplate.execute(script, Collections.singletonList(fansRedisKey), userId, timestamp);
 
             // 发送 MQ 通知计数服务：统计关注数
+            // 构建消息体 DTO
             CountFollowUnfollowMqDTO countFollowUnfollowMqDTO = CountFollowUnfollowMqDTO.builder()
                     .userId(userId)
                     .targetUserId(followUserId)
-                    .type(FollowUnfollowTypeEnum.FOLLOW.getCode()) // 关注
+                    .type(FollowUnfollowTypeEnum.FOLLOW.getCode())
                     .build();
+
+            // 发送 MQ
             sendMQ(countFollowUnfollowMqDTO);
         }
     }
@@ -151,6 +158,8 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
 
         // 判空
         if (Objects.isNull(unfollowUserMqDTO)) return;
+
+        // 幂等性：通过联合唯一索引保证
 
         Long userId = unfollowUserMqDTO.getUserId();
         Long unfollowUserId = unfollowUserMqDTO.getUnfollowUserId();
@@ -183,10 +192,11 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             redisTemplate.opsForZSet().remove(fansRedisKey, userId);
 
             // 发送 MQ 通知计数服务：统计关注数
+            // 构建消息体 DTO
             CountFollowUnfollowMqDTO countFollowUnfollowMqDTO = CountFollowUnfollowMqDTO.builder()
                     .userId(userId)
                     .targetUserId(unfollowUserId)
-                    .type(FollowUnfollowTypeEnum.UNFOLLOW.getCode()) // 取关
+                    .type(FollowUnfollowTypeEnum.UNFOLLOW.getCode())
                     .build();
 
             // 发送 MQ
@@ -196,10 +206,11 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
 
     /**
      * 发送 MQ 通知计数服务
+     *
      * @param countFollowUnfollowMqDTO
      */
     private void sendMQ(CountFollowUnfollowMqDTO countFollowUnfollowMqDTO) {
-        // 构建消息对象
+        // 构建消息对象，并将 DTO 转成 Json 字符串设置到消息体中
         org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(countFollowUnfollowMqDTO))
                 .build();
 

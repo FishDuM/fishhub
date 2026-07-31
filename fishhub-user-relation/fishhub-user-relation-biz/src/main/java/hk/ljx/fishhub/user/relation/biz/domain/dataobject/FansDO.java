@@ -19,4 +19,5 @@ public class FansDO {
     private Long fansUserId;
 
     private LocalDateTime createTime;
+
 }

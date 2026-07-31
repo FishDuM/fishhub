@@ -15,4 +15,3 @@ end
 
 -- 取消收藏笔记
 return redis.call('R.SETBIT', key, noteId, 0)
-

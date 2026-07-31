@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.note.biz.constant;
 
+
 public interface MQConstants {
 
     /**
@@ -13,19 +14,29 @@ public interface MQConstants {
     String TOPIC_DELAY_DELETE_NOTE_REDIS_CACHE = "DelayDeleteNoteRedisCacheTopic";
 
     /**
+     * Topic: 发布笔记事务消息
+     */
+    String TOPIC_PUBLISH_NOTE_TRANSACTION = "PublishNoteTransactionTopic";
+
+    /**
+     * Topic 主题：延迟双删 Redis 已发布笔记列表缓存
+     */
+    String TOPIC_DELAY_DELETE_PUBLISHED_NOTE_LIST_REDIS_CACHE = "DelayDeletePublishedNoteListRedisCacheTopic";
+
+    /**
      * Topic: 点赞、取消点赞共用一个
      */
     String TOPIC_LIKE_OR_UNLIKE = "LikeUnlikeTopic";
 
     /**
-     * 点赞标签
+     * Topic: 笔记操作（发布、删除）
      */
-    String TAG_LIKE = "Like";
+    String TOPIC_NOTE_OPERATE = "NoteOperateTopic";
 
     /**
-     * Tag 标签：取消点赞
+     * Topic: 收藏、取消收藏共用一个
      */
-    String TAG_UNLIKE = "Unlike";
+    String TOPIC_COLLECT_OR_UN_COLLECT = "CollectUnCollectTopic";
 
     /**
      * Topic: 计数 - 笔记点赞数
@@ -38,9 +49,14 @@ public interface MQConstants {
     String TOPIC_COUNT_NOTE_COLLECT = "CountNoteCollectTopic";
 
     /**
-     * Topic: 收藏、取消收藏共用一个
+     * Tag 标签：点赞
      */
-    String TOPIC_COLLECT_OR_UN_COLLECT = "CollectUnCollectTopic";
+    String TAG_LIKE = "Like";
+
+    /**
+     * Tag 标签：取消点赞
+     */
+    String TAG_UNLIKE = "Unlike";
 
     /**
      * Tag 标签：收藏
@@ -51,11 +67,6 @@ public interface MQConstants {
      * Tag 标签：取消收藏
      */
     String TAG_UN_COLLECT = "UnCollect";
-
-    /**
-     * Topic: 笔记操作（发布、删除）
-     */
-    String TOPIC_NOTE_OPERATE = "NoteOperateTopic";
 
     /**
      * Tag 标签：笔记发布

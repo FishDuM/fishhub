@@ -1,17 +1,21 @@
 package hk.ljx.fishhub.auth.sms;
 
-import com.aliyun.dypnsapi20170525.models.SendSmsVerifyCodeResponse;
+import com.aliyun.dysmsapi20170525.Client;
+import com.aliyun.dysmsapi20170525.models.SendSmsRequest;
+import com.aliyun.dysmsapi20170525.models.SendSmsResponse;
+import com.aliyun.teautil.models.RuntimeOptions;
 import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
 
 @Component
 @Slf4j
 public class AliyunSmsHelper {
 
     @Resource
-    private com.aliyun.dypnsapi20170525.Client client;
+    private Client client;
 
     /**
      * 发送短信
@@ -22,19 +26,18 @@ public class AliyunSmsHelper {
      * @return
      */
     public boolean sendMessage(String signName, String templateCode, String phone, String templateParam) {
-        com.aliyun.dypnsapi20170525.models.SendSmsVerifyCodeRequest sendSmsVerifyCodeRequest = new com.aliyun.dypnsapi20170525.models.SendSmsVerifyCodeRequest()
+        SendSmsRequest sendSmsRequest = new SendSmsRequest()
                 .setSignName(signName)
                 .setTemplateCode(templateCode)
-                .setPhoneNumber(phone)
+                .setPhoneNumbers(phone)
                 .setTemplateParam(templateParam);
-        
-        com.aliyun.teautil.models.RuntimeOptions runtime = new com.aliyun.teautil.models.RuntimeOptions();
+        RuntimeOptions runtime = new RuntimeOptions();
 
         try {
             log.info("==> 开始短信发送, phone: {}, signName: {}, templateCode: {}, templateParam: {}", phone, signName, templateCode, templateParam);
 
             // 发送短信
-            SendSmsVerifyCodeResponse response = client.sendSmsVerifyCodeWithOptions(sendSmsVerifyCodeRequest, runtime);
+            SendSmsResponse response = client.sendSmsWithOptions(sendSmsRequest, runtime);
 
             log.info("==> 短信发送成功, response: {}", JsonUtils.toJsonString(response));
             return true;

@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_COMMENT_LIKE_2_DB, // Group 组
         topic = MQConstants.TOPIC_COUNT_COMMENT_LIKE_2_DB // 主题 Topic
@@ -53,4 +54,3 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
     }
 
 }
-

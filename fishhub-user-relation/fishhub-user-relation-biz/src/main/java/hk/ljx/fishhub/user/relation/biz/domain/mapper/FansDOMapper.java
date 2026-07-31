@@ -8,21 +8,18 @@ import java.util.List;
 public interface FansDOMapper {
     int deleteByPrimaryKey(Long id);
 
+    int deleteByUserIdAndFansUserId(@Param("userId") Long userId,
+                                    @Param("fansUserId") Long fansUserId);
+
     int insert(FansDO record);
 
     int insertSelective(FansDO record);
 
     FansDO selectByPrimaryKey(Long id);
 
-    int updateByPrimaryKeySelective(FansDO record);
-
-    int updateByPrimaryKey(FansDO record);
-
-    int deleteByUserIdAndFansUserId(@Param("userId") Long userId,
-                                    @Param("fansUserId") Long fansUserId);
-
     /**
      * 查询记录总数
+     *
      * @param userId
      * @return
      */
@@ -45,4 +42,9 @@ public interface FansDOMapper {
      * @return
      */
     List<FansDO> select5000FansByUserId(Long userId);
+
+    int updateByPrimaryKeySelective(FansDO record);
+
+    int updateByPrimaryKey(FansDO record);
+
 }

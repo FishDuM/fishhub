@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.auth.service;
 
-import hk.ljx.fishhub.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
+
 
 public interface VerificationCodeService {
 
@@ -12,5 +13,4 @@ public interface VerificationCodeService {
      * @return
      */
     Response<?> send(SendVerificationCodeReqVO sendVerificationCodeReqVO);
-
 }

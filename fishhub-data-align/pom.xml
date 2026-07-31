@@ -1,26 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+
+    <!-- 指定父项目 -->
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
+    <!-- 指定打包方式 -->
+    <packaging>jar</packaging>
     <artifactId>fishhub-data-align</artifactId>
     <name>${project.artifactId}</name>
     <description>数据对齐服务</description>
-    <packaging>jar</packaging>
 
     <dependencies>
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-common</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-search-api</artifactId>
         </dependency>
 
+        <!-- Jackson 组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-common</artifactId>
+            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
         </dependency>
 
         <dependency>
@@ -81,22 +91,16 @@
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
 
-        <!-- XXL-JOB 分布式定时任务调度 -->
-        <dependency>
-            <groupId>com.xuxueli</groupId>
-            <artifactId>xxl-job-core</artifactId>
-        </dependency>
-
-        <!-- Jackson 组件 -->
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
-        </dependency>
-
         <!-- Rocket MQ -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- XXL-JOB 分布式定时任务调度 -->
+        <dependency>
+            <groupId>com.xuxueli</groupId>
+            <artifactId>xxl-job-core</artifactId>
         </dependency>
     </dependencies>
 
@@ -108,4 +112,5 @@
             </plugin>
         </plugins>
     </build>
+
 </project>

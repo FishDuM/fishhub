@@ -8,23 +8,20 @@ import java.util.List;
 public interface FollowingDOMapper {
     int deleteByPrimaryKey(Long id);
 
+    int deleteByUserIdAndFollowingUserId(@Param("userId") Long userId,
+                                         @Param("unfollowUserId") Long unfollowUserId);
+
     int insert(FollowingDO record);
 
     int insertSelective(FollowingDO record);
 
     FollowingDO selectByPrimaryKey(Long id);
 
-    int updateByPrimaryKeySelective(FollowingDO record);
-
-    int updateByPrimaryKey(FollowingDO record);
-
     List<FollowingDO> selectByUserId(Long userId);
-
-    int deleteByUserIdAndFollowingUserId(@Param("userId") Long userId,
-                                         @Param("unfollowUserId") Long unfollowUserId);
 
     /**
      * 查询记录总数
+     *
      * @param userId
      * @return
      */
@@ -47,5 +44,10 @@ public interface FollowingDOMapper {
      * @return
      */
     List<FollowingDO> selectAllByUserId(Long userId);
+
+
+    int updateByPrimaryKeySelective(FollowingDO record);
+
+    int updateByPrimaryKey(FollowingDO record);
 
 }

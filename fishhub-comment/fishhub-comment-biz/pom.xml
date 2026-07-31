@@ -5,7 +5,7 @@
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-comment</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <!-- 打包方式 -->

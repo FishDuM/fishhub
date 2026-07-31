@@ -3,6 +3,7 @@ package hk.ljx.fishhub.count.biz.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+
 @Getter
 @AllArgsConstructor
 public enum CommentLevelEnum {
@@ -15,4 +16,3 @@ public enum CommentLevelEnum {
     private final Integer code;
 
 }
-

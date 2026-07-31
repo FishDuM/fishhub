@@ -1,18 +1,18 @@
 package hk.ljx.fishhub.kv.api;
 
+import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.kv.constant.ApiConstants;
 import hk.ljx.fishhub.kv.dto.req.*;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
-import hk.ljx.framework.common.response.Response;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 
-import static hk.ljx.fishhub.kv.constant.ApiConstants.SERVICE_NAME;
 
-@FeignClient(name = SERVICE_NAME)
+@FeignClient(name = ApiConstants.SERVICE_NAME)
 public interface KeyValueFeignApi {
 
     String PREFIX = "/kv";

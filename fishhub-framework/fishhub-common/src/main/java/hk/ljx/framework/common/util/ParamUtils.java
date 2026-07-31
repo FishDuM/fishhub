@@ -2,11 +2,12 @@ package hk.ljx.framework.common.util;
 
 import java.util.regex.Pattern;
 
+
 public final class ParamUtils {
     private ParamUtils() {
     }
 
-    // 校验昵称
+    // ============================== 校验昵称 ==============================
     // 定义昵称长度范围
     private static final int NICK_NAME_MIN_LENGTH = 2;
     private static final int NICK_NAME_MAX_LENGTH = 24;
@@ -16,7 +17,7 @@ public final class ParamUtils {
 
     /**
      * 昵称校验
-     * 
+     *
      * @param nickname
      * @return
      */
@@ -30,8 +31,6 @@ public final class ParamUtils {
         Pattern pattern = Pattern.compile(NICK_NAME_REGEX);
         return !pattern.matcher(nickname).find();
     }
-
-    // 校验 fishhub 号
     // 定义 ID 长度范围
     private static final int ID_MIN_LENGTH = 6;
     private static final int ID_MAX_LENGTH = 15;
@@ -39,12 +38,7 @@ public final class ParamUtils {
     // 定义正则表达式
     private static final String ID_REGEX = "^[a-zA-Z0-9_]+$";
 
-    /**
-     * fishhub ID 校验
-     * 
-     * @param fishhubId
-     * @return
-     */
+    
     public static boolean checkFishhubId(String fishhubId) {
         // 检查长度
         if (fishhubId.length() < ID_MIN_LENGTH || fishhubId.length() > ID_MAX_LENGTH) {
@@ -57,7 +51,7 @@ public final class ParamUtils {
 
     /**
      * 字符串长度校验
-     * 
+     *
      * @param str
      * @param length
      * @return

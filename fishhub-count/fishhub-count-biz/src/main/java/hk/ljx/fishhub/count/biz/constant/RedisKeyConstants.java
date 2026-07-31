@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.count.biz.constant;
 
+
 public class RedisKeyConstants {
 
     /**

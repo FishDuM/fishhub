@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.kv.biz.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
+import com.google.common.collect.Lists;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.kv.biz.domain.dataobject.CommentContentDO;
 import hk.ljx.fishhub.kv.biz.domain.dataobject.CommentContentPrimaryKey;
@@ -13,10 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.cassandra.core.CassandraTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
 
 @Service
 @Slf4j
@@ -95,7 +96,7 @@ public class CommentContentServiceImpl implements CommentContentService {
                 .findByPrimaryKeyNoteIdAndPrimaryKeyYearMonthInAndPrimaryKeyContentIdIn(noteId, yearMonths, contentIds);
 
         // DO 转 DTO
-        List<FindCommentContentRspDTO> findCommentContentRspDTOS = new ArrayList<>();
+        List<FindCommentContentRspDTO> findCommentContentRspDTOS = Lists.newArrayList();
         if (CollUtil.isNotEmpty(commentContentDOS)) {
             findCommentContentRspDTOS = commentContentDOS.stream()
                     .map(commentContentDO -> FindCommentContentRspDTO.builder()

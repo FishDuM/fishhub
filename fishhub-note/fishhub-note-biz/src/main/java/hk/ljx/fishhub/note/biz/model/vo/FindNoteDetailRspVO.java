@@ -5,8 +5,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.util.List;
+
 
 @Data
 @AllArgsConstructor
@@ -28,8 +30,6 @@ public class FindNoteDetailRspVO {
 
     private String topicName;
 
-    private List<FindTopicRspVO> topics;
-
     private Long creatorId;
 
     private String creatorName;
@@ -42,16 +42,20 @@ public class FindNoteDetailRspVO {
      * 编辑时间
      */
     private LocalDateTime updateTime;
-    
+
     /**
      * 是否可见
      */
     private Integer visible;
 
-    private String likeTotal;
+    /**
+     * 当前登录用户是否点赞了
+     */
+    private Integer isLiked;
 
-    private String collectTotal;
-
-    private String commentTotal;
+    /**
+     * 当前登录用户是否收藏了
+     */
+    private Integer isCollected;
 
 }

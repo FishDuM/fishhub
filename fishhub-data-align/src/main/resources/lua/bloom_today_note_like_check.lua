@@ -1,4 +1,4 @@
--- LUA 脚本：自增量笔记点赞、取消点赞变更数据布隆过滤器
+-- LUA 脚本：日增量笔记点赞、取消点赞变更数据布隆过滤器
 
 local key = KEYS[1] -- 操作的 Redis Key
 local noteIdAndNoteCreatorId = ARGV[1] -- Redis Value

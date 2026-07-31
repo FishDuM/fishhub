@@ -34,4 +34,3 @@ public interface CommentDOMapper {
                                    @Param("commentId") Long commentId);
 
 }
-

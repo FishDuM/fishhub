@@ -5,7 +5,7 @@
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <!-- 多模块项目需要配置打包方式为 pom -->

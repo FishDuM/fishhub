@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.note.biz.service;
 
-import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.note.biz.model.vo.*;
+
 
 public interface NoteService {
 
@@ -82,8 +83,17 @@ public interface NoteService {
     Response<?> unCollectNote(UnCollectNoteReqVO unCollectNoteReqVO);
 
     /**
-     * 查询当前用户对笔记的点赞、收藏状态。
+     * 获取是否点赞、收藏数据
+     * @param findNoteIsLikedAndCollectedReqVO
+     * @return
      */
-    Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(
-            FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO);
+    Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO);
+
+    /**
+     * 用户主页 - 查询已发布的笔记列表
+     * @param findPublishedNoteListReqVO
+     * @return
+     */
+    Response<FindPublishedNoteListRspVO> findPublishedNoteList(FindPublishedNoteListReqVO findPublishedNoteListReqVO);
+
 }

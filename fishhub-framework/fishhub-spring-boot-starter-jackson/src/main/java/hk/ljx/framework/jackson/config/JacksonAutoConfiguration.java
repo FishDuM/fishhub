@@ -23,6 +23,7 @@ import java.time.LocalTime;
 import java.time.YearMonth;
 import java.util.TimeZone;
 
+
 @AutoConfiguration
 public class JacksonAutoConfiguration {
 
@@ -34,7 +35,6 @@ public class JacksonAutoConfiguration {
         // 忽略未知属性
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-        
         // 设置凡是为 null 的字段，返参中均不返回，请根据项目组约定是否开启
         // objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
@@ -57,9 +57,10 @@ public class JacksonAutoConfiguration {
 
         objectMapper.registerModule(javaTimeModule);
 
-        // 初始化 JsonUtils 工具类
+        // 初始化 JsonUtils 中的 ObjectMapper
         JsonUtils.init(objectMapper);
 
         return objectMapper;
     }
+
 }

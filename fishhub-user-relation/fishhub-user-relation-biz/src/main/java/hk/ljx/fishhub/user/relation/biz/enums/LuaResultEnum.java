@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.util.Objects;
 
+
 @Getter
 @AllArgsConstructor
 public enum LuaResultEnum {
@@ -24,6 +25,7 @@ public enum LuaResultEnum {
 
     /**
      * 根据类型 code 获取对应的枚举
+     *
      * @param code
      * @return
      */

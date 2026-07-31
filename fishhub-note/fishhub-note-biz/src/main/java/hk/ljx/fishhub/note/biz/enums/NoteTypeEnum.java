@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.util.Objects;
 
+
 @Getter
 @AllArgsConstructor
 public enum NoteTypeEnum {
@@ -17,6 +18,7 @@ public enum NoteTypeEnum {
 
     /**
      * 类型是否有效
+     *
      * @param code
      * @return
      */
@@ -31,6 +33,7 @@ public enum NoteTypeEnum {
 
     /**
      * 根据类型 code 获取对应的枚举
+     *
      * @param code
      * @return
      */

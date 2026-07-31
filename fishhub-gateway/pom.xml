@@ -1,17 +1,23 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <!-- 指定父项目 -->
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
     <artifactId>fishhub-gateway</artifactId>
     <name>${project.artifactId}</name>
-    <description>网关服务（路由转发、接口鉴权）</description>
+    <description>网关服务（负责路由转发、接口鉴权等功能）</description>
 
     <dependencies>
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-common</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-bootstrap</artifactId>
@@ -64,12 +70,6 @@
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
         </dependency>
-
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-common</artifactId>
-        </dependency>
-
     </dependencies>
 
     <build>

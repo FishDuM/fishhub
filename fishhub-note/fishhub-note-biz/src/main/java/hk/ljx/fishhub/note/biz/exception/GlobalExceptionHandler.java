@@ -1,8 +1,8 @@
 package hk.ljx.fishhub.note.biz.exception;
 
-import hk.ljx.fishhub.note.biz.enums.ResponseCodeEnum;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.note.biz.enums.ResponseCodeEnum;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindingResult;
@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.Optional;
+
 
 @ControllerAdvice
 @Slf4j

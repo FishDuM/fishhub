@@ -2,6 +2,7 @@ package hk.ljx.fishhub.distributed.id.generator.biz.core.snowflake;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Maps;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.PropertyFactory;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.snowflake.exception.CheckLastTimeException;
 import org.apache.commons.io.FileUtils;
@@ -9,7 +10,6 @@ import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.RetryUntilElapsed;
-import org.apache.curator.shaded.com.google.common.collect.Maps;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;

@@ -1,16 +1,18 @@
 package hk.ljx.fishhub.count.biz.service;
 
 import hk.ljx.framework.common.response.Response;
-import hk.ljx.fishhub.count.dto.FindNoteCountByIdReqDTO;
-import hk.ljx.fishhub.count.dto.FindNoteCountByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
+
+import java.util.List;
+
 
 public interface NoteCountService {
 
     /**
-     * 查询笔记计数数据
-     * @param findNoteCountByIdReqDTO
+     * 批量查询笔记计数
+     * @param findNoteCountsByIdsReqDTO
      * @return
      */
-    Response<FindNoteCountByIdRspDTO> findNoteCountData(FindNoteCountByIdReqDTO findNoteCountByIdReqDTO);
+    Response<List<FindNoteCountsByIdRspDTO>> findNotesCountData(FindNoteCountsByIdsReqDTO findNoteCountsByIdsReqDTO);
 }
-

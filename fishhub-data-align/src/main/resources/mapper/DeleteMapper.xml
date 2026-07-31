@@ -57,4 +57,5 @@
             #{noteId}
         </foreach>
     </delete>
+
 </mapper>

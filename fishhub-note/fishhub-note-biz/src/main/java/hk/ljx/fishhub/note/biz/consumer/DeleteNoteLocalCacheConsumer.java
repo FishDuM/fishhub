@@ -9,12 +9,13 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 
+
 @Component
 @Slf4j
-@RocketMQMessageListener(consumerGroup = "fishhub_group_", // Group
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_DELETE_NOTE_LOCAL_CACHE, // Group
         topic = MQConstants.TOPIC_DELETE_NOTE_LOCAL_CACHE, // 消费的主题 Topic
         messageModel = MessageModel.BROADCASTING) // 广播模式
-public class DeleteNoteLocalCacheConsumer implements RocketMQListener<String> {
+public class DeleteNoteLocalCacheConsumer implements RocketMQListener<String>  {
 
     @Resource
     private NoteService noteService;
@@ -23,7 +24,7 @@ public class DeleteNoteLocalCacheConsumer implements RocketMQListener<String> {
     public void onMessage(String body) {
         Long noteId = Long.valueOf(body);
         log.info("## 消费者消费成功, noteId: {}", noteId);
+
         noteService.deleteNoteLocalCache(noteId);
     }
-    
 }

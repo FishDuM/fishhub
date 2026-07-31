@@ -1,17 +1,19 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <!-- 指定父项目 -->
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-user</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
+
+    <!-- 打包方式 -->
+    <packaging>jar</packaging>
 
     <artifactId>fishhub-user-biz</artifactId>
     <name>${project.artifactId}</name>
     <description>用户服务业务模块</description>
-    <packaging>jar</packaging>
-
 
     <dependencies>
         <dependency>
@@ -21,7 +23,22 @@
 
         <dependency>
             <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-oss-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-user-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
             <artifactId>fishhub-count-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-distributed-id-generator-api</artifactId>
         </dependency>
 
         <!-- 业务接口日志组件 -->
@@ -40,11 +57,6 @@
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-oss-api</artifactId>
         </dependency>
 
         <dependency>
@@ -103,16 +115,36 @@
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+            <exclusions>
+                <exclusion>
+                    <artifactId>checker-qual</artifactId>
+                    <groupId>org.checkerframework</groupId>
+                </exclusion>
+                <exclusion>
+                    <artifactId>error_prone_annotations</artifactId>
+                    <groupId>com.google.errorprone</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
+        <!-- Rocket MQ -->
         <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-user-api</artifactId>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-spring-boot-starter</artifactId>
         </dependency>
+
+        <!-- Sentinel 流量治理 -->
         <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-distributed-id-generator-api</artifactId>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
         </dependency>
+
+        <!-- 以 Nacos 作为 Sentinel 的数据源 -->
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-datasource-nacos</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -121,7 +153,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-
             <!-- 代码生成器 -->
             <plugin>
                 <groupId>org.mybatis.generator</groupId>

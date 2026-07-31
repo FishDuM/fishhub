@@ -31,4 +31,3 @@ for i = 1, #membersScores, 2 do
 end
 
 return 0
-

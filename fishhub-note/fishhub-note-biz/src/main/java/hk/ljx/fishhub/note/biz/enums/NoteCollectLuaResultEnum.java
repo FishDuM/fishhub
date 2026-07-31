@@ -5,9 +5,7 @@ import lombok.Getter;
 
 import java.util.Objects;
 
-/**
- * 笔记收藏 Lua 脚本结果枚举
- */
+
 @Getter
 @AllArgsConstructor
 public enum NoteCollectLuaResultEnum {
@@ -23,6 +21,7 @@ public enum NoteCollectLuaResultEnum {
 
     /**
      * 根据类型 code 获取对应的枚举
+     *
      * @param code
      * @return
      */

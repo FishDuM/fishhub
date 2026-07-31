@@ -4,6 +4,7 @@ import hk.ljx.framework.biz.context.interceptor.FeignRequestInterceptor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
+
 @AutoConfiguration
 public class FeignContextAutoConfiguration {
 

@@ -5,9 +5,7 @@ import lombok.Getter;
 
 import java.util.Objects;
 
-/**
- * 笔记取消收藏 Lua 脚本结果枚举
- */
+
 @Getter
 @AllArgsConstructor
 public enum NoteUnCollectLuaResultEnum {

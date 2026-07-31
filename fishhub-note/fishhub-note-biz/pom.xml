@@ -1,38 +1,24 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <!-- 指定父项目 -->
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-note</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
-    <groupId>hk.ljx.fishhub.note.biz</groupId>
+    <!-- 打包方式 -->
+    <packaging>jar</packaging>
+
     <artifactId>fishhub-note-biz</artifactId>
     <name>${project.artifactId}</name>
     <description>笔记服务业务层</description>
-
-    <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-common</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
         </dependency>
 
         <dependency>
@@ -53,6 +39,24 @@
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-count-api</artifactId>
+        </dependency>
+
+        <!-- 业务接口日志组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
+        </dependency>
+
+        <!-- 上下文组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
+        </dependency>
+
+        <!-- Jackson 组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
         </dependency>
 
         <dependency>
@@ -119,10 +123,16 @@
             <artifactId>rocketmq-spring-boot-starter</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.github.phantomthief</groupId>
-            <artifactId>buffer-trigger</artifactId>
+            <groupId>org.apache.rocketmq</groupId>
+            <artifactId>rocketmq-client</artifactId>
+            <version>4.9.4</version>
         </dependency>
 
+        <!-- Mapstruct 属性映射 -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

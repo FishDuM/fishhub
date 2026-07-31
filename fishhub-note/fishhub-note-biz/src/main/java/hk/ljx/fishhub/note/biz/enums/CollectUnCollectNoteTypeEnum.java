@@ -3,9 +3,7 @@ package hk.ljx.fishhub.note.biz.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
-/**
- * 收藏、取消收藏笔记类型枚举
- */
+
 @Getter
 @AllArgsConstructor
 public enum CollectUnCollectNoteTypeEnum {

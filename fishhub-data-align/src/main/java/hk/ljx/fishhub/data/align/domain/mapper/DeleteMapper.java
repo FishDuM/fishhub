@@ -4,6 +4,9 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+/**
+ * 删除
+ */
 public interface DeleteMapper {
 
     /**

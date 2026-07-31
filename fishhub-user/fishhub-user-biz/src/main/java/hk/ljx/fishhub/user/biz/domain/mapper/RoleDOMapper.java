@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.user.biz.domain.mapper;
 
-
 import hk.ljx.fishhub.user.biz.domain.dataobject.RoleDO;
 
 import java.util.List;
@@ -14,13 +13,15 @@ public interface RoleDOMapper {
 
     RoleDO selectByPrimaryKey(Long id);
 
+    /**
+     * 查询所有被启用的角色
+     *
+     * @return
+     */
+    List<RoleDO> selectEnabledList();
+
     int updateByPrimaryKeySelective(RoleDO record);
 
     int updateByPrimaryKey(RoleDO record);
 
-    /**
-     * 查询所有启用的角色
-     * @return
-     */
-    List<RoleDO> selectEnabledList();
 }

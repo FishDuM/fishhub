@@ -23,4 +23,5 @@ public class RolePermissionDO {
     private LocalDateTime updateTime;
 
     private Boolean isDeleted;
+
 }

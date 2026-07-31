@@ -1,11 +1,11 @@
 package hk.ljx.fishhub.kv.biz.controller;
 
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.kv.biz.service.NoteContentService;
 import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
-import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 
 @RestController
 @RequestMapping("/kv")

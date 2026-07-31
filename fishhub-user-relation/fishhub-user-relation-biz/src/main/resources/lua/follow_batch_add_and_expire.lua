@@ -1,7 +1,7 @@
 -- 操作的 Key
 local key = KEYS[1]
 
--- 准备批量添加数据的参数
+-- 准备批量添加数据的参数表
 local zaddArgs = {}
 
 -- 遍历 ARGV 参数，将分数和值按顺序插入到 zaddArgs 变量中

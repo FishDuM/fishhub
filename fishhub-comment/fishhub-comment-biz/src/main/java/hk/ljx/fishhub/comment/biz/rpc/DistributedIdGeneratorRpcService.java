@@ -4,6 +4,7 @@ import hk.ljx.fishhub.distributed.id.generator.api.DistributedIdGeneratorFeignAp
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
+
 @Component
 public class DistributedIdGeneratorRpcService {
 

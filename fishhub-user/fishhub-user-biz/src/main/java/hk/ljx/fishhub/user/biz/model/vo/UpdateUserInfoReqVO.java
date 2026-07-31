@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.user.biz.model.vo;
 
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -8,11 +9,15 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
 public class UpdateUserInfoReqVO {
+
+    @NotNull(message = "用户 ID 不能为空")
+    private Long userId;
 
     /**
      * 头像
@@ -24,9 +29,7 @@ public class UpdateUserInfoReqVO {
      */
     private String nickname;
 
-    /**
-     * fishhub ID
-     */
+    
     private String fishhubId;
 
     /**

@@ -6,9 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 取消收藏笔记请求参数
- */
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

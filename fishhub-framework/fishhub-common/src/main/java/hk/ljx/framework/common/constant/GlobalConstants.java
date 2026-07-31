@@ -1,5 +1,6 @@
 package hk.ljx.framework.common.constant;
 
+
 public interface GlobalConstants {
 
     /**

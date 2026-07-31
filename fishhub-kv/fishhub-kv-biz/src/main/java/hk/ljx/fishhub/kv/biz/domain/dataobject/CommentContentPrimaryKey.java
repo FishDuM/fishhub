@@ -10,6 +10,7 @@ import org.springframework.data.cassandra.core.mapping.PrimaryKeyColumn;
 
 import java.util.UUID;
 
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

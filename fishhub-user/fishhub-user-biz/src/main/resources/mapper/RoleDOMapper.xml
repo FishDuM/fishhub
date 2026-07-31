@@ -23,7 +23,9 @@
   </select>
 
   <select id="selectEnabledList" resultMap="BaseResultMap">
-    select id, role_key, role_name from t_role where status = 0 and is_deleted = 0
+    select id, role_key, role_name
+    from t_role
+    where status = 0 and is_deleted = 0
   </select>
 
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">

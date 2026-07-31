@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.user.biz.controller;
 
-import hk.ljx.fishhub.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
@@ -8,9 +9,7 @@ import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
-import hk.ljx.framework.common.response.Response;
 import jakarta.annotation.Resource;
-import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -21,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+
 @RestController
 @RequestMapping("/user")
 @Slf4j
@@ -30,7 +30,8 @@ public class UserController {
     private UserService userService;
 
     /**
-     * 更新用户信息
+     * 用户信息修改
+     *
      * @param updateUserInfoReqVO
      * @return
      */
@@ -42,22 +43,17 @@ public class UserController {
     /**
      * 获取用户主页信息
      *
-     * @param findUserProfileReqVO 查询条件
-     * @return 用户主页信息
+     * @return
      */
-    @PostMapping("/profile")
+    @PostMapping(value = "/profile")
     public Response<FindUserProfileRspVO> findUserProfile(@Validated @RequestBody FindUserProfileReqVO findUserProfileReqVO) {
         return userService.findUserProfile(findUserProfileReqVO);
     }
 
-    /**
-     * 用户注册
-     * @param registerUserReqDTO
-     * @return
-     */
+    // ===================================== 对其他服务提供的接口 =====================================
     @PostMapping("/register")
     @ApiOperationLog(description = "用户注册")
-    public Response<Long> register(@Valid @RequestBody RegisterUserReqDTO registerUserReqDTO) {
+    public Response<Long> register(@Validated @RequestBody RegisterUserReqDTO registerUserReqDTO) {
         return userService.register(registerUserReqDTO);
     }
 

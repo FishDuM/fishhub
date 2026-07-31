@@ -1,29 +1,21 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <!-- 指定父项目 -->
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-count</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
+
+    <!-- 打包方式 -->
+    <packaging>jar</packaging>
 
     <artifactId>fishhub-count-biz</artifactId>
     <name>${project.artifactId}</name>
     <description>计数服务业务模块</description>
 
-    <packaging>jar</packaging>
-
     <dependencies>
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-count-api</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
-        </dependency>
-
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-common</artifactId>
@@ -31,12 +23,25 @@
 
         <dependency>
             <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
+            <artifactId>fishhub-count-api</artifactId>
         </dependency>
 
+        <!-- 业务接口日志组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
+        </dependency>
+
+        <!-- 上下文组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
+        </dependency>
+
+        <!-- Jackson 组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
         </dependency>
 
         <dependency>
@@ -97,16 +102,22 @@
             <artifactId>rocketmq-spring-boot-starter</artifactId>
         </dependency>
 
-        <!-- Hutool 工具类 -->
-        <dependency>
-            <groupId>cn.hutool</groupId>
-            <artifactId>hutool-all</artifactId>
-        </dependency>
-
         <!-- 快手 Buffer Trigger -->
         <dependency>
             <groupId>com.github.phantomthief</groupId>
             <artifactId>buffer-trigger</artifactId>
+        </dependency>
+
+        <!-- Sentinel 流量治理 -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+        </dependency>
+
+        <!-- 以 Nacos 作为 Sentinel 的数据源 -->
+        <dependency>
+            <groupId>com.alibaba.csp</groupId>
+            <artifactId>sentinel-datasource-nacos</artifactId>
         </dependency>
     </dependencies>
 
@@ -116,6 +127,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- 代码生成器 -->
             <plugin>
                 <groupId>org.mybatis.generator</groupId>
                 <artifactId>mybatis-generator-maven-plugin</artifactId>

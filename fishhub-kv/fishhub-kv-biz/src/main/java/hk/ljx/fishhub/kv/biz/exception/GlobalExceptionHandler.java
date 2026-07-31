@@ -1,8 +1,8 @@
 package hk.ljx.fishhub.kv.biz.exception;
 
-import hk.ljx.fishhub.kv.biz.enums.ResponseCodeEnum;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.kv.biz.enums.ResponseCodeEnum;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.BindingResult;
@@ -13,16 +13,16 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.Optional;
 
+
 @ControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
     /**
      * 捕获自定义业务异常
-     *
      * @return
      */
-    @ExceptionHandler({BizException.class})
+    @ExceptionHandler({ BizException.class })
     @ResponseBody
     public Response<Object> handleBizException(HttpServletRequest request, BizException e) {
         log.warn("{} request fail, errorCode: {}, errorMessage: {}", request.getRequestURI(), e.getErrorCode(), e.getErrorMessage());
@@ -31,10 +31,9 @@ public class GlobalExceptionHandler {
 
     /**
      * 捕获参数校验异常
-     *
      * @return
      */
-    @ExceptionHandler({MethodArgumentNotValidException.class})
+    @ExceptionHandler({ MethodArgumentNotValidException.class })
     @ResponseBody
     public Response<Object> handleMethodArgumentNotValidException(HttpServletRequest request, MethodArgumentNotValidException e) {
         // 参数错误异常码
@@ -68,10 +67,9 @@ public class GlobalExceptionHandler {
 
     /**
      * 捕获 guava 参数校验异常
-     *
      * @return
      */
-    @ExceptionHandler({IllegalArgumentException.class})
+    @ExceptionHandler({ IllegalArgumentException.class })
     @ResponseBody
     public Response<Object> handleIllegalArgumentException(HttpServletRequest request, IllegalArgumentException e) {
         // 参数错误异常码
@@ -87,12 +85,11 @@ public class GlobalExceptionHandler {
 
     /**
      * 其他类型异常
-     *
      * @param request
      * @param e
      * @return
      */
-    @ExceptionHandler({Exception.class})
+    @ExceptionHandler({ Exception.class })
     @ResponseBody
     public Response<Object> handleOtherException(HttpServletRequest request, Exception e) {
         log.error("{} request error, ", request.getRequestURI(), e);

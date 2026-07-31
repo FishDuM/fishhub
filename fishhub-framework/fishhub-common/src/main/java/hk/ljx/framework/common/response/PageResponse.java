@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.util.List;
 
+
 @Data
 public class PageResponse<T> extends Response<List<T>> {
 
@@ -18,8 +19,10 @@ public class PageResponse<T> extends Response<List<T>> {
         pageResponse.setData(data);
         pageResponse.setPageNo(pageNo);
         pageResponse.setTotalCount(totalCount);
+        // 每页展示的数据量
         long pageSize = 10L;
         pageResponse.setPageSize(pageSize);
+        // 计算总页数
         long totalPage = (totalCount + pageSize - 1) / pageSize;
         pageResponse.setTotalPage(totalPage);
         return pageResponse;
@@ -32,6 +35,7 @@ public class PageResponse<T> extends Response<List<T>> {
         pageResponse.setPageNo(pageNo);
         pageResponse.setTotalCount(totalCount);
         pageResponse.setPageSize(pageSize);
+        // 计算总页数
         long totalPage = pageSize == 0 ? 0 : (totalCount + pageSize - 1) / pageSize;
         pageResponse.setTotalPage(totalPage);
         return pageResponse;
@@ -52,6 +56,7 @@ public class PageResponse<T> extends Response<List<T>> {
      * @return
      */
     public static long getOffset(long pageNo, long pageSize) {
+        // 如果页码小于 1，默认返回第一页的 offset
         if (pageNo < 1) {
             pageNo = 1;
         }

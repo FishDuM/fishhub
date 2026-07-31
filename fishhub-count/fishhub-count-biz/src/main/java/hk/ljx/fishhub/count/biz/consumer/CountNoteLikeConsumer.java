@@ -2,11 +2,13 @@ package hk.ljx.fishhub.count.biz.consumer;
 
 import com.github.phantomthief.collection.BufferTrigger;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.biz.enums.LikeUnlikeNoteTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.AggregationCountLikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.count.biz.model.dto.CountLikeUnlikeNoteMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -22,11 +24,10 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
-/**
- * 笔记点赞数消费者
- */
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_NOTE_LIKE, // Group 组
         topic = MQConstants.TOPIC_COUNT_NOTE_LIKE // 主题 Topic
@@ -36,15 +37,14 @@ public class CountNoteLikeConsumer implements RocketMQListener<String> {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
     private BufferTrigger<String> bufferTrigger = BufferTrigger.<String>batchBlocking()
-            .bufferSize(50000)
-            .batchSize(1000)
-            .linger(Duration.ofSeconds(1))
-            .setConsumerEx(this::consumeMessage)
+            .bufferSize(50000) // 缓存队列的最大容量
+            .batchSize(1000)   // 一批次最多聚合 1000 条
+            .linger(Duration.ofSeconds(1)) // 多久聚合一次
+            .setConsumerEx(this::consumeMessage) // 设置消费者方法
             .build();
 
     @Override
@@ -56,6 +56,7 @@ public class CountNoteLikeConsumer implements RocketMQListener<String> {
     private void consumeMessage(List<String> bodys) {
         log.info("==> 【笔记点赞数】聚合消息, size: {}", bodys.size());
         log.info("==> 【笔记点赞数】聚合消息, {}", JsonUtils.toJsonString(bodys));
+
         // List<String> 转 List<CountLikeUnlikeNoteMqDTO>
         List<CountLikeUnlikeNoteMqDTO> countLikeUnlikeNoteMqDTOS = bodys.stream()
                 .map(body -> JsonUtils.parseObject(body, CountLikeUnlikeNoteMqDTO.class)).toList();
@@ -79,31 +80,46 @@ public class CountNoteLikeConsumer implements RocketMQListener<String> {
             for (CountLikeUnlikeNoteMqDTO countLikeUnlikeNoteMqDTO : list) {
                 // 设置笔记发布者用户 ID
                 creatorId = countLikeUnlikeNoteMqDTO.getNoteCreatorId();
-                // 省略...
-            }
+                // 获取操作类型
+                Integer type = countLikeUnlikeNoteMqDTO.getType();
 
+                // 根据操作类型，获取对应枚举
+                LikeUnlikeNoteTypeEnum likeUnlikeNoteTypeEnum = LikeUnlikeNoteTypeEnum.valueOf(type);
+
+                // 若枚举为空，跳到下一次循环
+                if (Objects.isNull(likeUnlikeNoteTypeEnum)) continue;
+
+                switch (likeUnlikeNoteTypeEnum) {
+                    case LIKE -> finalCount += 1; // 如果为点赞操作，点赞数 +1
+                    case UNLIKE -> finalCount -= 1; // 如果为取消点赞操作，点赞数 -1
+                }
+            }
             // 将分组后统计出的最终计数，存入 countList 中
             countList.add(AggregationCountLikeUnlikeNoteMqDTO.builder()
-                    .noteId(noteId)
-                    .creatorId(creatorId)
-                    .count(finalCount)
-                    .build());
+                            .noteId(noteId)
+                            .creatorId(creatorId)
+                            .count(finalCount)
+                            .build());
         }
 
         log.info("## 【笔记点赞数】聚合后的计数数据: {}", JsonUtils.toJsonString(countList));
 
         // 更新 Redis
         countList.forEach(item -> {
+            // 笔记发布者 ID
             Long creatorId = item.getCreatorId();
+            // 笔记 ID
             Long noteId = item.getNoteId();
             // 聚合后的计数
             Integer count = item.getCount();
 
             // 笔记维度计数 Redis Key
             String countNoteRedisKey = RedisKeyConstants.buildCountNoteKey(noteId);
+            // 判断 Redis 中 Hash 是否存在
             boolean isCountNoteExisted = redisTemplate.hasKey(countNoteRedisKey);
 
             // 若存在才会更新
+            // (因为缓存设有过期时间，考虑到过期后，缓存会被删除，这里需要判断一下，存在才会去更新，而初始化工作放在查询计数来做)
             if (isCountNoteExisted) {
                 // 对目标用户 Hash 中的点赞数字段进行计数操作
                 redisTemplate.opsForHash().increment(countNoteRedisKey, RedisKeyConstants.FIELD_LIKE_TOTAL, count);

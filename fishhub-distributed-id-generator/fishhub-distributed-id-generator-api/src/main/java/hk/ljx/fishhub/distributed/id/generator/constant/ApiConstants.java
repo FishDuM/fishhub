@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.distributed.id.generator.constant;
 
+
 public interface ApiConstants {
 
     /**

@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.util.Objects;
 
+
 @Getter
 @AllArgsConstructor
 public enum CommentLevelEnum {

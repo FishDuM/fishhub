@@ -6,9 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/**
- * 更新笔记可见范围为仅自己可见的请求参数
- */
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

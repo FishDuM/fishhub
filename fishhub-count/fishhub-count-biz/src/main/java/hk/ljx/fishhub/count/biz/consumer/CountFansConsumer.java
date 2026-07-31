@@ -2,13 +2,14 @@ package hk.ljx.fishhub.count.biz.consumer;
 
 import com.github.phantomthief.collection.BufferTrigger;
 import com.google.common.collect.Maps;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.annotations.Case;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -25,19 +26,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-/**
- * 计数 - 粉丝数
- */
+
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FANS,
-        topic = MQConstants.TOPIC_COUNT_FANS
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FANS, // Group 组
+        topic = MQConstants.TOPIC_COUNT_FANS // 主题 Topic
         )
 @Slf4j
 public class CountFansConsumer implements RocketMQListener<String> {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
@@ -45,7 +43,7 @@ public class CountFansConsumer implements RocketMQListener<String> {
             .bufferSize(50000) // 缓存队列的最大容量
             .batchSize(1000)   // 一批次最多聚合 1000 条
             .linger(Duration.ofSeconds(1)) // 多久聚合一次
-            .setConsumerEx(this::consumeMessage)
+            .setConsumerEx(this::consumeMessage) // 设置消费者方法
             .build();
 
     @Override
@@ -58,6 +56,7 @@ public class CountFansConsumer implements RocketMQListener<String> {
         log.info("==> 聚合消息, size: {}", bodys.size());
         log.info("==> 聚合消息, {}", JsonUtils.toJsonString(bodys));
 
+        // List<String> 转 List<CountFollowUnfollowMqDTO>
         List<CountFollowUnfollowMqDTO> countFollowUnfollowMqDTOS = bodys.stream()
                 .map(body -> JsonUtils.parseObject(body, CountFollowUnfollowMqDTO.class)).toList();
 
@@ -74,8 +73,13 @@ public class CountFansConsumer implements RocketMQListener<String> {
             // 最终的计数值，默认为 0
             int finalCount = 0;
             for (CountFollowUnfollowMqDTO countFollowUnfollowMqDTO : list) {
+                // 获取操作类型
                 Integer type = countFollowUnfollowMqDTO.getType();
+
+                // 根据操作类型，获取对应枚举
                 FollowUnfollowTypeEnum followUnfollowTypeEnum = FollowUnfollowTypeEnum.valueOf(type);
+
+                // 若枚举为空，跳到下一次循环
                 if (Objects.isNull(followUnfollowTypeEnum)) continue;
 
                 switch (followUnfollowTypeEnum) {
@@ -91,10 +95,13 @@ public class CountFansConsumer implements RocketMQListener<String> {
 
         // 更新 Redis
         countMap.forEach((k, v) -> {
+            // Redis Key
             String redisKey = RedisKeyConstants.buildCountUserKey(k);
+            // 判断 Redis 中 Hash 是否存在
             boolean isExisted = redisTemplate.hasKey(redisKey);
 
             // 若存在才会更新
+            // (因为缓存设有过期时间，考虑到过期后，缓存会被删除，这里需要判断一下，存在才会去更新，而初始化工作放在查询计数来做)
             if (isExisted) {
                 // 对目标用户 Hash 中的粉丝数字段进行计数操作
                 redisTemplate.opsForHash().increment(redisKey, RedisKeyConstants.FIELD_FANS_TOTAL, v);
@@ -106,7 +113,7 @@ public class CountFansConsumer implements RocketMQListener<String> {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(countMap))
                 .build();
 
-        // 异步发送 MQ 消息，提升接口响应速度
+        // 异步发送 MQ 消息
         rocketMQTemplate.asyncSend(MQConstants.TOPIC_COUNT_FANS_2_DB, message, new SendCallback() {
             @Override
             public void onSuccess(SendResult sendResult) {

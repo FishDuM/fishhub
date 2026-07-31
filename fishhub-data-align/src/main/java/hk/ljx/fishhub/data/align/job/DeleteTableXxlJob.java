@@ -1,17 +1,20 @@
 package hk.ljx.fishhub.data.align.job;
 
-import com.xxl.job.core.context.XxlJobHelper;
-import com.xxl.job.core.handler.annotation.XxlJob;
 import hk.ljx.fishhub.data.align.constant.TableConstants;
 import hk.ljx.fishhub.data.align.domain.mapper.DeleteTableMapper;
+import com.xxl.job.core.context.XxlJobHelper;
+import com.xxl.job.core.handler.annotation.XxlJob;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
+
 @Component
+@RefreshScope
 public class DeleteTableXxlJob {
 
     /**
@@ -23,12 +26,18 @@ public class DeleteTableXxlJob {
     @Resource
     private DeleteTableMapper deleteTableMapper;
 
+    /**
+     * 1、简单任务示例（Bean模式）
+     */
     @XxlJob("deleteTableJobHandler")
     public void deleteTableJobHandler() throws Exception {
         XxlJobHelper.log("## 开始删除最近一个月的日增量临时表");
         // 今日
         LocalDate today = LocalDate.now();
+
+        // 日期格式
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+
         LocalDate startDate = today;
         // 从昨天开始往前推一个月
         LocalDate endDate = today.minusMonths(1);
@@ -57,5 +66,4 @@ public class DeleteTableXxlJob {
         }
         XxlJobHelper.log("## 结束删除最近一个月的日增量临时表");
     }
-
 }

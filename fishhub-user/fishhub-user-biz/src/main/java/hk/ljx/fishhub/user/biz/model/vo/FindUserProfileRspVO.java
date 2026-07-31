@@ -4,9 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDate;
 
 @Data
 @AllArgsConstructor
@@ -29,9 +27,7 @@ public class FindUserProfileRspVO {
      */
     private String nickname;
 
-    /**
-     * 飞鱼社区 ID
-     */
+    
     private String fishhubId;
 
     /**
@@ -45,11 +41,6 @@ public class FindUserProfileRspVO {
     private Integer age;
 
     /**
-     * 生日
-     */
-    private LocalDate birthday;
-
-    /**
      * 个人介绍
      */
     private String introduction;
@@ -57,15 +48,31 @@ public class FindUserProfileRspVO {
     /**
      * 关注数
      */
-    private String followingTotal = "0";
+    private String followingTotal;
 
     /**
      * 粉丝数
      */
-    private String fansTotal = "0";
+    private String fansTotal;
 
     /**
      * 点赞与收藏总数
      */
-    private String likeAndCollectTotal = "0";
+    private String likeAndCollectTotal;
+
+    /**
+     * 当前发布笔记数
+     */
+    private String noteTotal;
+
+    /**
+     * 当前获得点赞数
+     */
+    private String likeTotal;
+
+    /**
+     * 当前获得的收藏数
+     */
+    private String collectTotal;
+
 }

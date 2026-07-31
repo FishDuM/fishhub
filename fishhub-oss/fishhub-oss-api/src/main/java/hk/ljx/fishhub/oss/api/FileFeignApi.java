@@ -1,21 +1,23 @@
 package hk.ljx.fishhub.oss.api;
 
-import hk.ljx.fishhub.oss.config.FeignFormConfig;
-import hk.ljx.fishhub.oss.constant.ApiConstant;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.oss.config.FeignFormConfig;
+import hk.ljx.fishhub.oss.constant.ApiConstants;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.multipart.MultipartFile;
 
-@FeignClient(name = ApiConstant.SERVICE_NAME, configuration = FeignFormConfig.class)
+
+@FeignClient(name = ApiConstants.SERVICE_NAME, configuration = FeignFormConfig.class)
 public interface FileFeignApi {
 
-    String PREFIX = "file";
+    String PREFIX = "/file";
 
     /**
      * 文件上传
+     *
      * @param file
      * @return
      */

@@ -18,4 +18,3 @@ end
 -- 未被收藏，添加收藏数据
 redis.call('R.SETBIT', key, noteId, 1)
 return 0
-

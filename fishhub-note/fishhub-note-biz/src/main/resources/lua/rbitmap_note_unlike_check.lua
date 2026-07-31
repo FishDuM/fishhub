@@ -15,4 +15,3 @@ end
 
 -- 取消点赞，设置 Value 值为 0
 return redis.call('R.SETBIT', key, noteId, 0)
-

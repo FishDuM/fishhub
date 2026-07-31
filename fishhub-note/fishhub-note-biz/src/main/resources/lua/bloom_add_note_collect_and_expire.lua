@@ -8,4 +8,3 @@ redis.call("BF.ADD", key, noteId)
 -- 设置过期时间
 redis.call("EXPIRE", key, expireSeconds)
 return 0
-

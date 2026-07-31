@@ -7,6 +7,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
+
 @Configuration
 public class ThreadPoolConfig {
 
@@ -24,7 +25,7 @@ public class ThreadPoolConfig {
         // 线程名前缀
         executor.setThreadNamePrefix("AuthExecutor-");
 
-        // 拒绝策略：由调用线程处理
+        // 拒绝策略：由调用线程处理（一般为主线程）
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
 
         // 等待所有任务结束后再关闭线程池

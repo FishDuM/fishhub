@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.util.Objects;
 
+
 @Getter
 @AllArgsConstructor
 public enum LikeUnlikeCommentTypeEnum {
@@ -25,4 +26,3 @@ public enum LikeUnlikeCommentTypeEnum {
         return null;
     }
 }
-

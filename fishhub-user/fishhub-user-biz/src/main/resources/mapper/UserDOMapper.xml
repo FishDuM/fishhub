@@ -18,8 +18,8 @@
     <result column="is_deleted" jdbcType="BIT" property="isDeleted" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, fishhub_id, `password`, nickname, avatar, birthday, background_img, phone, sex, 
-    `status`, introduction, create_time, update_time, is_deleted
+    id, fishhub_id, `password`, nickname, avatar, birthday, background_img, phone, 
+    sex, `status`, introduction, create_time, update_time, is_deleted
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
@@ -41,7 +41,7 @@
     </foreach>
   </select>
 
-    <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_user
     where id = #{id,jdbcType=BIGINT}
   </delete>

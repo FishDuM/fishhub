@@ -1,10 +1,11 @@
 package hk.ljx.fishhub.data.align.rpc;
 
-import hk.ljx.fishhub.search.api.SearchFeignApi;
-import hk.ljx.fishhub.search.dto.req.RebuildNoteDocumentReqDTO;
-import hk.ljx.fishhub.search.dto.req.RebuildUserDocumentReqDTO;
+import hk.ljx.fishhub.api.SearchFeignApi;
+import hk.ljx.fishhub.dto.RebuildNoteDocumentReqDTO;
+import hk.ljx.fishhub.dto.RebuildUserDocumentReqDTO;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
+
 
 
 @Component

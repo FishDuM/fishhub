@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -16,5 +17,5 @@ public class FindFollowingListReqVO {
     private Long userId;
 
     @NotNull(message = "页码不能为空")
-    private Integer pageNo = 1;
+    private Integer pageNo = 1; // 默认值为第一页
 }

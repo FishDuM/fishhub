@@ -1,18 +1,22 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <!-- 指定父项目 -->
     <parent>
         <groupId>hk.ljx</groupId>
         <artifactId>fishhub-framework</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>${revision}</version>
     </parent>
 
-    <artifactId>fishhub-common</artifactId>
+    <!-- 指定打包方式 -->
     <packaging>jar</packaging>
+
+    <artifactId>fishhub-common</artifactId>
     <name>${project.artifactId}</name>
-    <description>平台通用模块，如一些通用枚举、工具类等</description>
+    <description>平台通用模块，如一些通用枚举、工具类等等</description>
 
     <dependencies>
+        <!-- 避免编写那些冗余的 Java 样板式代码，如 get、set 方法等 -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -23,9 +27,16 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
+        </dependency>
+
+        <!-- 解决 LocalDateTime 的序列化问题 -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
         <!-- 入参校验 -->
@@ -38,15 +49,10 @@
             <artifactId>hibernate-validator</artifactId>
         </dependency>
 
-        <!-- 解决 LocalDateTime 的序列化问题 -->
+        <!-- 相关工具类 -->
         <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
         </dependency>
 
         <dependency>
@@ -54,5 +60,9 @@
             <artifactId>hutool-all</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
     </dependencies>
 </project>

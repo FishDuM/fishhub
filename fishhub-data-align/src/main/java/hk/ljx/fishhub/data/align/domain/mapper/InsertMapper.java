@@ -42,5 +42,4 @@ public interface InsertMapper {
      */
     void insert2DataAlignUserFansCountTempTable(@Param("tableNameSuffix") String tableNameSuffix, @Param("userId") Long userId);
 
-
 }

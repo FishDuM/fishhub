@@ -234,4 +234,3 @@
     where id = #{commentId}
   </update>
 </mapper>
-

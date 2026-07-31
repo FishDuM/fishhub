@@ -1,15 +1,18 @@
 package hk.ljx.fishhub.kv.biz.service;
 
+
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
-import hk.ljx.framework.common.response.Response;
+
 
 public interface NoteContentService {
 
     /**
      * 添加笔记内容
+     *
      * @param addNoteContentReqDTO
      * @return
      */
@@ -17,10 +20,12 @@ public interface NoteContentService {
 
     /**
      * 查询笔记内容
+     *
      * @param findNoteContentReqDTO
      * @return
      */
     Response<FindNoteContentRspDTO> findNoteContent(FindNoteContentReqDTO findNoteContentReqDTO);
+
 
     /**
      * 删除笔记内容
@@ -29,4 +34,5 @@ public interface NoteContentService {
      * @return
      */
     Response<?> deleteNoteContent(DeleteNoteContentReqDTO deleteNoteContentReqDTO);
+
 }

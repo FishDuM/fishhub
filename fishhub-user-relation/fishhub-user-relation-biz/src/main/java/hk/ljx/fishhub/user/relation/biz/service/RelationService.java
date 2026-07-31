@@ -1,8 +1,10 @@
 package hk.ljx.fishhub.user.relation.biz.service;
 
-import hk.ljx.fishhub.user.relation.biz.model.vo.*;
 import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.user.relation.biz.model.vo.*;
+
+
 
 public interface RelationService {
 
@@ -28,10 +30,9 @@ public interface RelationService {
     PageResponse<FindFollowingUserRspVO> findFollowingList(FindFollowingListReqVO findFollowingListReqVO);
 
     /**
-     * 查询粉丝列表
+     * 查询关注列表
      * @param findFansListReqVO
      * @return
      */
     PageResponse<FindFansUserRspVO> findFansList(FindFansListReqVO findFansListReqVO);
-
 }

@@ -1,11 +1,11 @@
 package hk.ljx.fishhub.note.biz.consumer;
 
-import com.alibaba.nacos.shaded.com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.RateLimiter;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COLLECT_OR_UN_COLLECT, // Group 组
         topic = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT, // 消费的主题 Topic
@@ -31,7 +32,6 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
 
     @Resource
     private NoteCollectionDOMapper noteCollectionDOMapper;
-
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
@@ -47,6 +47,7 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
 
         // 消息体
         String bodyJsonStr = new String(message.getBody());
+        // 标签
         String tags = message.getTags();
 
         log.info("==> CollectUnCollectNoteConsumer 消费了消息 {}, tags: {}", bodyJsonStr, tags);
@@ -64,12 +65,18 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
      * @param bodyJsonStr
      */
     private void handleCollectNoteTagMessage(String bodyJsonStr) {
+        // 消息体 JSON 字符串转 DTO
         CollectUnCollectNoteMqDTO collectUnCollectNoteMqDTO = JsonUtils.parseObject(bodyJsonStr, CollectUnCollectNoteMqDTO.class);
+
         if (Objects.isNull(collectUnCollectNoteMqDTO)) return;
 
+        // 用户ID
         Long userId = collectUnCollectNoteMqDTO.getUserId();
+        // 收藏的笔记ID
         Long noteId = collectUnCollectNoteMqDTO.getNoteId();
+        // 操作类型
         Integer type = collectUnCollectNoteMqDTO.getType();
+        // 收藏时间
         LocalDateTime createTime = collectUnCollectNoteMqDTO.getCreateTime();
 
         // 构建 DO 对象
@@ -82,7 +89,9 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
 
         // 添加或更新笔记收藏记录
         int count = noteCollectionDOMapper.insertOrUpdate(noteCollectionDO);
+
         if (count == 0) return;
+
         // 更新数据库成功后，发送计数 MQ
         org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(bodyJsonStr)
                 .build();
@@ -108,11 +117,16 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
     private void handleUnCollectNoteTagMessage(String bodyJsonStr) {
         // 消息体 JSON 字符串转 DTO
         CollectUnCollectNoteMqDTO unCollectNoteMqDTO = JsonUtils.parseObject(bodyJsonStr, CollectUnCollectNoteMqDTO.class);
+
         if (Objects.isNull(unCollectNoteMqDTO)) return;
 
+        // 用户ID
         Long userId = unCollectNoteMqDTO.getUserId();
+        // 收藏的笔记ID
         Long noteId = unCollectNoteMqDTO.getNoteId();
+        // 操作类型
         Integer type = unCollectNoteMqDTO.getType();
+        // 收藏时间
         LocalDateTime createTime = unCollectNoteMqDTO.getCreateTime();
 
         // 构建 DO 对象
@@ -125,6 +139,7 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
 
         // 取消收藏：记录更新
         int count = noteCollectionDOMapper.update2UnCollectByUserIdAndNoteId(noteCollectionDO);
+
         if (count == 0) return;
 
         // 更新数据库成功后，发送计数 MQ

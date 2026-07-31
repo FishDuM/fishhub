@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_HEAT_UPDATE, // Group 组
         topic = MQConstants.TOPIC_COMMENT_HEAT_UPDATE // 主题 Topic

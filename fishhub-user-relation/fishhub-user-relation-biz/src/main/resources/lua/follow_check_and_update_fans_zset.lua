@@ -1,4 +1,4 @@
-local key = KEYS[1] -- 操作的 Redis Key
+local key = KEYS[1] -- Redis Key
 local fansUserId = ARGV[1] -- 粉丝ID
 local timestamp = ARGV[2] -- 时间戳
 
@@ -12,7 +12,7 @@ end
 local size = redis.call('ZCARD', key)
 
 -- 若超过 5000 个粉丝，则移除最早关注的粉丝
-if size >= 5000 then
+if size >= 1 then
     redis.call('ZPOPMIN', key)
 end
 

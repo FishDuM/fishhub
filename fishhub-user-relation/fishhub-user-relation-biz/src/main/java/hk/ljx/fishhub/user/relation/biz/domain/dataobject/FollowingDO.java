@@ -19,4 +19,5 @@ public class FollowingDO {
     private Long followingUserId;
 
     private LocalDateTime createTime;
+
 }

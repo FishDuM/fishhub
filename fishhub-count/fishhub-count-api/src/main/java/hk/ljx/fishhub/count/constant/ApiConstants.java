@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.count.constant;
 
+
 public interface ApiConstants {
 
     /**
@@ -7,4 +8,3 @@ public interface ApiConstants {
      */
     String SERVICE_NAME = "fishhub-count";
 }
-

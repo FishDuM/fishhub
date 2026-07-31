@@ -25,6 +25,25 @@
         <!-- 登录内容 -->
         <div class="text-center px-[72px] py-10">
           <h2 class="text-[18px] font-bold mb-12">手机号登录</h2>
+
+          <div class="flex mb-6 border-b border-gray-100">
+            <button
+              type="button"
+              class="flex-1 pb-3 text-[15px] font-medium transition-colors border-b-2"
+              :class="loginMode === 'code' ? 'text-[#ff2442] border-[#ff2442]' : 'text-gray-500 border-transparent'"
+              @click="loginMode = 'code'"
+            >
+              验证码登录
+            </button>
+            <button
+              type="button"
+              class="flex-1 pb-3 text-[15px] font-medium transition-colors border-b-2"
+              :class="loginMode === 'password' ? 'text-[#ff2442] border-[#ff2442]' : 'text-gray-500 border-transparent'"
+              @click="loginMode = 'password'"
+            >
+              密码登录
+            </button>
+          </div>
           
           <!-- 手机号输入 -->
           <div class="relative mb-4">
@@ -39,13 +58,14 @@
                 class="flex-1 outline-none text-[15px] ml-1 bg-transparent caret-[#ff2442]"
                 v-model="formattedPhone"
                 maxlength="13"
+                autocomplete="tel"
                 @input="formatPhoneNumber"
               >
             </div>
           </div>
 
           <!-- 验证码输入 -->
-          <div class="relative mb-8">
+          <div v-if="loginMode === 'code'" class="relative mb-8">
             <div class="flex items-center bg-[#f4f4f4] rounded-3xl h-[48px] px-4">
               <input 
                 type="text" 
@@ -63,6 +83,20 @@
               >
                 {{ countdown > 0 ? `重新发送(${countdown}s)` : '获取验证码' }}
               </button>
+            </div>
+          </div>
+
+          <!-- 密码输入 -->
+          <div v-else class="relative mb-8">
+            <div class="flex items-center bg-[#f4f4f4] rounded-3xl h-[48px] px-4">
+              <input
+                v-model="password"
+                type="password"
+                placeholder="输入密码"
+                class="flex-1 outline-none text-[15px] bg-transparent caret-[#ff2442]"
+                autocomplete="current-password"
+                @keyup.enter="handleLogin"
+              >
             </div>
           </div>
 
@@ -90,7 +124,7 @@
 
           <!-- 新用户提示 -->
           <div class="mt-8 text-[14px] text-gray-500">
-            新用户可直接登录
+            {{ loginMode === 'code' ? '新用户可直接登录' : '请使用已设置的登录密码' }}
           </div>
         </div>
       </div>
@@ -127,6 +161,8 @@ const emit = defineEmits(['update:visible'])
 const phone = ref('')
 const formattedPhone = ref('')
 const code = ref('')
+const password = ref('')
+const loginMode = ref('code')
 const agreeTerms = ref(false)
 
 const modalRef = ref(null)
@@ -210,16 +246,24 @@ const doLogin = () => {
     return
   }
   
-  if (!code.value || code.value.length !== 6) {
+  const isPasswordLogin = loginMode.value === 'password'
+  if (isPasswordLogin && !password.value) {
+    message.show('请输入密码')
+    return
+  }
+
+  if (!isPasswordLogin && (!code.value || code.value.length !== 6)) {
     message.show('请输入正确的验证码')
     return
   }
   
   // 调用登录接口
-  login({phone: phone.value, code: code.value, type: 1}).then(res => {
-    console.log(res)
+  login(isPasswordLogin
+    ? { phone: phone.value, password: password.value, type: 2 }
+    : { phone: phone.value, code: code.value, type: 1 }
+  ).then(res => {
     if (!res.success) {
-      message.show('验证码错误')
+      message.show(res.message || (isPasswordLogin ? '手机号或密码错误' : '验证码错误'))
       return
     }
 

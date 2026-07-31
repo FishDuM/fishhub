@@ -6,10 +6,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
-@MapperScan(basePackages = "hk.ljx.fishhub.user.relation.biz.domain.mapper")
-@EnableFeignClients(basePackages = "hk.ljx")
+@MapperScan("hk.ljx.fishhub.user.relation.biz.domain.mapper")
+@EnableFeignClients(basePackages = "hk.ljx.fishhub")
 public class FishhubUserRelationBizApplication {
-    public static void main( String[] args ) {
+
+    public static void main(String[] args) {
         SpringApplication.run(FishhubUserRelationBizApplication.class, args);
     }
+
 }

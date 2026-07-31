@@ -1,11 +1,11 @@
 package hk.ljx.fishhub.note.biz.consumer;
 
-import com.alibaba.nacos.shaded.com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.RateLimiter;
+import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
+
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_LIKE_OR_UNLIKE, // Group 组
         topic = MQConstants.TOPIC_LIKE_OR_UNLIKE, // 消费的主题 Topic
@@ -31,7 +32,6 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
 
     @Resource
     private NoteLikeDOMapper noteLikeDOMapper;
-
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
@@ -47,6 +47,7 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
 
         // 消息体
         String bodyJsonStr = new String(message.getBody());
+        // 标签
         String tags = message.getTags();
 
         log.info("==> LikeUnlikeNoteConsumer 消费了消息 {}, tags: {}", bodyJsonStr, tags);
@@ -69,9 +70,13 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
 
         if (Objects.isNull(likeNoteMqDTO)) return;
 
+        // 用户ID
         Long userId = likeNoteMqDTO.getUserId();
+        // 点赞的笔记ID
         Long noteId = likeNoteMqDTO.getNoteId();
+        // 操作类型
         Integer type = likeNoteMqDTO.getType();
+        // 点赞时间
         LocalDateTime createTime = likeNoteMqDTO.getCreateTime();
 
         // 构建 DO 对象
@@ -84,7 +89,9 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
 
         // 添加或更新笔记点赞记录
         int count = noteLikeDOMapper.insertOrUpdate(noteLikeDO);
+
         if (count == 0) return;
+
         // 更新数据库成功后，发送计数 MQ
         org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(bodyJsonStr)
                 .build();
@@ -108,12 +115,18 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
      * @param bodyJsonStr
      */
     private void handleUnlikeNoteTagMessage(String bodyJsonStr) {
+        // 消息体 JSON 字符串转 DTO
         LikeUnlikeNoteMqDTO unlikeNoteMqDTO = JsonUtils.parseObject(bodyJsonStr, LikeUnlikeNoteMqDTO.class);
+
         if (Objects.isNull(unlikeNoteMqDTO)) return;
 
+        // 用户ID
         Long userId = unlikeNoteMqDTO.getUserId();
+        // 点赞的笔记ID
         Long noteId = unlikeNoteMqDTO.getNoteId();
+        // 操作类型
         Integer type = unlikeNoteMqDTO.getType();
+        // 点赞时间
         LocalDateTime createTime = unlikeNoteMqDTO.getCreateTime();
 
         // 构建 DO 对象
@@ -123,8 +136,10 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
                 .createTime(createTime)
                 .status(type)
                 .build();
+
         // 取消点赞：记录更新
         int count = noteLikeDOMapper.update2UnlikeByUserIdAndNoteId(noteLikeDO);
+
         if (count == 0) return;
 
         // 更新数据库成功后，发送计数 MQ
