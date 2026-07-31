@@ -62,7 +62,7 @@ defineEmits(['update:modelValue'])
     color: var(--color-primary-label);
   font-weight: 600;
   /* padding: 0px 16px; */
-  background-color: #f5f5f5;
+  background-color: var(--color-surface-muted);
   border-radius: 20px;
 }
 
@@ -72,12 +72,12 @@ defineEmits(['update:modelValue'])
 
 
 .tab-count {
-  color: #999;
+  color: var(--color-tertiary-label);
   font-size: 14px;
 }
 
 .tab-item.active .tab-count {
-  color: #333;
+  color: var(--color-primary-label);
 }
 
 @media (max-width: 767px) {

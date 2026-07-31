@@ -355,7 +355,8 @@ const formatCode = (event) => {
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 30px white inset !important;
+  -webkit-box-shadow: 0 0 0 30px var(--color-input-surface) inset !important;
+  -webkit-text-fill-color: var(--color-primary-label) !important;
 }
 
 @media (max-width: 767px) {
