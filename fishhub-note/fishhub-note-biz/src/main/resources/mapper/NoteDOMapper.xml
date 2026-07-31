@@ -6,6 +6,7 @@
     <result column="title" jdbcType="VARCHAR" property="title" />
     <result column="is_content_empty" jdbcType="BIT" property="isContentEmpty" />
     <result column="creator_id" jdbcType="BIGINT" property="creatorId" />
+    <result column="channel_id" jdbcType="BIGINT" property="channelId" />
     <result column="topic_id" jdbcType="BIGINT" property="topicId" />
     <result column="topic_name" jdbcType="VARCHAR" property="topicName" />
     <result column="is_top" jdbcType="BIT" property="isTop" />
@@ -19,7 +20,7 @@
     <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, title, is_content_empty, creator_id, topic_id, topic_name, is_top, `type`, img_uris, 
+    id, title, is_content_empty, creator_id, channel_id, topic_id, topic_name, is_top, `type`, img_uris,
     video_uri, visible, create_time, update_time, `status`, content_uuid
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
@@ -47,18 +48,58 @@
     limit 20
   </select>
 
+  <select id="selectCollectedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
+    select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri
+    from t_note_collection c join t_note n on n.id = c.note_id
+    where c.user_id = #{userId} and c.status = 1 and n.visible = 0 and n.status = 1
+    <if test="cursor != null">
+      <![CDATA[ and n.id < #{cursor} ]]>
+    </if>
+    order by n.id desc
+    limit 20
+  </select>
+
+  <select id="selectLikedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
+    select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri
+    from t_note_like l join t_note n on n.id = l.note_id
+    where l.user_id = #{userId} and l.status = 1 and n.visible = 0 and n.status = 1
+    <if test="cursor != null">
+      <![CDATA[ and n.id < #{cursor} ]]>
+    </if>
+    order by n.id desc
+    limit 20
+  </select>
+
+  <select id="selectDiscoverTotalCount" resultType="long">
+    select count(1) from t_note
+    where visible = 0 and status = 1
+    <if test="channelId != null and channelId &gt; 0">
+      and channel_id = #{channelId}
+    </if>
+  </select>
+
+  <select id="selectDiscoverPageList" resultMap="BaseResultMap">
+    select <include refid="Base_Column_List" /> from t_note
+    where visible = 0 and status = 1
+    <if test="channelId != null and channelId &gt; 0">
+      and channel_id = #{channelId}
+    </if>
+    order by id desc
+    limit #{limit} offset #{offset}
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_note
     where id = #{id,jdbcType=BIGINT}
   </delete>
   <insert id="insert" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
     insert into t_note (id, title, is_content_empty, 
-      creator_id, topic_id, topic_name, 
+      creator_id, channel_id, topic_id, topic_name,
       is_top, `type`, img_uris, video_uri, 
       visible, create_time, update_time, 
       `status`, content_uuid)
     values (#{id,jdbcType=BIGINT}, #{title,jdbcType=VARCHAR}, #{isContentEmpty,jdbcType=BIT}, 
-      #{creatorId,jdbcType=BIGINT}, #{topicId,jdbcType=BIGINT}, #{topicName,jdbcType=VARCHAR}, 
+      #{creatorId,jdbcType=BIGINT}, #{channelId,jdbcType=BIGINT}, #{topicId,jdbcType=BIGINT}, #{topicName,jdbcType=VARCHAR},
       #{isTop,jdbcType=BIT}, #{type,jdbcType=TINYINT}, #{imgUris,jdbcType=VARCHAR}, #{videoUri,jdbcType=VARCHAR}, 
       #{visible,jdbcType=TINYINT}, #{createTime,jdbcType=TIMESTAMP}, #{updateTime,jdbcType=TIMESTAMP}, 
       #{status,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR})
@@ -77,6 +118,9 @@
       </if>
       <if test="creatorId != null">
         creator_id,
+      </if>
+      <if test="channelId != null">
+        channel_id,
       </if>
       <if test="topicId != null">
         topic_id,
@@ -125,6 +169,9 @@
       <if test="creatorId != null">
         #{creatorId,jdbcType=BIGINT},
       </if>
+      <if test="channelId != null">
+        #{channelId,jdbcType=BIGINT},
+      </if>
       <if test="topicId != null">
         #{topicId,jdbcType=BIGINT},
       </if>
@@ -172,6 +219,9 @@
       <if test="creatorId != null">
         creator_id = #{creatorId,jdbcType=BIGINT},
       </if>
+      <if test="channelId != null">
+        channel_id = #{channelId,jdbcType=BIGINT},
+      </if>
       <if test="topicId != null">
         topic_id = #{topicId,jdbcType=BIGINT},
       </if>
@@ -212,6 +262,7 @@
     update t_note
     set title = #{title,jdbcType=VARCHAR},
       is_content_empty = #{isContentEmpty,jdbcType=BIT},
+      channel_id = #{channelId,jdbcType=BIGINT},
       topic_id = #{topicId,jdbcType=BIGINT},
       topic_name = #{topicName,jdbcType=VARCHAR},
       `type` = #{type,jdbcType=TINYINT},

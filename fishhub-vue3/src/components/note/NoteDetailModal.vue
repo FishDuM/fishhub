@@ -891,8 +891,10 @@ const handleNoteLike = () => {
 
 // 添加评论点赞处理函数
 const handleCommentLike = ({ comment, liked }) => {
-
-
+  if (!isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
   console.log('评论点赞:', comment.commentId, liked)
   if (liked) {
     likeComment(comment.commentId).then(res => {
@@ -948,6 +950,10 @@ const handleNoteCollect = () => {
 
 const handleFollow = () => {
   console.log('关注用户:', currNote.value.creatorId)
+  if (!isLoggedIn.value) {
+    showLoginModal.value = true
+    return
+  }
   followUser(currNote.value.creatorId).then(res => {
     if (!res.success) {
       message.show(res.message)

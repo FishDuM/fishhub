@@ -92,4 +92,16 @@ public class NoteController {
     public Response<FindPublishedNoteListRspVO> findPublishedNoteList(@Validated @RequestBody FindPublishedNoteListReqVO findPublishedNoteListReqVO) {
         return noteService.findPublishedNoteList(findPublishedNoteListReqVO);
     }
+
+    @PostMapping(value = "/collected/list")
+    @ApiOperationLog(description = "用户主页 - 收藏笔记列表")
+    public Response<FindPublishedNoteListRspVO> findCollectedNoteList(@Validated @RequestBody FindPublishedNoteListReqVO request) {
+        return noteService.findCollectedNoteList(request);
+    }
+
+    @PostMapping(value = "/liked/list")
+    @ApiOperationLog(description = "用户主页 - 点赞笔记列表")
+    public Response<FindPublishedNoteListRspVO> findLikedNoteList(@Validated @RequestBody FindPublishedNoteListReqVO request) {
+        return noteService.findLikedNoteList(request);
+    }
 }

@@ -18,9 +18,11 @@ import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.convert.NoteConvert;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
+import hk.ljx.fishhub.note.biz.domain.dataobject.ChannelDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
+import hk.ljx.fishhub.note.biz.domain.mapper.ChannelDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
@@ -69,6 +71,8 @@ public class NoteServiceImpl implements NoteService {
     private NoteDOMapper noteDOMapper;
     @Resource
     private TopicDOMapper topicDOMapper;
+    @Resource
+    private ChannelDOMapper channelDOMapper;
     @Resource
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
     @Resource
@@ -171,6 +175,12 @@ public class NoteServiceImpl implements NoteService {
             topicName = topicDOMapper.selectNameByPrimaryKey(topicId);
         }
 
+        Long channelId = publishNoteReqVO.getChannelId();
+        ChannelDO channel = channelDOMapper.selectByPrimaryKey(channelId);
+        if (Objects.isNull(channel) || Boolean.TRUE.equals(channel.getIsDeleted())) {
+            throw new IllegalArgumentException("频道不存在");
+        }
+
         // 发布者用户 ID
         Long creatorId = LoginUserContextHolder.getUserId();
 
@@ -179,6 +189,7 @@ public class NoteServiceImpl implements NoteService {
                 .id(Long.valueOf(snowflakeIdId))
                 .isContentEmpty(isContentEmpty)
                 .creatorId(creatorId)
+                .channelId(channelId)
                 .imgUris(imgUris)
                 .title(publishNoteReqVO.getTitle())
                 .topicId(publishNoteReqVO.getTopicId())
@@ -348,7 +359,7 @@ public class NoteServiceImpl implements NoteService {
         // 并发查询优化
         // RPC: 调用用户服务
         CompletableFuture<FindUserByIdRspDTO> userResultFuture = CompletableFuture
-                .supplyAsync(() -> userRpcService.findById(userId), threadPoolTaskExecutor);
+                .supplyAsync(() -> userRpcService.findById(noteDO.getCreatorId()), threadPoolTaskExecutor);
 
         // RPC: 调用 K-V 存储服务获取内容
         CompletableFuture<String> contentResultFuture = CompletableFuture.completedFuture(null);
@@ -1405,6 +1416,49 @@ public class NoteServiceImpl implements NoteService {
         }
 
         return Response.success(findPublishedNoteListRspVO);
+    }
+
+    @Override
+    public Response<FindPublishedNoteListRspVO> findCollectedNoteList(FindPublishedNoteListReqVO request) {
+        return findUserNoteList(noteDOMapper.selectCollectedNoteListByUserIdAndCursor(request.getUserId(), request.getCursor()));
+    }
+
+    @Override
+    public Response<FindPublishedNoteListRspVO> findLikedNoteList(FindPublishedNoteListReqVO request) {
+        return findUserNoteList(noteDOMapper.selectLikedNoteListByUserIdAndCursor(request.getUserId(), request.getCursor()));
+    }
+
+    private Response<FindPublishedNoteListRspVO> findUserNoteList(List<NoteDO> noteDOS) {
+        if (CollUtil.isEmpty(noteDOS)) {
+            return Response.success(FindPublishedNoteListRspVO.builder().notes(Collections.emptyList()).nextCursor(null).build());
+        }
+
+        List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
+                .noteId(note.getId())
+                .type(note.getType())
+                .cover(StringUtils.isBlank(note.getImgUris()) ? null : StringUtils.split(note.getImgUris(), ',')[0])
+                .videoUri(note.getVideoUri())
+                .title(note.getTitle())
+                .creatorId(note.getCreatorId())
+                .likeTotal("0")
+                .isLiked(false)
+                .build()).collect(Collectors.toList());
+
+        Map<Long, FindUserByIdRspDTO> users = noteDOS.stream().map(NoteDO::getCreatorId).distinct()
+                .map(userRpcService::findById).filter(Objects::nonNull)
+                .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
+        notes.forEach(note -> {
+            FindUserByIdRspDTO user = users.get(note.getCreatorId());
+            if (user != null) {
+                note.setNickname(user.getNickName());
+                note.setAvatar(user.getAvatar());
+            }
+        });
+
+        setVOListLikeTotal(notes, countRpcService.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
+        batchGetAndSetNoteIsLiked(notes);
+        Long nextCursor = noteDOS.stream().map(NoteDO::getId).min(Long::compareTo).orElse(null);
+        return Response.success(FindPublishedNoteListRspVO.builder().notes(notes).nextCursor(nextCursor).build());
     }
 
     /**

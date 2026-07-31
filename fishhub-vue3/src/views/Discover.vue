@@ -85,7 +85,7 @@ const handleResize = () => {
 
 // 获取指定列的笔记
 const getColumnNotes = (colIndex) => {
-  return notes.value.filter((_, index) => index % columnCount === colIndex)
+  return notes.value.filter((_, index) => index % columnCount.value === colIndex)
 }
 
 const loadingRef = ref(null)
@@ -120,7 +120,7 @@ const loadNotes = (channelId = 0, isFirstPage = true) => {
   getDiscoverNotePageList(channelId, currPageNo.value).then(res => {
     console.log('加载笔记数据:', res)
     if (res.success) {
-      const newNotes = res.data || []
+      const newNotes = (res.data || []).map(note => ({ ...note, id: note.noteId ?? note.id }))
       
       if (isFirstPage) {
         notes.value = newNotes
@@ -130,7 +130,7 @@ const loadNotes = (channelId = 0, isFirstPage = true) => {
       }
       
       // 判断是否还有更多数据
-      hasMore.value = newNotes.length > 0
+      hasMore.value = res.pageNo < res.totalPage
       
       // 如果有数据返回，增加页码
       if (newNotes.length > 0) {

@@ -45,6 +45,9 @@ public interface FollowingDOMapper {
      */
     List<FollowingDO> selectAllByUserId(Long userId);
 
+    List<Long> selectFollowingUserIds(@Param("userId") Long userId,
+                                      @Param("followingUserIds") List<Long> followingUserIds);
+
 
     int updateByPrimaryKeySelective(FollowingDO record);
 

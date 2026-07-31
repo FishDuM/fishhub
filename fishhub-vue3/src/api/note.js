@@ -43,8 +43,15 @@ export function uncollectNote(noteId) {
     return axios.post(`${API_PREFIX}/note/uncollect`, {id: noteId})
 }
 
-// 获取个人主页笔记数据
-export function getProfileNotePageList(type, userId, pageNo) {
-    return axios.post(`${API_PREFIX}/profile/note/list`, {type, userId, pageNo})
+export function getPublishedNoteList(userId, cursor) {
+    return axios.post(`${API_PREFIX}/note/published/list`, { userId, cursor })
+}
+
+export function getCollectedNoteList(userId, cursor) {
+    return axios.post(`${API_PREFIX}/note/collected/list`, { userId, cursor })
+}
+
+export function getLikedNoteList(userId, cursor) {
+    return axios.post(`${API_PREFIX}/note/liked/list`, { userId, cursor })
 }
 

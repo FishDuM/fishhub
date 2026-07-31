@@ -95,30 +95,27 @@ public class NoteCountServiceImpl implements NoteCountService {
         // 从数据库中批量查询过滤出的 noteIdsNeedQuery 笔记 ID
         List<NoteCountDO> noteCountDOS = noteCountDOMapper.selectByNoteIds(noteIdsNeedQuery);
 
-        // 若数据库查询的记录不为空
-        if (CollUtil.isNotEmpty(noteCountDOS)) {
-            // DO 集合转 Map, 方便后续查询对应笔记 ID 的计数
-            Map<Long, NoteCountDO> noteIdAndDOMap = noteCountDOS.stream()
-                    .collect(Collectors.toMap(NoteCountDO::getNoteId, noteCountDO -> noteCountDO));
+        // DO 集合转 Map；没有计数行的笔记按 0 处理，避免向调用方返回 null。
+        Map<Long, NoteCountDO> noteIdAndDOMap = CollUtil.isEmpty(noteCountDOS)
+                ? Map.of()
+                : noteCountDOS.stream()
+                .collect(Collectors.toMap(NoteCountDO::getNoteId, noteCountDO -> noteCountDO));
 
-            // 将笔记 Hash 计数同步到 Redis 中
-            syncNoteHash2Redis(findNoteCountsByIdRspDTOS, noteIdAndDOMap);
+        // 将缺失的 Hash 字段（包括不存在计数行时的 0）同步到 Redis。
+        syncNoteHash2Redis(findNoteCountsByIdRspDTOS, noteIdAndDOMap);
 
-            // 针对 DTO 中为 null 的计数字段，循环设置从数据库中查询到的计数
-            for (FindNoteCountsByIdRspDTO findNoteCountsByIdRspDTO : findNoteCountsByIdRspDTOS) {
-                Long noteId = findNoteCountsByIdRspDTO.getNoteId();
-                Long likeTotal = findNoteCountsByIdRspDTO.getLikeTotal();
-                Long collectTotal = findNoteCountsByIdRspDTO.getCollectTotal();
-                Long commentTotal = findNoteCountsByIdRspDTO.getCommentTotal();
+        // 针对 DTO 中为 null 的计数字段，使用数据库结果或默认值 0 补齐。
+        for (FindNoteCountsByIdRspDTO findNoteCountsByIdRspDTO : findNoteCountsByIdRspDTOS) {
+            NoteCountDO noteCountDO = noteIdAndDOMap.get(findNoteCountsByIdRspDTO.getNoteId());
 
-                NoteCountDO noteCountDO = noteIdAndDOMap.get(noteId);
-
-                if (Objects.isNull(likeTotal))
-                    findNoteCountsByIdRspDTO.setLikeTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : 0);
-                if (Objects.isNull(collectTotal))
-                    findNoteCountsByIdRspDTO.setCollectTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : 0);
-                if (Objects.isNull(commentTotal))
-                    findNoteCountsByIdRspDTO.setCommentTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : 0);
+            if (Objects.isNull(findNoteCountsByIdRspDTO.getLikeTotal())) {
+                findNoteCountsByIdRspDTO.setLikeTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : 0L);
+            }
+            if (Objects.isNull(findNoteCountsByIdRspDTO.getCollectTotal())) {
+                findNoteCountsByIdRspDTO.setCollectTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : 0L);
+            }
+            if (Objects.isNull(findNoteCountsByIdRspDTO.getCommentTotal())) {
+                findNoteCountsByIdRspDTO.setCommentTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : 0L);
             }
         }
 

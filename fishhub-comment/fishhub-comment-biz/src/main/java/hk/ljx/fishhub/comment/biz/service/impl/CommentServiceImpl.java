@@ -160,21 +160,18 @@ public class CommentServiceImpl implements CommentService {
             // 查询评论总数 (从 t_note_count 笔记计数表查，提升查询性能, 避免 count(*))
             Long dbCount = noteCountDOMapper.selectCommentTotalByNoteId(noteId);
 
-            // 若数据库中也不存在，则抛出业务异常
-            if (Objects.isNull(dbCount)) {
-                throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
-            }
-
-            count = dbCount;
+            // 新发布、尚未产生互动的笔记可能还没有计数行，应按 0 条评论处理。
+            long dbCountOrZero = Objects.requireNonNullElse(dbCount, 0L);
+            count = dbCountOrZero;
             // 异步将评论总数同步到 Redis 中
             threadPoolTaskExecutor.execute(() ->
-                syncNoteCommentTotal2Redis(noteCommentTotalKey, dbCount)
+                syncNoteCommentTotal2Redis(noteCommentTotalKey, dbCountOrZero)
             );
         }
 
         // 若评论总数为 0，则直接响应
         if (count == 0) {
-            return PageResponse.success(null, pageNo, 0);
+            return PageResponse.success(Collections.emptyList(), pageNo, 0, pageSize);
         }
 
         // 分页返参

@@ -37,11 +37,11 @@
     <button 
       :class="[
         'follow-button', 
-        user.isLiked ? 'followed' : ''
+        user.isFollowed ? 'followed' : ''
       ]"
       @click="handleFollow"
     >
-      {{ user.isLiked ? '已关注' : '关注' }}
+      {{ user.isFollowed ? '已关注' : '关注' }}
     </button>
   </div>
 </template>
@@ -66,13 +66,13 @@ const props = defineProps({
       fishhubId: '',
       fansTotal: 0,
       noteTotal: 0,
-      isLiked: true,
+      isFollowed: false,
       introduction: ''
     })
   }
 })
 
-const emit = defineEmits(['follow'])
+const emit = defineEmits(['follow', 'login-required'])
 const userStore = useUserStore()
 
 // 处理关注按钮点击

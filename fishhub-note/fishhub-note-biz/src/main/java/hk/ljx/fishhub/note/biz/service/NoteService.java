@@ -96,4 +96,8 @@ public interface NoteService {
      */
     Response<FindPublishedNoteListRspVO> findPublishedNoteList(FindPublishedNoteListReqVO findPublishedNoteListReqVO);
 
+    Response<FindPublishedNoteListRspVO> findCollectedNoteList(FindPublishedNoteListReqVO findPublishedNoteListReqVO);
+
+    Response<FindPublishedNoteListRspVO> findLikedNoteList(FindPublishedNoteListReqVO findPublishedNoteListReqVO);
+
 }

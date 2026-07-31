@@ -37,6 +37,19 @@ public class UserRpcService {
         return response.getData();
     }
 
+    public List<FindUserByIdRspDTO> findByIds(List<Long> userIds) {
+        if (CollUtil.isEmpty(userIds)) {
+            return List.of();
+        }
+        FindUsersByIdsReqDTO request = new FindUsersByIdsReqDTO();
+        request.setIds(userIds);
+        Response<List<FindUserByIdRspDTO>> response = userFeignApi.findByIds(request);
+        if (Objects.isNull(response) || !response.isSuccess() || CollUtil.isEmpty(response.getData())) {
+            return List.of();
+        }
+        return response.getData();
+    }
+
 
 
 }

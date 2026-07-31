@@ -509,6 +509,7 @@ public class RelationServiceImpl implements RelationService {
 
         // TODO RPC: 批量查询用户的计数数据（笔记总数、粉丝总数）
 
+        Set<Long> followedUserIds = findCurrentUserFollowedIds(userIds);
         // 若不为空，DTO 转 VO
         if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
             findFansUserRspVOS = findUserByIdRspDTOS.stream()
@@ -518,6 +519,7 @@ public class RelationServiceImpl implements RelationService {
                             .nickname(dto.getNickName())
                             .noteTotal(0L) // TODO: 这块的数据暂无，后续补充
                             .fansTotal(0L) // TODO: 这块的数据暂无，后续补充
+                            .isFollowed(followedUserIds.contains(dto.getId()))
                             .build())
                     .toList();
         }
@@ -542,10 +544,19 @@ public class RelationServiceImpl implements RelationService {
                             .avatar(dto.getAvatar())
                             .nickname(dto.getNickName())
                             .introduction(dto.getIntroduction())
+                            .isFollowed(true)
                             .build())
                     .toList();
         }
         return findFollowingUserRspVOS;
+    }
+
+    private Set<Long> findCurrentUserFollowedIds(List<Long> candidateUserIds) {
+        Long currentUserId = LoginUserContextHolder.getUserId();
+        if (Objects.isNull(currentUserId) || CollUtil.isEmpty(candidateUserIds)) {
+            return Collections.emptySet();
+        }
+        return new HashSet<>(followingDOMapper.selectFollowingUserIds(currentUserId, candidateUserIds));
     }
 
 

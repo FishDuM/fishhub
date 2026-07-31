@@ -79,7 +79,7 @@
       
       <div v-else>
         <div v-for="user in users" :key="user.userId" class="mb-2">
-          <UserCard :user="user" @follow="handleFollowUser" :type="listType" />
+          <UserCard :user="user" @follow="handleFollowUser" @login-required="handleLoginRequired" :type="listType" />
         </div>
         
         <!-- 加载更多 -->
@@ -105,14 +105,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, onUnmounted } from 'vue'
+import { ref, onMounted, watch, onUnmounted, inject } from 'vue'
 import { useRoute } from 'vue-router'
 import UserCard from '@/components/user/UserCard.vue'
 import { getFollowingList, getFansList, followUser, unfollowUser } from '@/api/relation'
 import { message } from '@/utils/message'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
+const userStore = useUserStore()
+const showLoginModal = inject('showLoginModal')
 const userId = ref(route.params.userId)
 const nickname = ref('')
 const activeTab = ref(route.query.tab || 'following')
@@ -144,10 +147,10 @@ const fetchFollowingList = async (isLoadMore = false) => {
     if (res.success) {
       const newUsers = res.data || []
       
-      // 处理数据，添加 isLiked 字段
+      // 后端明确返回关注状态；关注列表中的用户始终是已关注状态。
       const processedUsers = newUsers.map(user => ({
         ...user,
-        isLiked: true // 关注列表中的用户默认都是已关注的
+        isFollowed: Boolean(user.isFollowed)
       }))
       
       if (isLoadMore) {
@@ -188,10 +191,10 @@ const fetchFollowersList = async (isLoadMore = false) => {
     if (res.success) {
       const newUsers = res.data || []
       
-      // 处理数据，添加 isLiked 字段（粉丝可能已关注也可能未关注）
+      // 粉丝是否被当前用户关注由后端计算，游客固定为 false。
       const processedUsers = newUsers.map(user => ({
         ...user,
-        isLiked: user.isLiked || false
+        isFollowed: Boolean(user.isFollowed)
       }))
       
       if (isLoadMore) {
@@ -224,11 +227,15 @@ const loadMore = () => {
 
 // 处理关注/取消关注
 const handleFollowUser = (followUserId) => {
+  if (!userStore.token) {
+    showLoginModal.value = true
+    return
+  }
   const userIndex = users.value.findIndex(user => user.userId === followUserId)
   if (userIndex === -1) return
 
   const user = users.value[userIndex]
-  const isFollowing = user.isLiked
+  const isFollowing = user.isFollowed
   const request = isFollowing ? unfollowUser(followUserId) : followUser(followUserId)
 
   request.then(res => {
@@ -243,9 +250,13 @@ const handleFollowUser = (followUserId) => {
       return
     }
 
-    user.isLiked = !isFollowing
-    message.show(user.isLiked ? '关注成功' : '取消关注成功')
+    user.isFollowed = !isFollowing
+    message.show(user.isFollowed ? '关注成功' : '取消关注成功')
   })
+}
+
+const handleLoginRequired = () => {
+  showLoginModal.value = true
 }
 
 // 添加滚动加载功能

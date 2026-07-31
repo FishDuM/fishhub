@@ -38,6 +38,15 @@
     where user_id = #{userId} limit 1000
   </select>
 
+  <select id="selectFollowingUserIds" resultType="long">
+    select following_user_id from t_following
+    where user_id = #{userId}
+      and following_user_id in
+      <foreach collection="followingUserIds" item="followingUserId" open="(" separator="," close=")">
+        #{followingUserId}
+      </foreach>
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_following
     where id = #{id,jdbcType=BIGINT}

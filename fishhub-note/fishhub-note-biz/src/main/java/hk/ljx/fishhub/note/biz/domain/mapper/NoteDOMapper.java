@@ -32,6 +32,18 @@ public interface NoteDOMapper {
     List<NoteDO> selectPublishedNoteListByUserIdAndCursor(@Param("creatorId") Long creatorId,
                                                           @Param("cursor") Long cursor);
 
+    List<NoteDO> selectCollectedNoteListByUserIdAndCursor(@Param("userId") Long userId,
+                                                          @Param("cursor") Long cursor);
+
+    List<NoteDO> selectLikedNoteListByUserIdAndCursor(@Param("userId") Long userId,
+                                                      @Param("cursor") Long cursor);
+
+    long selectDiscoverTotalCount(@Param("channelId") Long channelId);
+
+    List<NoteDO> selectDiscoverPageList(@Param("channelId") Long channelId,
+                                        @Param("offset") long offset,
+                                        @Param("limit") long limit);
+
 
     int updateByPrimaryKeySelective(NoteDO record);
 

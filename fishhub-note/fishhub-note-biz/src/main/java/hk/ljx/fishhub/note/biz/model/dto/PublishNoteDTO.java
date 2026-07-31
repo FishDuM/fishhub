@@ -21,6 +21,8 @@ public class PublishNoteDTO {
 
     private Long creatorId;
 
+    private Long channelId;
+
     private Long topicId;
 
     private String topicName;

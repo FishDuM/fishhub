@@ -33,6 +33,14 @@ public class SaTokenConfigure {
                             .notMatch("/user/user/profile") // 排除用户主页查看
                             .notMatch("/note/channel/list") // 排除发现页频道标签接口
                             .notMatch("/note/discover/note/list") // 排除发现页瀑布流接口
+                            .notMatch("/note/note/detail") // 排除笔记详情读取接口
+                            .notMatch("/note/note/published/list") // 排除个人主页已发布笔记接口
+                            .notMatch("/note/note/collected/list") // 排除个人主页收藏笔记接口
+                            .notMatch("/note/note/liked/list") // 排除个人主页点赞笔记接口
+                            .notMatch("/comment/comment/list") // 排除评论读取接口
+                            .notMatch("/comment/comment/child/list") // 排除子评论读取接口
+                            .notMatch("/relation/relation/following/list") // 排除关注列表读取接口
+                            .notMatch("/relation/relation/fans/list") // 排除粉丝列表读取接口
                             .notMatch("/search/search/note") // 排除笔记搜索接口
                             .notMatch("/search/search/user") // 排除用户搜索接口
                             .check(r -> StpUtil.checkLogin()) // 校验是否登录

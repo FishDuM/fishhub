@@ -2,6 +2,8 @@ package hk.ljx.fishhub.note.biz.domain.mapper;
 
 import hk.ljx.fishhub.note.biz.domain.dataobject.TopicDO;
 
+import java.util.List;
+
 public interface TopicDOMapper {
     int deleteByPrimaryKey(Long id);
 
@@ -12,6 +14,8 @@ public interface TopicDOMapper {
     TopicDO selectByPrimaryKey(Long id);
 
     String selectNameByPrimaryKey(Long id);
+
+    List<TopicDO> selectByLikeName(String keyword);
 
     int updateByPrimaryKeySelective(TopicDO record);
 

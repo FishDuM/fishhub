@@ -37,4 +37,7 @@ public class FindFansUserRspVO {
      */
     private Long noteTotal;
 
+    /** 当前登录用户是否已关注该粉丝 */
+    private Boolean isFollowed;
+
 }

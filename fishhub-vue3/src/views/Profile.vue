@@ -245,7 +245,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useUserStore } from '@/stores/user'
 import { getUserProfile } from '@/api/user'
 import EditProfileModal from '@/components/profile/EditProfileModal.vue'
-import { getProfileNotePageList } from '@/api/note'
+import { getPublishedNoteList, getCollectedNoteList, getLikedNoteList } from '@/api/note'
 import { useRoute } from 'vue-router'
 import NoteDetailModal from '@/components/note/NoteDetailModal.vue'
 import { followUser } from '@/api/relation'
@@ -259,7 +259,7 @@ const activeTab = ref('notes')
 
 // 笔记数据
 const notes = ref([])
-const currPageNo = ref(1)
+const nextCursor = ref(null)
 
 
 const showModal = ref(false)
@@ -363,73 +363,44 @@ const isLoading = ref(false) // 是否正在加载数据
 
 // 获取指定列的笔记
 const getColumnNotes = (colIndex) => {
-  return notes.value.filter((_, index) => index % columnCount === colIndex)
+  return notes.value.filter((_, index) => index % columnCount.value === colIndex)
 }
 
 
-// 加载笔记数据
-const loadNotes = (isFirstPage = true) => {
-  if (isFirstPage) {
-    currPageNo.value = 1
-    notes.value = []
-  }
-  
-  // 根据当前 tab 确定类型
-  const type = activeTab.value === 'notes' ? 1 : 
-               activeTab.value === 'collect' ? 2 : 3
-  
-  getProfileNotePageList(type, profile.value.userId, currPageNo.value).then(res => {
-    if (res.success) {
-      const newNotes = res.data || []
-      
-      if (isFirstPage) {
-        notes.value = newNotes
-      } else {
-        notes.value = [...notes.value, ...newNotes]
-      }
-      
-      hasMore.value = res.pageNo < res.totalPage
-      currPageNo.value = res.pageNo + 1
-    }
-  }).finally(() => {
-  })
+const getCurrentNoteList = () => {
+  if (activeTab.value === 'collect') return getCollectedNoteList
+  if (activeTab.value === 'like') return getLikedNoteList
+  return getPublishedNoteList
 }
 
-// 加载更多数据
-const loadMoreNotes = () => {
-  // 如果正在加载或没有更多数据，则不处理
-  if (isLoading.value || !hasMore.value) return
-  
-  // 设置加载状态为true，防止重复请求
+const normalizeNote = (note) => ({ ...note, id: note.noteId ?? note.id })
+
+const loadNotes = async (isFirstPage = true) => {
+  if (isLoading.value || !profile.value.userId) return
   isLoading.value = true
-  
-  const userId = route.params.userId
-  const type = activeTab.value === 'notes' ? 1 : 
-               activeTab.value === 'collect' ? 2 : 3
-  
-  getProfileNotePageList(type, userId, currPageNo.value).then(res => {
-    if (res.success) {
-      const newNotes = res.data || []
-      
-      // 检查是否有重复数据
-      const existingIds = notes.value.map(note => note.id)
-      const uniqueNewNotes = newNotes.filter(note => !existingIds.includes(note.id))
-      
-      // 只添加不重复的数据
-      if (uniqueNewNotes.length > 0) {
-        notes.value = [...notes.value, ...uniqueNewNotes]
-      }
-      
-      hasMore.value = res.pageNo < res.totalPage
-      currPageNo.value = res.pageNo + 1
-    } else {
+  if (isFirstPage) {
+    notes.value = []
+    nextCursor.value = null
+    hasMore.value = true
+  }
+  try {
+    const res = await getCurrentNoteList()(profile.value.userId, nextCursor.value)
+    if (!res.success) {
       hasMore.value = false
+      return
     }
-  }).finally(() => {
-    // 请求完成后，重置加载状态
+    const newNotes = (res.data?.notes || []).map(normalizeNote)
+    const existingIds = new Set(isFirstPage ? [] : notes.value.map(note => note.id))
+    const uniqueNotes = newNotes.filter(note => !existingIds.has(note.id))
+    notes.value = isFirstPage ? uniqueNotes : [...notes.value, ...uniqueNotes]
+    nextCursor.value = res.data?.nextCursor ?? null
+    hasMore.value = Boolean(nextCursor.value && newNotes.length)
+  } finally {
     isLoading.value = false
-  })
+  }
 }
+
+const loadMoreNotes = () => loadNotes(false)
 
 // 监听滚动事件，检测是否滚动到底部
 const handleScroll = () => {
@@ -450,37 +421,7 @@ const handleScroll = () => {
 }
 
 // 监听 activeTab 变化
-watch(activeTab, (newTab) => {
-  console.log('Tab 切换到:', newTab)
-  
-  // 重置分页相关数据
-  currPageNo.value = 1
-  notes.value = []
-  hasMore.value = true
-  isLoading.value = false // 确保重置加载状态
-  
-  const type = newTab === 'notes' ? 1 : 
-              newTab === 'collect' ? 2 : 3
-  
-  const userId = route.params.userId
-  console.log('userId', userId)
-  
-  // 设置加载状态，防止重复请求
-  isLoading.value = true
-              
-  // 调用 API 获取笔记列表，传入userId
-  getProfileNotePageList(type, userId, 1).then(res => {
-    if (res.success) {
-      notes.value = res.data || []
-      hasMore.value = res.pageNo < res.totalPage
-      currPageNo.value = res.pageNo + 1
-    } else {
-      hasMore.value = false
-    }
-  }).finally(() => {
-    isLoading.value = false
-  })
-})
+watch(activeTab, () => loadNotes(true))
 
 // 处理个人资料更新成功的回调
 const handleProfileUpdated = (updatedProfile) => {
@@ -519,7 +460,7 @@ watch(() => route.params.userId, (newUserId, oldUserId) => {
     console.log('用户ID变化，重新加载数据:', newUserId)
     
     // 重置状态
-    currPageNo.value = 1
+    nextCursor.value = null
     notes.value = []
     hasMore.value = true
     isLoading.value = false

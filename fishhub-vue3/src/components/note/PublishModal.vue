@@ -371,14 +371,13 @@
                     <div class="flex flex-wrap items-center gap-2 min-h-[40px] p-2 border border-gray-200 rounded-lg focus-within:border-[#ff2442]">
                       <!-- 已选话题标签 -->
                       <div 
-                        v-for="(topic, index) in selectedTopics" 
-                        :key="index"
+                        v-if="selectedTopic"
                         class="flex items-center bg-[#f5f5f5] text-[#333] px-2 py-1 rounded-full text-[13px]"
                       >
-                        <span class="mr-1">#{{ topic.name }}</span>
+                        <span class="mr-1">#{{ selectedTopic.name }}</span>
                         <button 
                           class="w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-700"
-                          @click.stop="removeTopic(topic)"
+                          @click.stop="removeTopic"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" class="w-3 h-3">
                             <path d="M18 6L6 18M6 6l12 12" stroke-width="2" stroke-linecap="round"/>
@@ -431,20 +430,6 @@
                         <span class="text-[#333]">{{ topic.name }}</span>
                       </button>
                       
-                      <!-- 添加新话题选项 -->
-                      <button
-                        v-if="topicKeyword.trim() && !isLoadingTopics && !isTopicExistsInSuggestions"
-                        class="w-full px-4 py-3 rounded-xl text-left text-[14px] flex items-center justify-between hover:bg-gray-100 transition-colors"
-                        @click="createNewTopic"
-                      >
-                        <div class="flex items-center">
-                          <svg class="w-4 h-4 mr-2 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                          <span class="text-[#333]">{{ topicKeyword.trim() }}</span>
-                        </div>
-                        <span class="text-[#ff2442] text-xs font-medium">添加新话题</span>
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -746,7 +731,7 @@ const isValid = computed(() => {
 const isTopicInputActive = ref(false)
 const topicKeyword = ref('')
 const topicInputRef = ref(null)
-const selectedTopics = ref([]) // 统一存储所有话题（已有话题和新话题）
+const selectedTopic = ref(null)
 const topicSuggestions = ref([])
 const isLoadingTopics = ref(false)
 
@@ -772,12 +757,7 @@ const onTopicInput = async () => {
     
     // 处理返回结果
     if (res.success && res.data) {
-      // 过滤掉已选择的话题（包括已有话题和新话题）
-      const selectedNames = selectedTopics.value.map(t => t.name.toLowerCase())
-      
-      topicSuggestions.value = res.data.filter(topic => 
-        !selectedNames.includes(topic.name.toLowerCase())
-      )
+      topicSuggestions.value = res.data.filter(topic => topic.id !== selectedTopic.value?.id)
       
       console.log('过滤后的话题建议:', topicSuggestions.value) // 添加日志，帮助调试
     } else {
@@ -794,44 +774,7 @@ const onTopicInput = async () => {
 
 // 选择已有话题
 const selectTopic = (topic) => {
-  // 检查是否已经添加过相同的话题
-  if (selectedTopics.value.some(t => t.name.toLowerCase() === topic.name.toLowerCase())) {
-    return
-  }
-  
-  // 添加到已选话题
-  selectedTopics.value = [...selectedTopics.value, topic]
-  topicKeyword.value = ''
-  topicSuggestions.value = []
-  
-  // 选择话题后保持输入框激活状态
-  isTopicInputActive.value = true
-  
-  // 选择话题后，让输入框重新获得焦点
-  nextTick(() => {
-    topicInputRef.value?.focus()
-  })
-}
-
-// 创建新话题
-const createNewTopic = () => {
-  if (!topicKeyword.value.trim()) return
-  
-  const topicName = topicKeyword.value.trim()
-  
-  // 检查是否已经添加过相同的话题
-  if (selectedTopics.value.some(t => t.name.toLowerCase() === topicName.toLowerCase())) {
-    return
-  }
-  
-  // 创建新话题对象
-  const newTopic = {
-    name: topicName,
-    isNew: true // 标记为新话题
-  }
-  
-  // 添加到已选话题
-  selectedTopics.value = [...selectedTopics.value, newTopic]
+  selectedTopic.value = topic
   topicKeyword.value = ''
   topicSuggestions.value = []
   
@@ -845,34 +788,30 @@ const createNewTopic = () => {
 }
 
 // 移除话题
-const removeTopic = (topic) => {
-  selectedTopics.value = selectedTopics.value.filter(t => t !== topic)
+const removeTopic = () => {
+  selectedTopic.value = null
 }
 
 // 处理回车
 const handleTopicEnter = () => {
   if (topicKeyword.value.trim()) {
-    // 如果输入的话题已存在于建议列表中，选择该话题
-    if (isTopicExistsInSuggestions.value) {
-      const existingTopic = topicSuggestions.value.find(
-        topic => topic.name.toLowerCase() === topicKeyword.value.trim().toLowerCase()
-      )
-      if (existingTopic) {
-        selectTopic(existingTopic)
-        return
-      }
+    const existingTopic = topicSuggestions.value.find(
+      topic => topic.name.toLowerCase() === topicKeyword.value.trim().toLowerCase()
+    )
+    if (existingTopic) {
+      selectTopic(existingTopic)
+      return
     }
     
-    // 否则创建新话题
-    createNewTopic()
+    message.show({ type: 'warning', content: '请选择已有话题' })
   }
 }
 
 // 处理退格键
 const handleTopicBackspace = (e) => {
-  if (!topicKeyword.value && selectedTopics.value.length) {
+  if (!topicKeyword.value && selectedTopic.value) {
     e.preventDefault()
-    selectedTopics.value = selectedTopics.value.slice(0, -1)
+    selectedTopic.value = null
   }
 }
 
@@ -886,16 +825,6 @@ const handleTopicBlur = () => {
     }
   }, 200)
 }
-
-// 计算属性：检查当前输入的话题是否已存在于建议列表中
-const isTopicExistsInSuggestions = computed(() => {
-  if (!topicKeyword.value.trim()) return false
-  
-  const input = topicKeyword.value.trim().toLowerCase()
-  return topicSuggestions.value.some(topic => 
-    topic.name.toLowerCase() === input
-  )
-})
 
 // 修改错误提示状态为对象
 const errors = ref({
@@ -970,19 +899,13 @@ const handlePublish = async () => {
   }
   
   try {
-    // 准备话题数据
-    // 对于已有话题，提交ID；对于新话题，提交名称字符串
-    const topics = selectedTopics.value.map(topic => {
-      return topic.id ? topic.id : topic.name
-    })
-    
     // 准备发布数据
     const noteData = {
       type: noteType.value === 'video' ? 1 : 0, // 0 图文，1视频
       title: title.value.trim(),
       content: content.value.trim(),
       channelId: selectedChannel.value.id,
-      topics: topics
+      topicId: selectedTopic.value?.id || null
     }
     
     // 根据笔记类型添加不同的文件字段
@@ -1026,7 +949,7 @@ const onClose = () => {
   noteType.value = 'image'
   isTopicInputActive.value = false
   topicKeyword.value = ''
-  selectedTopics.value = []
+  selectedTopic.value = null
   topicSuggestions.value = []
   // 重置所有错误状态
   errors.value = {

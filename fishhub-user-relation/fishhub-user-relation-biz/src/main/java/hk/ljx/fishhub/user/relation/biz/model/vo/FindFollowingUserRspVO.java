@@ -20,4 +20,6 @@ public class FindFollowingUserRspVO {
 
     private String introduction;
 
+    private Boolean isFollowed;
+
 }
