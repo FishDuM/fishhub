@@ -17,6 +17,8 @@ public class CountCollectUnCollectNoteMqDTO {
 
     private Long noteId;
 
+    private Long noteCreatorId;
+
     /**
      * 0: 取消收藏， 1：收藏
      */

@@ -7,6 +7,17 @@ public class RedisKeyConstants {
      */
     public static final String NOTE_DETAIL_KEY = "note:detail:";
 
+    /**
+     * 笔记计数 KEY 前缀
+     */
+    public static final String NOTE_COUNT_KEY = "count:note:";
+
+    public static final String FIELD_LIKE_TOTAL = "likeTotal";
+
+    public static final String FIELD_COLLECT_TOTAL = "collectTotal";
+
+    public static final String FIELD_COMMENT_TOTAL = "commentTotal";
+
 
     /**
      * 构建完整的笔记详情 KEY
@@ -16,6 +27,10 @@ public class RedisKeyConstants {
      */
     public static String buildNoteDetailKey(Long noteId) {
         return NOTE_DETAIL_KEY + noteId;
+    }
+
+    public static String buildNoteCountKey(Long noteId) {
+        return NOTE_COUNT_KEY + noteId;
     }
 
     /**

@@ -4,14 +4,17 @@ import cn.hutool.core.collection.CollUtil;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
+import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
+import hk.ljx.fishhub.count.biz.model.dto.AggregationCountCollectUnCollectNoteMqDTO;
 import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 
-import java.util.Map;
+import java.util.List;
 
 /**
  * 将聚合后的笔记收藏数写入数据库。
@@ -25,6 +28,12 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
     @Resource
     private NoteCountDOMapper noteCountDOMapper;
 
+    @Resource
+    private UserCountDOMapper userCountDOMapper;
+
+    @Resource
+    private TransactionTemplate transactionTemplate;
+
     private RateLimiter rateLimiter = RateLimiter.create(5000);
 
     @Override
@@ -32,15 +41,25 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
         rateLimiter.acquire();
         log.info("## 消费到了 MQ 【计数: 笔记收藏数入库】, {}...", body);
 
-        Map<Long, Integer> countMap = null;
+        List<AggregationCountCollectUnCollectNoteMqDTO> countList = null;
         try {
-            countMap = JsonUtils.parseMap(body, Long.class, Integer.class);
+            countList = JsonUtils.parseList(body, AggregationCountCollectUnCollectNoteMqDTO.class);
         } catch (Exception e) {
             log.error("## 解析 JSON 字符串异常", e);
         }
 
-        if (CollUtil.isNotEmpty(countMap)) {
-            countMap.forEach((noteId, count) -> noteCountDOMapper.insertOrUpdateCollectTotalByNoteId(count, noteId));
+        if (CollUtil.isNotEmpty(countList)) {
+            countList.forEach(item -> transactionTemplate.execute(status -> {
+                try {
+                    noteCountDOMapper.insertOrUpdateCollectTotalByNoteId(item.getCount(), item.getNoteId());
+                    userCountDOMapper.insertOrUpdateCollectTotalByUserId(item.getCount(), item.getCreatorId());
+                    return true;
+                } catch (Exception e) {
+                    status.setRollbackOnly();
+                    log.error("## 更新笔记收藏计数失败", e);
+                    return false;
+                }
+            }));
         }
     }
 }

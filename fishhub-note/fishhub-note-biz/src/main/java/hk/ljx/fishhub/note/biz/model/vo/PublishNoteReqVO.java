@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.note.biz.model.vo;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,9 +22,16 @@ public class PublishNoteReqVO {
 
     private String videoUri;
 
+    @NotBlank(message = "笔记标题不能为空")
     private String title;
 
     private String content;
 
-    private Long topicId;
+    /**
+     * 已有话题使用 ID，新话题使用名称。
+     */
+    private List<Object> topics;
+
+    @NotNull(message = "频道不能为空")
+    private Long channelId;
 }

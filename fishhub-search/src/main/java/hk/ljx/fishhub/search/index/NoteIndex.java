@@ -17,6 +17,10 @@ public class NoteIndex {
      */
     public static final String FIELD_NOTE_COVER = "cover";
 
+    public static final String FIELD_NOTE_VIDEO_URI = "video_uri";
+
+    public static final String FIELD_NOTE_CREATOR_ID = "creator_id";
+
     /**
      * 头像
      */

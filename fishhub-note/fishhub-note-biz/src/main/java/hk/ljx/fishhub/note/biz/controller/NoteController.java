@@ -50,6 +50,12 @@ public class NoteController {
         return noteService.visibleOnlyMe(updateNoteVisibleOnlyMeReqVO);
     }
 
+    @PostMapping(value = "/top")
+    @ApiOperationLog(description = "置顶/取消置顶笔记")
+    public Response<?> topNote(@Validated @RequestBody TopNoteReqVO topNoteReqVO) {
+        return noteService.topNote(topNoteReqVO);
+    }
+
     @PostMapping(value = "/like")
     @ApiOperationLog(description = "点赞笔记")
     public Response<?> likeNote(@Validated @RequestBody LikeNoteReqVO likeNoteReqVO) {
@@ -72,6 +78,13 @@ public class NoteController {
     @ApiOperationLog(description = "取消收藏笔记")
     public Response<?> unCollectNote(@Validated @RequestBody UnCollectNoteReqVO unCollectNoteReqVO) {
         return noteService.unCollectNote(unCollectNoteReqVO);
+    }
+
+    @PostMapping(value = "/isLikedAndCollectedData")
+    @ApiOperationLog(description = "获取当前用户笔记互动状态")
+    public Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(
+            @Validated @RequestBody FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO) {
+        return noteService.isLikedAndCollectedData(findNoteIsLikedAndCollectedReqVO);
     }
 
 }

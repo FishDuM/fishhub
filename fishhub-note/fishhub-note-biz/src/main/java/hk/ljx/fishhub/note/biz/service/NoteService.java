@@ -80,4 +80,10 @@ public interface NoteService {
      * @return
      */
     Response<?> unCollectNote(UnCollectNoteReqVO unCollectNoteReqVO);
+
+    /**
+     * 查询当前用户对笔记的点赞、收藏状态。
+     */
+    Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(
+            FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO);
 }

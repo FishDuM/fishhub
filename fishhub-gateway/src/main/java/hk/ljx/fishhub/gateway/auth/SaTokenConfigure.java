@@ -24,6 +24,15 @@ public class SaTokenConfigure{
                     SaRouter.match("/**") // 拦截所有路由
                             .notMatch("/auth/login") // 排除登录接口
                             .notMatch("/auth/verification/code/send") // 排除验证码发送接口
+                            .notMatch("/note/channel/list")
+                            .notMatch("/note/discover/note/list")
+                            .notMatch("/note/profile/note/list")
+                            .notMatch("/note/note/detail")
+                            .notMatch("/note/note/isLikedAndCollectedData")
+                            .notMatch("/comment/comment/list")
+                            .notMatch("/comment/comment/child/list")
+                            .notMatch("/user/user/profile")
+                            .notMatch("/search/search/note")
                             .check(r -> StpUtil.checkLogin()) // 校验是否登录
                     ;
 

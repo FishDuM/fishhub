@@ -28,6 +28,8 @@ public class FindNoteDetailRspVO {
 
     private String topicName;
 
+    private List<FindTopicRspVO> topics;
+
     private Long creatorId;
 
     private String creatorName;
@@ -45,5 +47,11 @@ public class FindNoteDetailRspVO {
      * 是否可见
      */
     private Integer visible;
+
+    private String likeTotal;
+
+    private String collectTotal;
+
+    private String commentTotal;
 
 }

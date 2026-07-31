@@ -16,4 +16,3 @@ public class FindNoteIsLikedAndCollectedReqVO {
     private Long noteId;
 
 }
-

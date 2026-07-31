@@ -11,6 +11,9 @@ import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
+import hk.ljx.fishhub.note.biz.domain.dataobject.ChannelDO;
+import hk.ljx.fishhub.note.biz.domain.dataobject.TopicDO;
+import hk.ljx.fishhub.note.biz.domain.mapper.ChannelDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
@@ -20,16 +23,19 @@ import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
+import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindNoteCountByIdRspDTO;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.framework.common.util.NumberUtils;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -48,12 +54,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static hk.ljx.fishhub.note.biz.enums.ResponseCodeEnum.TOPIC_NOT_FOUND;
 
@@ -68,6 +79,9 @@ public class NoteServiceImpl implements NoteService {
     private TopicDOMapper topicDOMapper;
 
     @Resource
+    private ChannelDOMapper channelDOMapper;
+
+    @Resource
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
 
     @Resource
@@ -75,6 +89,9 @@ public class NoteServiceImpl implements NoteService {
 
     @Resource
     private UserRpcService userRpcService;
+
+    @Resource
+    private CountRpcService countRpcService;
 
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
@@ -142,6 +159,12 @@ public class NoteServiceImpl implements NoteService {
                 break;
         }
         
+        Long channelId = publishNoteReqVO.getChannelId();
+        ChannelDO channelDO = channelDOMapper.selectByPrimaryKey(channelId);
+        if (Objects.isNull(channelDO)) {
+            throw new BizException(ResponseCodeEnum.CHANNEL_NOT_FOUND);
+        }
+
         // RPC: 调用分布式 ID 生成服务，生成笔记 ID
         String snowflakeIdId = distributedIdGeneratorRpcService.getSnowflakeId();
         // 笔记内容 UUID
@@ -165,16 +188,10 @@ public class NoteServiceImpl implements NoteService {
             }
         }
 
-        // 话题
-        Long topicId = publishNoteReqVO.getTopicId();
-        String topicName = null;
-        if (Objects.nonNull(topicId)) {
-            // 获取话题名称
-            topicName = topicDOMapper.selectNameByPrimaryKey(topicId);
-        }
-
         // 发布者用户 ID
         Long creatorId = LoginUserContextHolder.getUserId();
+
+        String topicIds = handleTopics(publishNoteReqVO.getTopics());
 
         // 构建笔记 DO 对象
         NoteDO noteDO = NoteDO.builder()
@@ -183,8 +200,8 @@ public class NoteServiceImpl implements NoteService {
                 .creatorId(creatorId)
                 .imgUris(imgUris)
                 .title(publishNoteReqVO.getTitle())
-                .topicId(publishNoteReqVO.getTopicId())
-                .topicName(topicName)
+                .channelId(channelId)
+                .topicIds(topicIds)
                 .type(type)
                 .visible(NoteVisibleEnum.PUBLIC.getCode())
                 .createTime(LocalDateTime.now())
@@ -237,6 +254,44 @@ public class NoteServiceImpl implements NoteService {
         return Response.success();
     }
 
+    private String handleTopics(List<Object> topicInputs) {
+        if (CollUtil.isEmpty(topicInputs)) {
+            return null;
+        }
+
+        List<Long> existingTopicIds = new ArrayList<>();
+        List<String> newTopicNames = new ArrayList<>();
+        for (Object topicInput : topicInputs) {
+            if (topicInput instanceof Number) {
+                existingTopicIds.add(((Number) topicInput).longValue());
+            } else if (topicInput instanceof String topicName && StringUtils.isNotBlank(topicName)) {
+                newTopicNames.add(topicName.trim());
+            }
+        }
+
+        Set<Long> topicIds = new HashSet<>();
+        if (CollUtil.isNotEmpty(existingTopicIds)) {
+            topicIds.addAll(topicDOMapper.selectByTopicIdIn(existingTopicIds).stream()
+                    .map(TopicDO::getId)
+                    .collect(Collectors.toSet()));
+        }
+
+        List<TopicDO> newTopics = new ArrayList<>();
+        for (String topicName : newTopicNames) {
+            TopicDO existingTopic = topicDOMapper.selectByTopicName(topicName);
+            if (Objects.nonNull(existingTopic)) {
+                topicIds.add(existingTopic.getId());
+            } else {
+                newTopics.add(TopicDO.builder().name(topicName).build());
+            }
+        }
+        if (CollUtil.isNotEmpty(newTopics)) {
+            topicDOMapper.batchInsert(newTopics);
+            newTopics.forEach(topic -> topicIds.add(topic.getId()));
+        }
+        return StringUtils.join(topicIds, ',');
+    }
+
     /**
      * 笔记详情
      *
@@ -258,6 +313,7 @@ public class NoteServiceImpl implements NoteService {
             log.info("==> 命中了本地缓存；{}", findNoteDetailRspVOStrLocalCache);
             // 可见性校验
             checkNoteVisibleFromVO(userId, findNoteDetailRspVO);
+            getAndSetCount(noteId, findNoteDetailRspVO);
             return Response.success(findNoteDetailRspVO);
         }
 
@@ -275,6 +331,7 @@ public class NoteServiceImpl implements NoteService {
             });
             // 可见性校验
             checkNoteVisibleFromVO(userId, findNoteDetailRspVO);
+            getAndSetCount(noteId, findNoteDetailRspVO);
             return Response.success(findNoteDetailRspVO);
         }
 
@@ -307,13 +364,17 @@ public class NoteServiceImpl implements NoteService {
                     .supplyAsync(() -> keyValueRpcService.findNoteContent(noteDO.getContentUuid()), threadPoolTaskExecutor);
         }
 
+        CompletableFuture<FindNoteCountByIdRspDTO> countResultFuture = CompletableFuture
+                .supplyAsync(() -> countRpcService.findNoteCountById(noteId), threadPoolTaskExecutor);
+
         CompletableFuture<String> finalContentResultFuture = contentResultFuture;
         CompletableFuture<FindNoteDetailRspVO> resultFuture = CompletableFuture
-                .allOf(userResultFuture, contentResultFuture)
+                .allOf(userResultFuture, contentResultFuture, countResultFuture)
                 .thenApply(s -> {
                     // 获取 Future 返回的结果
                     FindUserByIdRspDTO findUserByIdRspDTO = userResultFuture.join();
                     String content = finalContentResultFuture.join();
+                    FindNoteCountByIdRspDTO findNoteCountByIdRspDTO = countResultFuture.join();
 
                     // 笔记类型
                     Integer noteType = noteDO.getType();
@@ -327,6 +388,16 @@ public class NoteServiceImpl implements NoteService {
                         imgUris = List.of(imgUrisStr.split(","));
                     }
 
+                    List<FindTopicRspVO> topics = null;
+                    if (StringUtils.isNotBlank(noteDO.getTopicIds())) {
+                        List<Long> topicIds = java.util.Arrays.stream(noteDO.getTopicIds().split(","))
+                                .map(Long::valueOf)
+                                .toList();
+                        topics = topicDOMapper.selectByTopicIdIn(topicIds).stream()
+                                .map(topic -> FindTopicRspVO.builder().id(topic.getId()).name(topic.getName()).build())
+                                .toList();
+                    }
+
                     // 构建返参 VO 实体类
                     return FindNoteDetailRspVO.builder()
                             .id(noteDO.getId())
@@ -336,12 +407,16 @@ public class NoteServiceImpl implements NoteService {
                             .imgUris(imgUris)
                             .topicId(noteDO.getTopicId())
                             .topicName(noteDO.getTopicName())
+                            .topics(topics)
                             .creatorId(noteDO.getCreatorId())
                             .creatorName(findUserByIdRspDTO.getNickName())
                             .avatar(findUserByIdRspDTO.getAvatar())
                             .videoUri(noteDO.getVideoUri())
                             .updateTime(noteDO.getUpdateTime())
                             .visible(noteDO.getVisible())
+                            .likeTotal(formatCount(findNoteCountByIdRspDTO, FindNoteCountByIdRspDTO::getLikeTotal))
+                            .collectTotal(formatCount(findNoteCountByIdRspDTO, FindNoteCountByIdRspDTO::getCollectTotal))
+                            .commentTotal(formatCount(findNoteCountByIdRspDTO, FindNoteCountByIdRspDTO::getCommentTotal))
                             .build();
                 });
 
@@ -356,6 +431,35 @@ public class NoteServiceImpl implements NoteService {
             redisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
         });
         return Response.success(findNoteDetailRspVO);
+    }
+
+    private void getAndSetCount(Long noteId, FindNoteDetailRspVO findNoteDetailRspVO) {
+        if (Objects.isNull(findNoteDetailRspVO)) {
+            return;
+        }
+        String noteCountKey = RedisKeyConstants.buildNoteCountKey(noteId);
+        List<Object> counts = redisTemplate.opsForHash().multiGet(noteCountKey, Arrays.asList(
+                RedisKeyConstants.FIELD_LIKE_TOTAL,
+                RedisKeyConstants.FIELD_COLLECT_TOTAL,
+                RedisKeyConstants.FIELD_COMMENT_TOTAL));
+
+        if (counts.stream().anyMatch(Objects::isNull)) {
+            FindNoteCountByIdRspDTO countData = countRpcService.findNoteCountById(noteId);
+            findNoteDetailRspVO.setLikeTotal(formatCount(countData, FindNoteCountByIdRspDTO::getLikeTotal));
+            findNoteDetailRspVO.setCollectTotal(formatCount(countData, FindNoteCountByIdRspDTO::getCollectTotal));
+            findNoteDetailRspVO.setCommentTotal(formatCount(countData, FindNoteCountByIdRspDTO::getCommentTotal));
+            return;
+        }
+
+        findNoteDetailRspVO.setLikeTotal(NumberUtils.formatNumberString(Long.parseLong(counts.get(0).toString())));
+        findNoteDetailRspVO.setCollectTotal(NumberUtils.formatNumberString(Long.parseLong(counts.get(1).toString())));
+        findNoteDetailRspVO.setCommentTotal(NumberUtils.formatNumberString(Long.parseLong(counts.get(2).toString())));
+    }
+
+    private String formatCount(FindNoteCountByIdRspDTO countData,
+                               java.util.function.Function<FindNoteCountByIdRspDTO, Long> getter) {
+        return NumberUtils.formatNumberString(Objects.isNull(countData) || Objects.isNull(getter.apply(countData))
+                ? 0L : getter.apply(countData));
     }
 
     /**
@@ -381,6 +485,22 @@ public class NoteServiceImpl implements NoteService {
                 && !Objects.equals(currUserId, creatorId)) { // 仅自己可见, 并且访问用户为笔记创建者才能访问，非本人则抛出异常
             throw new BizException(ResponseCodeEnum.NOTE_PRIVATE);
         }
+    }
+
+    @Override
+    public Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(
+            FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO) {
+        Long noteId = findNoteIsLikedAndCollectedReqVO.getNoteId();
+        Long userId = LoginUserContextHolder.getUserId();
+        boolean isLiked = Objects.nonNull(userId)
+                && noteLikeDOMapper.selectNoteIsLiked(userId, noteId) > 0;
+        boolean isCollected = Objects.nonNull(userId)
+                && noteCollectionDOMapper.selectNoteIsCollected(userId, noteId) > 0;
+        return Response.success(FindNoteIsLikedAndCollectedRspVO.builder()
+                .noteId(noteId)
+                .isLiked(isLiked)
+                .isCollected(isCollected)
+                .build());
     }
 
     /**
@@ -1275,4 +1395,3 @@ public class NoteServiceImpl implements NoteService {
         return Response.success();
     }
 }
-

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 96" role="img" aria-labelledby="title">
+  <title id="title">飞鱼社区</title>
+  <rect x="2" y="2" width="276" height="92" rx="42" fill="#111111"/>
+  <text
+    x="140"
+    y="68"
+    fill="#ffffff"
+    font-family="HanziPen SC, Hannotate SC, STXingkai, cursive"
+    font-size="52"
+    font-weight="600"
+    letter-spacing="0"
+    stroke="#ffffff"
+    stroke-width="0.45"
+    text-anchor="middle"
+  >飞鱼社区</text>
+</svg>

@@ -34,6 +34,18 @@ spring:
             - Path=/relation/**
           filters:
             - StripPrefix=1
+        - id: oss
+          uri: lb://fishhub-oss
+          predicates:
+            - Path=/oss/**
+          filters:
+            - StripPrefix=1
+        - id: search
+          uri: lb://fishhub-search
+          predicates:
+            - Path=/search/**
+          filters:
+            - StripPrefix=1
 
   data:
     redis:

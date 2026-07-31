@@ -166,9 +166,6 @@ public class NoteServiceImpl implements NoteService {
             sourceBuilder.query(functionScoreQueryBuilder);
         }
 
-        // 设置排序
-        sourceBuilder.sort(new FieldSortBuilder("_score").order(SortOrder.DESC)); // 按照 _score 降序
-
         // 设置分页，from 和 size
         int pageSize = 10; // 每页展示数据量
         int from = (pageNo - 1) * pageSize; // 偏移量
@@ -211,8 +208,11 @@ public class NoteServiceImpl implements NoteService {
 
                 // 提取特定字段值
                 Long noteId = (Long) sourceAsMap.get(NoteIndex.FIELD_NOTE_ID);
+                Integer noteType = (Integer) sourceAsMap.get(NoteIndex.FIELD_NOTE_TYPE);
                 String cover = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_COVER);
+                String videoUri = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_VIDEO_URI);
                 String title = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_TITLE);
+                Number creatorId = (Number) sourceAsMap.get(NoteIndex.FIELD_NOTE_CREATOR_ID);
                 String avatar = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_AVATAR);
                 String nickname = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_NICKNAME);
                 // 获取更新时间
@@ -232,6 +232,9 @@ public class NoteServiceImpl implements NoteService {
                 // 构建 VO 实体类
                 SearchNoteRspVO searchNoteRspVO = SearchNoteRspVO.builder()
                         .noteId(noteId)
+                        .type(noteType)
+                        .videoUri(videoUri)
+                        .creatorId(creatorId.longValue())
                         .cover(cover)
                         .title(title)
                         .highlightTitle(highlightedTitle)

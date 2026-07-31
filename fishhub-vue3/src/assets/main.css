@@ -1,0 +1,72 @@
+@import './base.css';
+
+:root {
+  --color-primary: #111111;
+  --color-primary-contrast: #ffffff;
+  --color-page: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f5f5;
+  --color-primary-label: #181818;
+  --color-secondary-label: #5f5f5f;
+  --color-tertiary-label: #8a8a8a;
+  --color-active-background: #f1f1f1;
+  --color-border: rgba(0, 0, 0, 0.1);
+}
+
+:root.dark {
+  --color-primary: #f5f5f5;
+  --color-primary-contrast: #121212;
+  --color-page: #121212;
+  --color-surface: #1b1b1b;
+  --color-surface-muted: #272727;
+  --color-primary-label: #f4f4f4;
+  --color-secondary-label: #c4c4c4;
+  --color-tertiary-label: #919191;
+  --color-active-background: #2b2b2b;
+  --color-border: rgba(255, 255, 255, 0.12);
+}
+
+html, body, #app {
+  min-height: 100%;
+  background: var(--color-page);
+  color: var(--color-primary-label);
+}
+
+* { border-color: var(--color-border); }
+
+/* Brand accent: all former red controls resolve to the monochrome primary color. */
+.bg-\[\#ff2442\], .hover\:bg-\[\#ff2442\]:hover, [class*="bg-[#ff2442]"] {
+  background-color: var(--color-primary) !important;
+  color: var(--color-primary-contrast) !important;
+}
+.bg-\[\#ff2e4d\], [class*="bg-[#ff2e4d]"] { background-color: var(--color-primary) !important; color: var(--color-primary-contrast) !important; }
+.bg-\[\#fff5f7\], [class*="bg-[#fff5f7]"] { background-color: var(--color-surface-muted) !important; }
+.text-\[\#ff2442\], [class*="text-[#ff2442]"] { color: var(--color-primary) !important; }
+.border-\[\#ff2442\], .focus\:border-\[\#ff2442\]:focus, [class*="border-[#ff2442]"] {
+  border-color: var(--color-primary) !important;
+}
+.caret-\[\#ff2442\], [class*="caret-[#ff2442]"] { caret-color: var(--color-primary) !important; }
+[fill="#ff2442"], [stroke="#ff2442"] { fill: var(--color-primary) !important; stroke: var(--color-primary) !important; }
+[fill="#F8355C"], [fill="#F69661"] { fill: var(--color-primary) !important; }
+
+:root.dark .bg-white,
+:root.dark .bg-gray-50,
+:root.dark .bg-gray-100,
+:root.dark .bg-\[\#f6f6f6\] {
+  background-color: var(--color-surface) !important;
+}
+:root.dark .bg-gray-50\/50 { background-color: color-mix(in srgb, var(--color-surface) 75%, transparent) !important; }
+:root.dark .text-gray-900,
+:root.dark .text-gray-800,
+:root.dark .text-gray-700 { color: var(--color-primary-label) !important; }
+:root.dark .text-gray-600,
+:root.dark .text-gray-500 { color: var(--color-secondary-label) !important; }
+:root.dark .text-gray-400,
+:root.dark .text-gray-300 { color: var(--color-tertiary-label) !important; }
+:root.dark .border-gray-100,
+:root.dark .border-gray-200,
+:root.dark .border-gray-300 { border-color: var(--color-border) !important; }
+:root.dark .hover\:bg-gray-50:hover,
+:root.dark .hover\:bg-gray-100:hover { background-color: var(--color-active-background) !important; }
+
+button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }

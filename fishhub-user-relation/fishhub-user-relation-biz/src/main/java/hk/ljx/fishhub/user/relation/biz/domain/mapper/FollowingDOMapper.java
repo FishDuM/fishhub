@@ -47,4 +47,5 @@ public interface FollowingDOMapper {
      * @return
      */
     List<FollowingDO> selectAllByUserId(Long userId);
+
 }
