@@ -183,8 +183,8 @@
                   <div v-if="!isInputFocused" class="flex items-center gap-4 ml-auto text-[#333]">
                     <div class="flex items-center gap-1 cursor-pointer hover:text-gray-800">
                       <svg 
-                        class="w-[20px] h-[20px] transition-all duration-200"
-                        :class="[isNoteLiked ? 'animate-like' : 'animate-unlike']"
+                        class="note-like-icon w-[20px] h-[20px] transition-all duration-200"
+                        :class="[isNoteLiked ? 'animate-like is-liked' : 'animate-unlike']"
                         viewBox="0 0 24 24" 
                         :fill="isNoteLiked ? '#ff2442' : 'none'" 
                         :stroke="isNoteLiked ? '#ff2442' : 'currentColor'"
@@ -340,7 +340,7 @@ const mergeNoteDetail = (detail = {}) => ({
   commentTotal: detail.commentTotal ?? props.note.commentTotal ?? 0
 })
 
-const emit = defineEmits(['update:visible'])
+const emit = defineEmits(['update:visible', 'interaction-change'])
 
 // DOM 引用
 const modalRef = ref(null)
@@ -556,7 +556,7 @@ watch(() => props.visible, (newVisible) => {
     
     // 加载笔记详情
     getNoteDetail(props.note.id).then(res => {
-      if (res.success) {
+      if (res.success && res.data) {
         currNote.value = mergeNoteDetail(res.data)
       }
     })
@@ -566,6 +566,13 @@ watch(() => props.visible, (newVisible) => {
         if (res.success && res.data) {
           isNoteLiked.value = Boolean(res.data.isLiked)
           isNoteCollected.value = Boolean(res.data.isCollected)
+          emit('interaction-change', {
+            noteId: props.note.id ?? props.note.noteId,
+            likeTotal: currNote.value.likeTotal,
+            collectTotal: currNote.value.collectTotal,
+            isLiked: isNoteLiked.value,
+            isCollected: isNoteCollected.value
+          })
         }
       })
     }
@@ -860,6 +867,34 @@ const handleExpandReplies = (comment) => {
 
 // 添加点赞状态
 const isNoteLiked = ref(false)
+const isNoteLikeSubmitting = ref(false)
+const isNoteCollectSubmitting = ref(false)
+
+const parseInteractionTotal = (value) => {
+  const text = String(value ?? 0).trim()
+  if (text.endsWith('万')) {
+    return Math.round((Number.parseFloat(text.slice(0, -1)) || 0) * 10000)
+  }
+  return Number(text) || 0
+}
+
+const formatInteractionTotal = (total) => {
+  if (total < 10000) return total
+  return `${(total / 10000).toFixed(1).replace(/\.0$/, '')}万`
+}
+
+const updateInteractionTotal = (field, delta) => {
+  const currentTotal = parseInteractionTotal(currNote.value[field])
+  currNote.value[field] = formatInteractionTotal(Math.max(0, currentTotal + delta))
+  emit('interaction-change', {
+    noteId: currNoteId.value,
+    likeTotal: currNote.value.likeTotal,
+    collectTotal: currNote.value.collectTotal,
+    isLiked: isNoteLiked.value,
+    isCollected: isNoteCollected.value
+  })
+}
+
 // 处理笔记点赞、取消点赞
 const handleNoteLike = () => {
   if (!isLoggedIn.value) {
@@ -867,25 +902,36 @@ const handleNoteLike = () => {
     return
   }
 
+  if (isNoteLikeSubmitting.value) return
+  isNoteLikeSubmitting.value = true
+
   if (!isNoteLiked.value) {
     likeNote(currNoteId.value).then(res => {
-    if (res.success) {
-      console.log('点赞成功')
-      isNoteLiked.value = !isNoteLiked.value
-      currNote.value.likeTotal++
+      if (res.success) {
+        isNoteLiked.value = true
+        updateInteractionTotal('likeTotal', 1)
       } else {
         message.show(res.message)
       }
+    }).catch(() => {
+      message.show('点赞失败，请稍后重试')
+    }).finally(() => {
+      isNoteLikeSubmitting.value = false
     })
     return
   }
   
   unlikeNote(currNoteId.value).then(res => {
     if (res.success) {
-      console.log('取消点赞成功')
-      isNoteLiked.value = !isNoteLiked.value
-      currNote.value.likeTotal--
+      isNoteLiked.value = false
+      updateInteractionTotal('likeTotal', -1)
+    } else {
+      message.show(res.message)
     }
+  }).catch(() => {
+    message.show('取消点赞失败，请稍后重试')
+  }).finally(() => {
+    isNoteLikeSubmitting.value = false
   })
 }
 
@@ -926,25 +972,36 @@ const handleNoteCollect = () => {
     showLoginModal.value = true
     return
   }
+  if (isNoteCollectSubmitting.value) return
+  isNoteCollectSubmitting.value = true
+
   if (!isNoteCollected.value) {
     collectNote(currNoteId.value).then(res => {
       if (res.success) {
-        console.log('收藏成功')
-        isNoteCollected.value = !isNoteCollected.value
-        currNote.value.collectTotal++
+        isNoteCollected.value = true
+        updateInteractionTotal('collectTotal', 1)
       } else {
         message.show(res.message)
       }
+    }).catch(() => {
+      message.show('收藏失败，请稍后重试')
+    }).finally(() => {
+      isNoteCollectSubmitting.value = false
     })
     return
   }
 
   uncollectNote(currNoteId.value).then(res => {
     if (res.success) {
-      console.log('取消收藏成功')
-      isNoteCollected.value = !isNoteCollected.value
-      currNote.value.collectTotal--
+      isNoteCollected.value = false
+      updateInteractionTotal('collectTotal', -1)
+    } else {
+      message.show(res.message)
     }
+  }).catch(() => {
+    message.show('取消收藏失败，请稍后重试')
+  }).finally(() => {
+    isNoteCollectSubmitting.value = false
   })
 }
 
@@ -1131,6 +1188,12 @@ input:focus::placeholder {
 .animate-unlike {
   animation: unlike 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   transform-origin: center;
+}
+
+/* Keep the liked state distinct in dark mode instead of inheriting the white primary icon color. */
+.note-like-icon.is-liked {
+  fill: #ff2442 !important;
+  stroke: #ff2442 !important;
 }
 
 /* 防止动画重复播放 */

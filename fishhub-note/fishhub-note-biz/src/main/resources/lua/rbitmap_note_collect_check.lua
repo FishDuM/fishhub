@@ -10,11 +10,11 @@ if exists == 0 then
 end
 
 -- 校验该篇笔记是否被收藏过(1 表示已经收藏，0 表示未收藏)
-local isCollected = redis.call('R.GETBIT', key, noteId)
+local isCollected = redis.call('R64.GETBIT', key, noteId)
 if isCollected == 1 then
     return 1
 end
 
 -- 未被收藏，添加收藏数据
-redis.call('R.SETBIT', key, noteId, 1)
+redis.call('R64.SETBIT', key, noteId, 1)
 return 0

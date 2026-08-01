@@ -75,8 +75,8 @@
             :class="{'scale-animation': isLiked}"
             viewBox="0 0 24 24" 
             :style="{
-              fill: isLiked ? '#fe2c55' : 'none',
-              stroke: isLiked ? '#fe2c55' : 'currentColor'
+              fill: isLiked ? '#ff2442' : 'none',
+              stroke: isLiked ? '#ff2442' : 'currentColor'
             }"
             stroke-width="2"
           >
@@ -95,7 +95,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, watch } from 'vue'
 import { likeNote, unlikeNote } from '@/api/note'
 import { message } from '@/utils/message'
 import { useUserStore } from '@/stores/user'
@@ -109,11 +109,30 @@ const props = defineProps({
   }
 })
 
-defineEmits(['click'])
+const emit = defineEmits(['click', 'like-change'])
 
 // 点赞状态
-const isLiked = ref(false)
+const isLiked = computed(() => Boolean(props.note.isLiked))
 const likeCount = ref(props.note.likeTotal)
+const isLikeSubmitting = ref(false)
+
+// 详情弹窗会更新父级列表中的笔记对象；同步该变更，避免卡片继续显示初始化时的旧点赞数。
+watch(() => props.note.likeTotal, (likeTotal) => {
+  likeCount.value = likeTotal
+})
+
+const parseLikeTotal = (value) => {
+  const text = String(value ?? 0).trim()
+  if (text.endsWith('万')) {
+    return Math.round((Number.parseFloat(text.slice(0, -1)) || 0) * 10000)
+  }
+  return Number(text) || 0
+}
+
+const formatLikeTotal = (total) => {
+  if (total < 10000) return total
+  return `${(total / 10000).toFixed(1).replace(/\.0$/, '')}万`
+}
 
 
 // 登录状态控制
@@ -126,10 +145,12 @@ const toggleLike = () => {
     showLoginModal.value = true
     return
   }
-
+  if (isLikeSubmitting.value) return
+  isLikeSubmitting.value = true
 
   const wasLiked = isLiked.value
-  const request = wasLiked ? unlikeNote(props.note.id) : likeNote(props.note.id)
+  const noteId = props.note.id ?? props.note.noteId
+  const request = wasLiked ? unlikeNote(noteId) : likeNote(noteId)
 
   request.then(res => {
     if (!res.success) {
@@ -137,12 +158,12 @@ const toggleLike = () => {
       return
     }
 
-    isLiked.value = !wasLiked
-    if (!isNaN(likeCount.value)) {
-      likeCount.value = wasLiked
-        ? Math.max(0, parseInt(likeCount.value) - 1)
-        : parseInt(likeCount.value) + 1
-    }
+    const likeTotal = formatLikeTotal(Math.max(0, parseLikeTotal(likeCount.value) + (wasLiked ? -1 : 1)))
+    emit('like-change', { noteId, isLiked: !wasLiked, likeTotal })
+  }).catch(() => {
+    message.show(wasLiked ? '取消点赞失败，请稍后重试' : '点赞失败，请稍后重试')
+  }).finally(() => {
+    isLikeSubmitting.value = false
   })
 }
 </script>
@@ -158,7 +179,7 @@ const toggleLike = () => {
     font-weight: 500;
     font-size: 14px;
     line-height: 140%;
-    color: #333;
+    color: var(--color-primary-label);
 }
 
 /* 点赞动画 */

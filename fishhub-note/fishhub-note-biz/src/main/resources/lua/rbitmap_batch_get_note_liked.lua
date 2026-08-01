@@ -14,7 +14,7 @@ end
 
 -- 循环获取笔记是否点赞，1表示已点赞，0表示未点赞
 for i = 1, #ARGV do
-    results[i] = redis.call("R.GETBIT", key, ARGV[i])
+    results[i] = redis.call("R64.GETBIT", key, ARGV[i])
 end
 
 return results

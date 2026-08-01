@@ -177,7 +177,12 @@ const handlePublishNote = () => {
 
 <style scoped>
 .mobile-bottom-nav { display: none; }
-.desktop-sidebar { top: 72px; left: 0; }
+.desktop-sidebar {
+  top: 72px;
+  left: 0;
+  /* 瀑布流创建了独立的层叠上下文，侧栏及其菜单需整体位于其上方。 */
+  z-index: 40;
+}
 
 .left-nav:hover {
   background-color: var(--color-active-background);

@@ -146,6 +146,7 @@
                   <NoteCard 
                     :note="note" 
                     @click="onNoteClick"
+                    @like-change="handleCardLikeChange"
                   />
                 </div>
               </div>
@@ -175,6 +176,7 @@
                     <NoteCard 
                       :note="note" 
                       @click="onNoteClick"
+                      @like-change="handleCardLikeChange"
                     />
                   </div>
                 </div>
@@ -201,6 +203,7 @@
                     <NoteCard 
                       :note="note" 
                       @click="onNoteClick"
+                      @like-change="handleCardLikeChange"
                     />
                   </div>
                 </div>
@@ -226,6 +229,7 @@
           <NoteDetailModal 
             v-model:visible="showModal"
             :note="selectedNote"
+            @interaction-change="handleNoteInteractionChange"
           />
 
           <!-- 编辑资料模态框 -->
@@ -269,6 +273,18 @@ const selectedNote = ref(null)
 const onNoteClick = (note) => {
   selectedNote.value = note
   showModal.value = true
+}
+
+const handleNoteInteractionChange = ({ noteId, likeTotal, collectTotal, isLiked, isCollected }) => {
+  const selectedNoteId = selectedNote.value?.id ?? selectedNote.value?.noteId
+  if (String(selectedNoteId) !== String(noteId)) return
+
+  Object.assign(selectedNote.value, { likeTotal, collectTotal, isLiked, isCollected })
+}
+
+const handleCardLikeChange = ({ noteId, isLiked, likeTotal }) => {
+  const note = notes.value.find(item => String(item.id ?? item.noteId) === String(noteId))
+  if (note) Object.assign(note, { isLiked, likeTotal })
 }
 
 // 下拉菜单状态

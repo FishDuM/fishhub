@@ -142,7 +142,7 @@
       <!-- 瀑布流布局 -->
       <div v-if="activeTab !== 'users'" class="masonry-container">
         <div v-for="note in searchResults" :key="note.id" class="masonry-item">
-          <NoteCard :note="note" @click="onNoteClick" />
+          <NoteCard :note="note" @click="onNoteClick" @like-change="handleCardLikeChange" />
         </div>
       </div>
 
@@ -177,6 +177,7 @@
     <NoteDetailModal 
       v-model:visible="showModal"
       :note="selectedNote"
+      @interaction-change="handleNoteInteractionChange"
     />
   </div>
 </template>
@@ -418,6 +419,18 @@ onUnmounted(() => {
 const onNoteClick = (note) => {
   selectedNote.value = note
   showModal.value = true
+}
+
+const handleNoteInteractionChange = ({ noteId, likeTotal, collectTotal, isLiked, isCollected }) => {
+  const selectedNoteId = selectedNote.value?.id ?? selectedNote.value?.noteId
+  if (String(selectedNoteId) !== String(noteId)) return
+
+  Object.assign(selectedNote.value, { likeTotal, collectTotal, isLiked, isCollected })
+}
+
+const handleCardLikeChange = ({ noteId, isLiked, likeTotal }) => {
+  const note = searchResults.value.find(item => String(item.id ?? item.noteId) === String(noteId))
+  if (note) Object.assign(note, { isLiked, likeTotal })
 }
 
 // 处理用户关注事件

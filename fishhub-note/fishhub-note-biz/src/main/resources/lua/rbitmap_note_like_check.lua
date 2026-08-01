@@ -10,13 +10,13 @@ if exists == 0 then
 end
 
 -- 校验该篇笔记是否被点赞过(1 表示已经点赞，0 表示未点赞)
-local isLiked = redis.call('R.GETBIT', key, noteId)
+local isLiked = redis.call('R64.GETBIT', key, noteId)
 if isLiked == 1 then
     return 1
 end
 
 -- 未被点赞，添加点赞数据
-redis.call('R.SETBIT', key, noteId, 1)
+redis.call('R64.SETBIT', key, noteId, 1)
 return 0
 
 

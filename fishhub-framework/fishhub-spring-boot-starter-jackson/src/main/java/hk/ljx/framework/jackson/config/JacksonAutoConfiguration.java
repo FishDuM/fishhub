@@ -3,6 +3,7 @@ package hk.ljx.framework.jackson.config;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
@@ -43,6 +44,11 @@ public class JacksonAutoConfiguration {
 
         // JavaTimeModule 用于指定序列化和反序列化规则
         JavaTimeModule javaTimeModule = new JavaTimeModule();
+
+        // Snowflake ID 远超 JavaScript Number 的安全整数范围，必须按字符串返回，
+        // 否则前端再次携带该 ID 请求详情、点赞等接口时会发生精度丢失。
+        javaTimeModule.addSerializer(Long.class, ToStringSerializer.instance);
+        javaTimeModule.addSerializer(Long.TYPE, ToStringSerializer.instance);
 
         // 支持 LocalDateTime、LocalDate、LocalTime
         javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(DateConstants.DATE_FORMAT_Y_M_D_H_M_S));

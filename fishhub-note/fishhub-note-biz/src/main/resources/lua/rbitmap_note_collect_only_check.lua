@@ -10,5 +10,5 @@ if exists == 0 then
 end
 
 -- 校验该篇笔记是否被收藏过(1 表示已经收藏，0 表示未收藏)
-return redis.call('R.GETBIT', key, noteId)
+return redis.call('R64.GETBIT', key, noteId)
 
