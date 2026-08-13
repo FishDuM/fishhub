@@ -8,6 +8,8 @@ public interface NoteService {
 
     Response<Boolean> exists(Long noteId);
 
+    Response<Boolean> isAccessible(Long noteId);
+
     /**
      * 笔记发布
      * @param publishNoteReqVO
@@ -48,6 +50,8 @@ public interface NoteService {
      * @return
      */
     Response<?> visibleOnlyMe(UpdateNoteVisibleOnlyMeReqVO updateNoteVisibleOnlyMeReqVO);
+
+    Response<?> updateVisibility(UpdateNoteVisibilityReqVO request);
 
     /**
      * 笔记置顶 / 取消置顶

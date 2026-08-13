@@ -110,6 +110,18 @@ public class NoteServiceImpl implements NoteService {
         return Response.success(noteDOMapper.selectByPrimaryKey(noteId) != null);
     }
 
+    @Override
+    public Response<Boolean> isAccessible(Long noteId) {
+        NoteDO noteDO = noteDOMapper.selectByPrimaryKey(noteId);
+        if (noteDO == null) {
+            return Response.success(Boolean.FALSE);
+        }
+        Long currentUserId = LoginUserContextHolder.getUserId();
+        boolean accessible = Objects.equals(noteDO.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
+                || Objects.equals(currentUserId, noteDO.getCreatorId());
+        return Response.success(accessible);
+    }
+
     /**
      * 笔记详情本地缓存
      */
@@ -183,6 +195,9 @@ public class NoteServiceImpl implements NoteService {
         if (Objects.nonNull(topicId)) {
             // 获取话题名称
             topicName = topicDOMapper.selectNameByPrimaryKey(topicId);
+            if (StringUtils.isBlank(topicName)) {
+                throw new BizException(ResponseCodeEnum.TOPIC_NOT_FOUND);
+            }
         }
 
         Long channelId = publishNoteReqVO.getChannelId();
@@ -283,6 +298,7 @@ public class NoteServiceImpl implements NoteService {
             log.info("==> 命中了本地缓存；{}", findNoteDetailRspVOStrLocalCache);
             // 可见性校验
             checkNoteVisibleFromVO(userId, findNoteDetailRspVO);
+            fillNoteCounts(findNoteDetailRspVO);
             return Response.success(findNoteDetailRspVO);
         }
 
@@ -304,6 +320,7 @@ public class NoteServiceImpl implements NoteService {
             });
             // 可见性校验
             checkNoteVisibleFromVO(userId, findNoteDetailRspVO);
+            fillNoteCounts(findNoteDetailRspVO);
 
             return Response.success(findNoteDetailRspVO);
         }
@@ -388,6 +405,7 @@ public class NoteServiceImpl implements NoteService {
             redisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
         });
 
+        fillNoteCounts(findNoteDetailRspVO);
         return Response.success(findNoteDetailRspVO);
     }
 
@@ -628,8 +646,21 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Response<?> visibleOnlyMe(UpdateNoteVisibleOnlyMeReqVO updateNoteVisibleOnlyMeReqVO) {
-        // 笔记 ID
-        Long noteId = updateNoteVisibleOnlyMeReqVO.getId();
+        return updateVisibility(UpdateNoteVisibilityReqVO.builder()
+                .id(updateNoteVisibleOnlyMeReqVO.getId())
+                .visible(NoteVisibleEnum.PRIVATE.getCode())
+                .build());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Response<?> updateVisibility(UpdateNoteVisibilityReqVO request) {
+        Long noteId = request.getId();
+        Integer visible = request.getVisible();
+        if (!Objects.equals(visible, NoteVisibleEnum.PUBLIC.getCode())
+                && !Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode())) {
+            throw new IllegalArgumentException("无效的笔记可见性");
+        }
 
         NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
 
@@ -647,7 +678,7 @@ public class NoteServiceImpl implements NoteService {
         // 构建更新 DO 实体类
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
-                .visible(NoteVisibleEnum.PRIVATE.getCode()) // 可见性设置为仅对自己可见
+                .visible(visible)
                 .updateTime(LocalDateTime.now())
                 .build();
 
@@ -987,6 +1018,7 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public Response<FindNoteIsLikedAndCollectedRspVO> isLikedAndCollectedData(FindNoteIsLikedAndCollectedReqVO findNoteIsLikedAndCollectedReqVO) {
         Long noteId = findNoteIsLikedAndCollectedReqVO.getNoteId();
+        checkNoteIsExistAndGetCreatorId(noteId);
 
         // 已登录的用户 ID
         Long currUserId = LoginUserContextHolder.getUserId();
@@ -1023,6 +1055,7 @@ public class NoteServiceImpl implements NoteService {
         Long userId = findPublishedNoteListReqVO.getUserId();
         // 游标
         Long cursor = findPublishedNoteListReqVO.getCursor();
+        boolean includePrivate = Objects.equals(LoginUserContextHolder.getUserId(), userId);
 
         // 返参 VO
         FindPublishedNoteListRspVO findPublishedNoteListRspVO = null;
@@ -1030,7 +1063,7 @@ public class NoteServiceImpl implements NoteService {
         // 优先查询缓存
         String publishedNoteListRedisKey = RedisKeyConstants.buildPublishedNoteListKey(userId);
         // 若游标为空，表示查询的是第一页
-        if (Objects.isNull(cursor)) {
+        if (!includePrivate && Objects.isNull(cursor)) {
             String publishedNoteListJson = redisTemplate.opsForValue().get(publishedNoteListRedisKey);
 
             if (StringUtils.isNotBlank(publishedNoteListJson)) {
@@ -1062,7 +1095,7 @@ public class NoteServiceImpl implements NoteService {
         }
 
         // 缓存无，则查询数据库
-        List<NoteDO> noteDOS = noteDOMapper.selectPublishedNoteListByUserIdAndCursor(userId, cursor);
+        List<NoteDO> noteDOS = noteDOMapper.selectPublishedNoteListByUserIdAndCursor(userId, cursor, includePrivate);
 
         if (CollUtil.isNotEmpty(noteDOS)) {
             // DO 转 VO
@@ -1131,7 +1164,7 @@ public class NoteServiceImpl implements NoteService {
                     .build();
 
             // 同步第一页已发布笔记到 Redis
-            if (Objects.isNull(cursor)) {
+            if (!includePrivate && Objects.isNull(cursor)) {
                 syncFirstPagePublishedNoteList2Redis(noteVOS, publishedNoteListRedisKey);
             }
         }
@@ -1141,11 +1174,13 @@ public class NoteServiceImpl implements NoteService {
 
     @Override
     public Response<FindPublishedNoteListRspVO> findCollectedNoteList(FindPublishedNoteListReqVO request) {
+        checkCurrentUserOwnsList(request.getUserId());
         return userNoteListService.findCollectedNotes(request);
     }
 
     @Override
     public Response<FindPublishedNoteListRspVO> findLikedNoteList(FindPublishedNoteListReqVO request) {
+        checkCurrentUserOwnsList(request.getUserId());
         return userNoteListService.findLikedNotes(request);
     }
 
@@ -1288,41 +1323,34 @@ public class NoteServiceImpl implements NoteService {
      * @param noteId
      */
     private Long checkNoteIsExistAndGetCreatorId(Long noteId) {
-        // 先从本地缓存校验
-        String findNoteDetailRspVOStrLocalCache = LOCAL_CACHE.getIfPresent(noteId);
-        // 解析 Json 字符串为 VO 对象
-        FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
-
-        // 若本地缓存没有
-        if (Objects.isNull(findNoteDetailRspVO)) {
-            // 再从 Redis 中校验
-            String noteDetailRedisKey = RedisKeyConstants.buildNoteDetailKey(noteId);
-
-            String noteDetailJson = redisTemplate.opsForValue().get(noteDetailRedisKey);
-
-            // 解析 Json 字符串为 VO 对象
-            findNoteDetailRspVO = JsonUtils.parseObject(noteDetailJson, FindNoteDetailRspVO.class);
-
-            // 都不存在，再查询数据库校验是否存在
-            if (Objects.isNull(findNoteDetailRspVO)) {
-                // 笔记发布者用户 ID
-                Long creatorId = noteDOMapper.selectCreatorIdByNoteId(noteId);
-
-                // 若数据库中也不存在，提示用户
-                if (Objects.isNull(creatorId)) {
-                    throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
-                }
-
-                // 若数据库中存在，异步同步一下缓存
-                threadPoolTaskExecutor.submit(() -> {
-                    FindNoteDetailReqVO findNoteDetailReqVO = FindNoteDetailReqVO.builder().id(noteId).build();
-                    findNoteDetail(findNoteDetailReqVO);
-                });
-                return creatorId;
-            }
+        NoteDO noteDO = noteDOMapper.selectByPrimaryKey(noteId);
+        if (noteDO == null) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
+        checkNoteVisible(noteDO.getVisible(), LoginUserContextHolder.getUserId(), noteDO.getCreatorId());
+        return noteDO.getCreatorId();
+    }
 
-        return findNoteDetailRspVO.getCreatorId();
+    private void checkCurrentUserOwnsList(Long requestedUserId) {
+        Long currentUserId = LoginUserContextHolder.getUserId();
+        if (!Objects.equals(currentUserId, requestedUserId)) {
+            throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
+        }
+    }
+
+    private void fillNoteCounts(FindNoteDetailRspVO noteDetail) {
+        try {
+            List<FindNoteCountsByIdRspDTO> counts = countRpcService.findByNoteIds(List.of(noteDetail.getId()));
+            FindNoteCountsByIdRspDTO count = CollUtil.isEmpty(counts) ? null : counts.get(0);
+            noteDetail.setLikeTotal(count == null || count.getLikeTotal() == null ? 0L : count.getLikeTotal());
+            noteDetail.setCollectTotal(count == null || count.getCollectTotal() == null ? 0L : count.getCollectTotal());
+            noteDetail.setCommentTotal(count == null || count.getCommentTotal() == null ? 0L : count.getCommentTotal());
+        } catch (Exception e) {
+            log.warn("查询笔记计数失败，noteId={}", noteDetail.getId(), e);
+            noteDetail.setLikeTotal(0L);
+            noteDetail.setCollectTotal(0L);
+            noteDetail.setCommentTotal(0L);
+        }
     }
 
     /**

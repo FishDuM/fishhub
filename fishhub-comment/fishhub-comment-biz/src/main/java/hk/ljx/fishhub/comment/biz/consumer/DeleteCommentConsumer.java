@@ -20,9 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -58,8 +56,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     @Resource
     private CommentDetailCache commentDetailCache;
     @Resource
-    private RocketMQTemplate rocketMQTemplate;
-    @Resource
     private TransactionTemplate transactionTemplate;
 
     private final RateLimiter rateLimiter = RateLimiter.create(1000);
@@ -93,6 +89,14 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         List<String> contentDeletionBodies = contentDeletionTasks.stream()
                 .map(JsonUtils::toJsonString)
                 .toList();
+        String heatUpdateBody = Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())
+                ? JsonUtils.toJsonString(Set.of(root.getParentId())) : null;
+        List<String> localCacheInvalidationBodies = new ArrayList<>(targetIds.stream()
+                .map(String::valueOf)
+                .toList());
+        if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
+            localCacheInvalidationBodies.add(String.valueOf(root.getParentId()));
+        }
 
         boolean deleted = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             // 消费幂等：并发重投时只允许一个消费者执行扣减
@@ -110,6 +114,11 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
 
             contentDeletionBodies.forEach(bodyItem ->
                     sendMqRetryHelper.enqueue(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
+            if (heatUpdateBody != null) {
+                sendMqRetryHelper.enqueue(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatUpdateBody);
+            }
+            localCacheInvalidationBodies.forEach(bodyItem ->
+                    sendMqRetryHelper.enqueue(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, bodyItem));
 
             commentLikeDOMapper.deleteByCommentIds(targetIds);
             commentDOMapper.deleteByIds(targetIds);
@@ -121,15 +130,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                 CommentDO earliest = commentDOMapper.selectEarliestByParentId(parentId);
                 commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
                         earliest == null ? 0L : earliest.getId(), parentId);
-                rocketMQTemplate.syncSend(MQConstants.TOPIC_COMMENT_HEAT_UPDATE,
-                        MessageBuilder.withPayload(JsonUtils.toJsonString(Set.of(parentId))).build());
-            }
-
-            // 广播删除每个实例的 Caffeine 详情缓存。
-            targetIds.forEach(id -> rocketMQTemplate.syncSend(
-                    MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(id)));
-            if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
-                rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(root.getParentId()));
             }
             return true;
         }));
@@ -141,6 +141,11 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         invalidateRedis(root, targetIds);
         contentDeletionBodies.forEach(bodyItem ->
                 sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
+        if (heatUpdateBody != null) {
+            sendMqRetryHelper.sendNow(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatUpdateBody);
+        }
+        localCacheInvalidationBodies.forEach(bodyItem ->
+                sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, bodyItem));
     }
 
     private List<CommentDO> collectDeleteTargets(CommentDO root) {

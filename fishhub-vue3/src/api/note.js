@@ -34,6 +34,10 @@ export function uncollectNote(noteId) {
   return axios.post(`${API_PREFIX}/note/uncollect`, { id: noteId })
 }
 
+export function updateNoteVisibility(noteId, visible) {
+  return axios.post(`${API_PREFIX}/note/visible`, { id: noteId, visible })
+}
+
 export function getPublishedNoteList(userId, cursor) {
   return axios.post(`${API_PREFIX}/note/published/list`, { userId, cursor })
 }

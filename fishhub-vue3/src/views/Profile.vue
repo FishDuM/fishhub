@@ -117,11 +117,7 @@
           <div class="mt-[48px]">
         <TabNav
           v-model="activeTab"
-          :tabs="[
-            { key: 'notes', label: '笔记' },
-            { key: 'collect', label: '收藏' },
-            { key: 'like', label: '赞过' }
-          ]"
+          :tabs="profileTabs"
         />
         
       <div class="masonry-container mt-[16px]" v-if="activeTab === 'notes'">
@@ -279,6 +275,15 @@ const toggleDropdown = () => {
 const showEditModal = ref(false)
 
 const isLoggedIn = computed(() => !!userStore.token)
+const isOwnProfile = computed(() => isLoggedIn.value
+  && String(userStore.profile.userId) === String(profile.value.userId))
+const profileTabs = computed(() => {
+  const tabs = [{ key: 'notes', label: '笔记' }]
+  if (isOwnProfile.value) {
+    tabs.push({ key: 'collect', label: '收藏' }, { key: 'like', label: '赞过' })
+  }
+  return tabs
+})
 const showLoginModal = inject('showLoginModal')
 
 const editProfile = () => {
@@ -357,6 +362,10 @@ const normalizeNote = (note) => ({ ...note, id: note.noteId ?? note.id })
 
 const loadNotes = async (isFirstPage = true) => {
   if ((!isFirstPage && isLoading.value) || !profile.value.userId) return
+  if (activeTab.value !== 'notes' && !isOwnProfile.value) {
+    activeTab.value = 'notes'
+    return
+  }
   const requestId = beginNoteRequest()
   const requestUserId = profile.value.userId
   const requestTab = activeTab.value

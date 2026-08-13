@@ -115,7 +115,7 @@ public class CommentServiceImpl implements CommentService {
                 "评论正文和图片不能同时为空");
 
         Long noteId = publishCommentReqVO.getNoteId();
-        if (!noteRpcService.exists(noteId)) {
+        if (!noteRpcService.isAccessible(noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
         Long replyCommentId = publishCommentReqVO.getReplyCommentId();
@@ -158,6 +158,7 @@ public class CommentServiceImpl implements CommentService {
     public PageResponse<FindCommentItemRspVO> findCommentPageList(FindCommentPageListReqVO findCommentPageListReqVO) {
         // 笔记 ID
         Long noteId = findCommentPageListReqVO.getNoteId();
+        ensureNoteAccessible(noteId);
         // 当前页码
         Integer pageNo = findCommentPageListReqVO.getPageNo();
         // 每页展示一级评论数
@@ -309,6 +310,11 @@ public class CommentServiceImpl implements CommentService {
     public PageResponse<FindChildCommentItemRspVO> findChildCommentPageList(FindChildCommentPageListReqVO findChildCommentPageListReqVO) {
         // 父评论 ID
         Long parentCommentId = findChildCommentPageListReqVO.getParentCommentId();
+        CommentDO parentComment = commentDOMapper.selectByPrimaryKey(parentCommentId);
+        if (parentComment == null) {
+            throw new BizException(ResponseCodeEnum.PARENT_COMMENT_NOT_FOUND);
+        }
+        ensureNoteAccessible(parentComment.getNoteId());
         // 当前页码
         Integer pageNo = findChildCommentPageListReqVO.getPageNo();
         // 每页展示的二级评论数 (飞鱼社区 APP 中是一次查询 6 条)
@@ -693,6 +699,12 @@ public class CommentServiceImpl implements CommentService {
                     throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
                 }
             }
+        }
+    }
+
+    private void ensureNoteAccessible(Long noteId) {
+        if (!noteRpcService.isAccessible(noteId)) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
     }
 

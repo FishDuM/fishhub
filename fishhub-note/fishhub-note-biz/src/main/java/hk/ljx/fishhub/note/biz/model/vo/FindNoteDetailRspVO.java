@@ -58,4 +58,10 @@ public class FindNoteDetailRspVO {
      */
     private Integer isCollected;
 
+    private Long likeTotal;
+
+    private Long collectTotal;
+
+    private Long commentTotal;
+
 }

@@ -11,4 +11,7 @@ public interface NoteFeignApi {
 
     @PostMapping("/note/exists")
     Response<Boolean> exists(@RequestBody Long noteId);
+
+    @PostMapping("/note/accessible")
+    Response<Boolean> isAccessible(@RequestBody Long noteId);
 }

@@ -15,4 +15,9 @@ public class NoteRpcService {
         Response<Boolean> response = noteFeignApi.exists(noteId);
         return response != null && response.isSuccess() && Boolean.TRUE.equals(response.getData());
     }
+
+    public boolean isAccessible(Long noteId) {
+        Response<Boolean> response = noteFeignApi.isAccessible(noteId);
+        return response != null && response.isSuccess() && Boolean.TRUE.equals(response.getData());
+    }
 }

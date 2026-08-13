@@ -30,7 +30,8 @@ public interface NoteDOMapper {
      * @return
      */
     List<NoteDO> selectPublishedNoteListByUserIdAndCursor(@Param("creatorId") Long creatorId,
-                                                          @Param("cursor") Long cursor);
+                                                          @Param("cursor") Long cursor,
+                                                          @Param("includePrivate") boolean includePrivate);
 
     List<NoteDO> selectCollectedNoteListByUserIdAndCursor(@Param("userId") Long userId,
                                                           @Param("cursor") Long cursor);

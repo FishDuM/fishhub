@@ -57,6 +57,12 @@
               class="px-6 py-2 rounded-full font-bold hover:opacity-90 w-[96px] h-[40px] cursor-pointer">
                 {{ isCreatorFollowed ? '已关注' : '关注' }}
               </button>
+              <button
+                v-else
+                @click="handleVisibilityToggle"
+                class="px-4 py-2 rounded-full font-bold border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 h-[40px] cursor-pointer">
+                {{ Number(currNote.visible) === 1 ? '公开笔记' : '设为私密' }}
+              </button>
             </div>
 
 
@@ -309,7 +315,7 @@ import ImageCarousel from '@/components/common/ImageCarousel.vue'
 import VideoPlayer from '@/components/common/VideoPlayer.vue'
 import LikeIcon from '@/components/common/LikeIcon.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
-import { getNoteDetail, getNoteInteractionState, likeNote, unlikeNote, collectNote, uncollectNote } from '@/api/note'
+import { getNoteDetail, getNoteInteractionState, likeNote, unlikeNote, collectNote, uncollectNote, updateNoteVisibility } from '@/api/note'
 import { getCommentList, publishComment, getChildCommentList, likeComment, unlikeComment, getLikedCommentIds, deleteComment } from '@/api/comment'
 import { followUser, unfollowUser, checkFollowing } from '@/api/relation'
 import { useUserStore } from '@/stores/user'
@@ -439,13 +445,14 @@ const loadMoreComments = () => {
   isLoadingMoreComments.value = true
   const nextPage = currCommentPageNo.value + 1
 
-  getCommentList(currNoteId.value, nextPage).then(res => {
+  getCommentList(currNoteId.value, nextPage).then(async res => {
     if (res.success) {
       const existingCommentIds = new Set(comments.value.map(c => c.commentId))
       const newComments = (res.data || [])
         .map(normalizeComment)
         .filter(c => !existingCommentIds.has(c.commentId))
 
+      await hydrateCommentLikeState(newComments)
       comments.value = [...comments.value, ...newComments]
       currCommentPageNo.value = res.pageNo
       commentTotal.value = res.totalCount
@@ -458,6 +465,22 @@ const loadMoreComments = () => {
 
 const isLoggedIn = computed(() => !!userStore.token)
 const isCreatorFollowed = ref(false)
+
+const handleVisibilityToggle = async () => {
+  const visible = Number(currNote.value.visible) === 1 ? 0 : 1
+  try {
+    const res = await updateNoteVisibility(currNoteId.value, visible)
+    if (!res.success) {
+      message.show(res.message || '修改可见性失败')
+      return
+    }
+    currNote.value.visible = visible
+    message.show(visible === 1 ? '已设为仅自己可见' : '已公开笔记')
+  } catch (error) {
+    console.error('修改笔记可见性失败:', error)
+    message.show('修改可见性失败')
+  }
+}
 
 const hydrateCommentLikeState = async (commentItems = []) => {
   if (!isLoggedIn.value || !commentItems.length) return

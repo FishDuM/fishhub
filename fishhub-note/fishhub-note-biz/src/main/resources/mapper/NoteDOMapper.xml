@@ -40,7 +40,10 @@
 
   <select id="selectPublishedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
     select id, title, creator_id, is_top, type, img_uris, video_uri from t_note
-    where creator_id = #{creatorId} and visible = 0 and status = 1
+    where creator_id = #{creatorId} and status = 1
+    <if test="!includePrivate">
+      and visible = 0
+    </if>
     <if test="cursor != null">
       <![CDATA[ and id < #{cursor} ]]>
     </if>

@@ -34,8 +34,6 @@ public class SaTokenConfigure {
                             .notMatch("/note/discover/note/list") // 排除发现页瀑布流接口
                             .notMatch("/note/note/detail") // 排除笔记详情读取接口
                             .notMatch("/note/note/published/list") // 排除个人主页已发布笔记接口
-                            .notMatch("/note/note/collected/list") // 排除个人主页收藏笔记接口
-                            .notMatch("/note/note/liked/list") // 排除个人主页点赞笔记接口
                             .notMatch("/comment/comment/list") // 排除评论读取接口
                             .notMatch("/comment/comment/child/list") // 排除子评论读取接口
                             .notMatch("/relation/relation/following/list") // 排除关注列表读取接口
@@ -58,6 +56,7 @@ public class SaTokenConfigure {
                     SaRouter.match("/user/user/findById", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/user/user/findByIds", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/note/note/exists", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/note/note/accessible", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/oss/file/delete", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/search/search/note/document/rebuild",
                             r -> StpUtil.checkPermission("internal:service"));

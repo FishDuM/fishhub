@@ -26,6 +26,11 @@ public class NoteController {
         return noteService.exists(noteId);
     }
 
+    @PostMapping(value = "/accessible")
+    public Response<Boolean> isAccessible(@RequestBody Long noteId) {
+        return noteService.isAccessible(noteId);
+    }
+
     @PostMapping(value = "/publish")
     @ApiOperationLog(description = "笔记发布")
     public Response<?> publishNote(@Validated @RequestBody PublishNoteReqVO publishNoteReqVO) {
@@ -54,6 +59,12 @@ public class NoteController {
     @ApiOperationLog(description = "笔记仅对自己可见")
     public Response<?> visibleOnlyMe(@Validated @RequestBody UpdateNoteVisibleOnlyMeReqVO updateNoteVisibleOnlyMeReqVO) {
         return noteService.visibleOnlyMe(updateNoteVisibleOnlyMeReqVO);
+    }
+
+    @PostMapping(value = "/visible")
+    @ApiOperationLog(description = "修改笔记可见性")
+    public Response<?> updateVisibility(@Validated @RequestBody UpdateNoteVisibilityReqVO request) {
+        return noteService.updateVisibility(request);
     }
 
     @PostMapping(value = "/top")
