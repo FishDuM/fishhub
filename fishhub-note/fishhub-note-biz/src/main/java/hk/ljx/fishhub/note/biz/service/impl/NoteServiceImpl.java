@@ -112,7 +112,7 @@ public class NoteServiceImpl implements NoteService {
 
     @Override
     public Response<Boolean> isAccessible(Long noteId) {
-        NoteDO noteDO = noteDOMapper.selectByPrimaryKey(noteId);
+        NoteDO noteDO = noteDOMapper.selectAccessInfoByNoteId(noteId);
         if (noteDO == null) {
             return Response.success(Boolean.FALSE);
         }
@@ -453,7 +453,7 @@ public class NoteServiceImpl implements NoteService {
 
 
         Long currUserId = LoginUserContextHolder.getUserId();
-        NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
+        NoteDO selectNoteDO = noteDOMapper.selectAccessInfoByNoteId(noteId);
 
         // 笔记不存在
         if (Objects.isNull(selectNoteDO)) {
@@ -682,9 +682,9 @@ public class NoteServiceImpl implements NoteService {
                 .updateTime(LocalDateTime.now())
                 .build();
 
-        int count = noteDOMapper.updateVisibleOnlyMe(noteDO);
+        int count = noteDOMapper.updateVisibility(noteDO);
 
-        // 若影响的行数为 0，则表示该笔记无法修改为仅自己可见
+        // 若影响的行数为 0，则表示该笔记无法修改可见性
         if (count == 0) {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_VISIBLE_ONLY_ME);
         }
@@ -1323,7 +1323,9 @@ public class NoteServiceImpl implements NoteService {
      * @param noteId
      */
     private Long checkNoteIsExistAndGetCreatorId(Long noteId) {
-        NoteDO noteDO = noteDOMapper.selectByPrimaryKey(noteId);
+        // 可见性变更后的缓存失效通过 MQ 广播，读取缓存会留下短暂的越权窗口。
+        // 高频互动仅查询鉴权必需字段，以主库状态作为最终权限依据。
+        NoteDO noteDO = noteDOMapper.selectAccessInfoByNoteId(noteId);
         if (noteDO == null) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }

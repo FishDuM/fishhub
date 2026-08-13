@@ -24,6 +24,14 @@ public interface NoteDOMapper {
     Long selectCreatorIdByNoteId(Long noteId);
 
     /**
+     * 查询笔记访问鉴权所需的最小字段。
+     *
+     * @param noteId 笔记 ID
+     * @return 笔记创建者及可见性；笔记不存在时返回 {@code null}
+     */
+    NoteDO selectAccessInfoByNoteId(Long noteId);
+
+    /**
      * 查询个人主页已发布笔记列表
      * @param creatorId
      * @param cursor
@@ -50,7 +58,7 @@ public interface NoteDOMapper {
 
     int updateByPrimaryKey(NoteDO record);
 
-    int updateVisibleOnlyMe(NoteDO noteDO);
+    int updateVisibility(NoteDO noteDO);
 
     int updateIsTop(NoteDO noteDO);
 

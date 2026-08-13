@@ -38,6 +38,12 @@
     select creator_id from t_note where id = #{noteId} and status = 1
   </select>
 
+  <select id="selectAccessInfoByNoteId" resultMap="BaseResultMap">
+    select creator_id, visible
+    from t_note
+    where id = #{noteId} and status = 1
+  </select>
+
   <select id="selectPublishedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
     select id, title, creator_id, is_top, type, img_uris, video_uri from t_note
     where creator_id = #{creatorId} and status = 1
@@ -276,7 +282,7 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
-  <update id="updateVisibleOnlyMe" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
+  <update id="updateVisibility" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
     update t_note
     set visible = #{visible,jdbcType=TINYINT},
         update_time = #{updateTime,jdbcType=TIMESTAMP}
