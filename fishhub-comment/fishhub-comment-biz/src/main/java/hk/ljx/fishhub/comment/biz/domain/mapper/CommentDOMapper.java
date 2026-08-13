@@ -53,6 +53,8 @@ public interface CommentDOMapper {
      */
     List<CommentDO> selectByCommentIds(@Param("commentIds") List<Long> commentIds);
 
+    List<CommentDO> selectNoteIdsByCommentIds(@Param("commentIds") List<Long> commentIds);
+
     /**
      * 批量查询计数数据
      * @param commentIds

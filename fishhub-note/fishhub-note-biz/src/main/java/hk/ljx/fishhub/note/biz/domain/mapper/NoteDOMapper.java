@@ -31,6 +31,8 @@ public interface NoteDOMapper {
      */
     NoteDO selectAccessInfoByNoteId(Long noteId);
 
+    List<NoteDO> selectAccessInfosByNoteIds(@Param("noteIds") List<Long> noteIds);
+
     /**
      * 查询个人主页已发布笔记列表
      * @param creatorId
@@ -57,6 +59,13 @@ public interface NoteDOMapper {
     int updateByPrimaryKeySelective(NoteDO record);
 
     int updateByPrimaryKey(NoteDO record);
+
+    /**
+     * 按聚合版本更新完整笔记快照，防止并发编辑覆盖。
+     */
+    int updateByPrimaryKeyAndRevision(NoteDO record);
+
+    int logicalDeleteByPrimaryKeyAndRevision(NoteDO record);
 
     int updateVisibility(NoteDO noteDO);
 

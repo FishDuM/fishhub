@@ -25,7 +25,7 @@ class NotePersistenceServiceTest {
     void shouldPersistNoteBeforeEnqueueingItsEvent() {
         NoteDO note = NoteDO.builder().id(1001L).build();
 
-        service.savePublishedNote(note, "NoteOperateTopic:PUBLISH", "event-body");
+        service.savePublishedNote(note, "NoteOperateTopic:PUBLISH", "event-body", "content-task");
 
         var ordered = inOrder(noteDOMapper, reliableMqOutbox);
         ordered.verify(noteDOMapper).insert(note);
@@ -33,5 +33,8 @@ class NotePersistenceServiceTest {
         ordered.verify(reliableMqOutbox).enqueue(
                 hk.ljx.fishhub.note.biz.constant.MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE,
                 "event-body");
+        ordered.verify(reliableMqOutbox).enqueue(
+                hk.ljx.fishhub.note.biz.constant.MQConstants.TOPIC_SYNC_NOTE_CONTENT,
+                "content-task");
     }
 }

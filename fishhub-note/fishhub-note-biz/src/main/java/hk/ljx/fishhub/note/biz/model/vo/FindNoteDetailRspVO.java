@@ -18,6 +18,11 @@ public class FindNoteDetailRspVO {
 
     private Long id;
 
+    /**
+     * 笔记聚合版本；编辑时作为 expectedRevision 提交。
+     */
+    private Long revision;
+
     private Integer type;
 
     private String title;

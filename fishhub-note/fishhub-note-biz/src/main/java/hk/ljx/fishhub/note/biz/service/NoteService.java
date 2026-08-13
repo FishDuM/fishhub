@@ -3,12 +3,16 @@ package hk.ljx.fishhub.note.biz.service;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 
+import java.util.List;
+
 
 public interface NoteService {
 
     Response<Boolean> exists(Long noteId);
 
     Response<Boolean> isAccessible(Long noteId);
+
+    Response<List<Long>> findAccessibleNoteIds(List<Long> noteIds);
 
     /**
      * 笔记发布

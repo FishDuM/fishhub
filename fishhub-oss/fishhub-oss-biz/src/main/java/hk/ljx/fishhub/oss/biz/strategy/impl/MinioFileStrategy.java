@@ -12,10 +12,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 import java.net.URI;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 
 @Slf4j
 public class MinioFileStrategy implements FileStrategy  {
+
+    private static final Pattern OWNED_OBJECT_NAME = Pattern.compile("user/\\d+/[a-f0-9]{32}\\.[a-z0-9]+");
 
     @Resource
     private MinioProperties minioProperties;
@@ -25,7 +29,7 @@ public class MinioFileStrategy implements FileStrategy  {
 
     @Override
     @SneakyThrows
-    public String uploadFile(MultipartFile file, String bucketName) {
+    public String uploadFile(MultipartFile file, String bucketName, Long ownerId) {
         log.info("## 上传文件至 Minio ...");
 
         // 判断文件是否为空
@@ -42,10 +46,10 @@ public class MinioFileStrategy implements FileStrategy  {
         // 生成存储对象的名称（将 UUID 字符串中的 - 替换成空字符串）
         String key = UUID.randomUUID().toString().replace("-", "");
         // 获取文件的后缀，如 .jpg
-        String suffix = originalFileName.substring(originalFileName.lastIndexOf("."));
+        String suffix = originalFileName.substring(originalFileName.lastIndexOf(".")).toLowerCase(Locale.ROOT);
 
         // 拼接上文件后缀，即为要存储的文件名
-        String objectName = String.format("%s%s", key, suffix);
+        String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
 
         log.info("==> 开始上传文件至 Minio, ObjectName: {}", objectName);
 
@@ -67,17 +71,33 @@ public class MinioFileStrategy implements FileStrategy  {
 
     @Override
     @SneakyThrows
-    public void deleteFile(String fileUrl, String bucketName) {
-        String path = URI.create(fileUrl).getPath();
+    public void deleteFile(String fileUrl, String bucketName, Long ownerId) {
+        URI uri = URI.create(fileUrl);
+        URI endpoint = URI.create(minioProperties.getEndpoint());
+        if (!equalsEndpoint(uri, endpoint) || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+            throw new IllegalArgumentException("文件地址不属于当前 MinIO 服务");
+        }
+        String path = uri.getRawPath();
         String bucketPrefix = "/" + bucketName + "/";
         if (path == null || !path.startsWith(bucketPrefix) || path.length() == bucketPrefix.length()) {
             throw new IllegalArgumentException("文件地址不属于当前 MinIO Bucket");
         }
         String objectName = path.substring(bucketPrefix.length());
+        if (!objectName.startsWith("user/" + ownerId + "/") || !OWNED_OBJECT_NAME.matcher(objectName).matches()) {
+            throw new IllegalArgumentException("无权删除该文件");
+        }
         minioClient.removeObject(RemoveObjectArgs.builder()
                 .bucket(bucketName)
                 .object(objectName)
                 .build());
         log.info("==> MinIO 文件删除成功, ObjectName: {}", objectName);
+    }
+
+    private boolean equalsEndpoint(URI actual, URI expected) {
+        return actual.getScheme() != null
+                && actual.getScheme().equalsIgnoreCase(expected.getScheme())
+                && actual.getHost() != null
+                && actual.getHost().equalsIgnoreCase(expected.getHost())
+                && actual.getPort() == expected.getPort();
     }
 }

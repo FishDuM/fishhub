@@ -43,4 +43,9 @@ public class NoteDO {
     private Integer status;
 
     private String contentUuid;
+
+    /**
+     * 笔记聚合版本，用于编辑乐观锁与缓存版本校验。
+     */
+    private Long revision;
 }

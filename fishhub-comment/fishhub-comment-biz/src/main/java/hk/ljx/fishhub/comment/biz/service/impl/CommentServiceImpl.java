@@ -441,7 +441,7 @@ public class CommentServiceImpl implements CommentService {
     public Response<?> likeComment(LikeCommentReqVO likeCommentReqVO) {
         Long commentId = likeCommentReqVO.getCommentId();
 
-        checkCommentIsExist(commentId);
+        ensureCommentAccessible(commentId);
 
         Long userId = LoginUserContextHolder.getUserId();
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
@@ -526,7 +526,7 @@ public class CommentServiceImpl implements CommentService {
     public Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO) {
         Long commentId = unLikeCommentReqVO.getCommentId();
 
-        checkCommentIsExist(commentId);
+        ensureCommentAccessible(commentId);
 
         Long userId = LoginUserContextHolder.getUserId();
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
@@ -596,6 +596,7 @@ public class CommentServiceImpl implements CommentService {
         if (CollUtil.isEmpty(commentIds)) {
             return Response.success(Collections.emptyList());
         }
+        ensureCommentsAccessible(commentIds);
         return Response.success(commentLikeDOMapper.selectLikedCommentIds(userId, commentIds));
     }
 
@@ -616,6 +617,7 @@ public class CommentServiceImpl implements CommentService {
         if (Objects.isNull(commentDO)) {
             throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
         }
+        ensureNoteAccessible(commentDO.getNoteId());
 
         // 2. 校验是否有权限删除
         Long currUserId = LoginUserContextHolder.getUserId();
@@ -673,37 +675,29 @@ public class CommentServiceImpl implements CommentService {
         }
     }
 
-    /**
-     * 校验被点赞的评论是否存在
-     *
-     * @param commentId
-     */
-    private void checkCommentIsExist(Long commentId) {
-        // 先从本地缓存校验
-        String localCacheJson = LOCAL_CACHE.getIfPresent(commentId);
-
-        // 若本地缓存中，该评论不存在
-        if (StringUtils.isBlank(localCacheJson)) {
-            // 再从 Redis 中校验
-            String commentDetailRedisKey = RedisKeyConstants.buildCommentDetailKey(commentId);
-
-            boolean hasKey = commentDetailCache.hasKey(commentDetailRedisKey);
-
-            // 若 Redis 中也不存在
-            if (!hasKey) {
-                // 从数据库中校验
-                CommentDO commentDO = commentDOMapper.selectByPrimaryKey(commentId);
-
-                // 若数据库中，该评论也不存在，抛出业务异常
-                if (Objects.isNull(commentDO)) {
-                    throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
-                }
-            }
+    private void ensureNoteAccessible(Long noteId) {
+        if (!noteRpcService.isAccessible(noteId)) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
     }
 
-    private void ensureNoteAccessible(Long noteId) {
-        if (!noteRpcService.isAccessible(noteId)) {
+    private CommentDO ensureCommentAccessible(Long commentId) {
+        CommentDO comment = commentDOMapper.selectByPrimaryKey(commentId);
+        if (comment == null) {
+            throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
+        }
+        ensureNoteAccessible(comment.getNoteId());
+        return comment;
+    }
+
+    private void ensureCommentsAccessible(List<Long> commentIds) {
+        List<CommentDO> comments = commentDOMapper.selectNoteIdsByCommentIds(commentIds);
+        if (comments.size() != commentIds.size()) {
+            throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
+        }
+        List<Long> noteIds = comments.stream().map(CommentDO::getNoteId).distinct().toList();
+        Set<Long> accessibleNoteIds = new HashSet<>(noteRpcService.findAccessibleNoteIds(noteIds));
+        if (accessibleNoteIds.size() != noteIds.size()) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
     }

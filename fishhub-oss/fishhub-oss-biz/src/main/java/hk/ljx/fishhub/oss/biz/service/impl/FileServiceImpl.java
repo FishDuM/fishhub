@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.oss.biz.service.impl;
 
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.oss.biz.service.FileService;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
@@ -47,14 +48,22 @@ public class FileServiceImpl implements FileService {
             throw new IllegalArgumentException("仅支持图片和常见视频格式");
         }
         // 上传文件
-        String url = fileStrategy.uploadFile(file, BUCKET_NAME);
+        String url = fileStrategy.uploadFile(file, BUCKET_NAME, requireCurrentUserId());
 
         return Response.success(url);
     }
 
     @Override
     public Response<?> deleteFile(DeleteFileReqDTO request) {
-        fileStrategy.deleteFile(request.getFileUrl(), BUCKET_NAME);
+        fileStrategy.deleteFile(request.getFileUrl(), BUCKET_NAME, requireCurrentUserId());
         return Response.success();
+    }
+
+    private Long requireCurrentUserId() {
+        Long userId = LoginUserContextHolder.getUserId();
+        if (userId == null) {
+            throw new IllegalStateException("缺少文件所属用户上下文");
+        }
+        return userId;
     }
 }

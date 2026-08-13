@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 
 @RestController
 @RequestMapping("/note")
@@ -29,6 +31,11 @@ public class NoteController {
     @PostMapping(value = "/accessible")
     public Response<Boolean> isAccessible(@RequestBody Long noteId) {
         return noteService.isAccessible(noteId);
+    }
+
+    @PostMapping(value = "/accessible/batch")
+    public Response<List<Long>> findAccessibleNoteIds(@RequestBody List<Long> noteIds) {
+        return noteService.findAccessibleNoteIds(noteIds);
     }
 
     @PostMapping(value = "/publish")

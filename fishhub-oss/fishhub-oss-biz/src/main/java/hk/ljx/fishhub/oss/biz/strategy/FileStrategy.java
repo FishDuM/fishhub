@@ -12,8 +12,8 @@ public interface FileStrategy {
      * @param bucketName
      * @return
      */
-    String uploadFile(MultipartFile file, String bucketName);
+    String uploadFile(MultipartFile file, String bucketName, Long ownerId);
 
-    void deleteFile(String fileUrl, String bucketName);
+    void deleteFile(String fileUrl, String bucketName, Long ownerId);
 
 }

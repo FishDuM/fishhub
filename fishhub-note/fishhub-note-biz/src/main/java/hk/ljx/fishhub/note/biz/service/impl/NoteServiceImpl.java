@@ -4,7 +4,6 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.RandomUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
@@ -28,6 +27,7 @@ import hk.ljx.fishhub.note.biz.enums.*;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
+import hk.ljx.fishhub.note.biz.model.dto.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
@@ -122,6 +122,28 @@ public class NoteServiceImpl implements NoteService {
         return Response.success(accessible);
     }
 
+    @Override
+    public Response<List<Long>> findAccessibleNoteIds(List<Long> noteIds) {
+        if (CollUtil.isEmpty(noteIds)) {
+            return Response.success(Collections.emptyList());
+        }
+        List<Long> normalizedNoteIds = noteIds.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (CollUtil.isEmpty(normalizedNoteIds)) {
+            return Response.success(Collections.emptyList());
+        }
+        Long currentUserId = LoginUserContextHolder.getUserId();
+        List<Long> accessibleIds = noteDOMapper.selectAccessInfosByNoteIds(normalizedNoteIds)
+                .stream()
+                .filter(note -> Objects.equals(note.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
+                        || Objects.equals(note.getCreatorId(), currentUserId))
+                .map(NoteDO::getId)
+                .toList();
+        return Response.success(accessibleIds);
+    }
+
     /**
      * 笔记详情本地缓存
      */
@@ -157,9 +179,13 @@ public class NoteServiceImpl implements NoteService {
             case IMAGE_TEXT: // 图文笔记
                 List<String> imgUriList = publishNoteReqVO.getImgUris();
                 // 校验图片是否为空
-                Preconditions.checkArgument(CollUtil.isNotEmpty(imgUriList), "笔记图片不能为空");
+                if (CollUtil.isEmpty(imgUriList)) {
+                    throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+                }
                 // 校验图片数量
-                Preconditions.checkArgument(imgUriList.size() <= 8, "笔记图片不能多于 8 张");
+                if (imgUriList.size() > 8) {
+                    throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+                }
                 // 将图片链接拼接，以逗号分隔
                 imgUris = StringUtils.join(imgUriList, ",");
 
@@ -167,7 +193,9 @@ public class NoteServiceImpl implements NoteService {
             case VIDEO: // 视频笔记
                 videoUri = publishNoteReqVO.getVideoUri();
                 // 校验视频链接是否为空
-                Preconditions.checkArgument(StringUtils.isNotBlank(videoUri), "笔记视频不能为空");
+                if (StringUtils.isBlank(videoUri)) {
+                    throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+                }
                 break;
             default:
                 break;
@@ -203,7 +231,7 @@ public class NoteServiceImpl implements NoteService {
         Long channelId = publishNoteReqVO.getChannelId();
         ChannelDO channel = channelDOMapper.selectByPrimaryKey(channelId);
         if (Objects.isNull(channel) || Boolean.TRUE.equals(channel.getIsDeleted())) {
-            throw new IllegalArgumentException("频道不存在");
+            throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
         }
 
         // 发布者用户 ID
@@ -227,26 +255,10 @@ public class NoteServiceImpl implements NoteService {
                 .isTop(Boolean.FALSE)
                 .videoUri(videoUri)
                 .contentUuid(contentUuid)
+                .revision(1L)
                 .build();
 
-        // 正文属于 KV 存储，笔记元数据与后续事件由本地事务和 Outbox 保证一致。
-        if (StringUtils.isBlank(content)) {
-            persistPublishedNote(creatorId, noteDO);
-            return Response.success();
-        }
-
-        if (!keyValueRpcService.saveNoteContent(contentUuid, content)) {
-            throw new BizException(ResponseCodeEnum.NOTE_PUBLISH_FAIL);
-        }
-        try {
-            persistPublishedNote(creatorId, noteDO);
-        } catch (Exception e) {
-            if (!keyValueRpcService.deleteNoteContent(contentUuid)) {
-                log.error("笔记发布回滚时无法删除正文，noteId={}, contentUuid={}", noteDO.getId(), contentUuid);
-            }
-            throw e;
-        }
-
+        persistPublishedNote(creatorId, noteDO, content);
         return Response.success();
     }
 
@@ -255,7 +267,7 @@ public class NoteServiceImpl implements NoteService {
      * @param creatorId
      * @param noteDO
      */
-    private void persistPublishedNote(Long creatorId, NoteDO noteDO) {
+    private void persistPublishedNote(Long creatorId, NoteDO noteDO, String content) {
         NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
                 .creatorId(creatorId)
                 .noteId(noteDO.getId())
@@ -265,10 +277,16 @@ public class NoteServiceImpl implements NoteService {
         String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_PUBLISH;
         String eventBody = JsonUtils.toJsonString(noteOperateMqDTO);
 
-        // 笔记元数据与发布事件在同一个 MySQL 事务中提交。
-        notePersistenceService.savePublishedNote(noteDO, destination, eventBody);
+        String contentTaskBody = StringUtils.isBlank(content) ? null
+                : buildNoteContentTask(noteDO.getId(), noteDO.getContentUuid(), content, NoteContentTaskTypeEnum.UPSERT);
+
+        // 笔记元数据、正文任务与发布事件在同一个 MySQL 事务中提交。
+        notePersistenceService.savePublishedNote(noteDO, destination, eventBody, contentTaskBody);
 
         // 事务提交后即时投递；失败时由 outbox 定时补发。
+        if (contentTaskBody != null) {
+            reliableMqOutbox.sendNow(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
+        }
         reliableMqOutbox.sendNow(MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE, eventBody);
         reliableMqOutbox.sendNow(destination, eventBody);
     }
@@ -288,18 +306,20 @@ public class NoteServiceImpl implements NoteService {
         // 当前登录用户
         Long userId = LoginUserContextHolder.getUserId();
 
-        // 先从本地缓存中查询
+        // 缓存只保存详情快照；访问权限和版本以 MySQL 中的最小事实字段为准。
+        // 因而可见性变更/删除无需等待跨节点缓存失效消息，即不会继续暴露旧公开快照。
         String findNoteDetailRspVOStrLocalCache = LOCAL_CACHE.getIfPresent(noteId);
         if (StringUtils.isNotBlank(findNoteDetailRspVOStrLocalCache)) {
             if ("null".equals(findNoteDetailRspVOStrLocalCache)) {
+                requireAccessibleNote(noteId, userId);
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
-            log.info("==> 命中了本地缓存；{}", findNoteDetailRspVOStrLocalCache);
-            // 可见性校验
-            checkNoteVisibleFromVO(userId, findNoteDetailRspVO);
-            fillNoteCounts(findNoteDetailRspVO);
-            return Response.success(findNoteDetailRspVO);
+            if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
+                fillNoteCounts(findNoteDetailRspVO);
+                return Response.success(findNoteDetailRspVO);
+            }
+            LOCAL_CACHE.invalidate(noteId);
         }
 
         // 从 Redis 缓存中获取
@@ -309,20 +329,22 @@ public class NoteServiceImpl implements NoteService {
         // 若缓存中有该笔记的数据，则直接返回
         if (StringUtils.isNotBlank(noteDetailJson)) {
             if ("null".equals(noteDetailJson)) {
+                requireAccessibleNote(noteId, userId);
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(noteDetailJson, FindNoteDetailRspVO.class);
+            if (!isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
+                redisTemplate.delete(noteDetailRedisKey);
+            } else {
             // 异步线程中将用户信息存入本地缓存
             threadPoolTaskExecutor.submit(() -> {
                 // 写入本地缓存
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
             });
-            // 可见性校验
-            checkNoteVisibleFromVO(userId, findNoteDetailRspVO);
             fillNoteCounts(findNoteDetailRspVO);
-
             return Response.success(findNoteDetailRspVO);
+            }
         }
 
         // 若 Redis 缓存中获取不到，则走数据库查询
@@ -341,8 +363,7 @@ public class NoteServiceImpl implements NoteService {
         }
 
         // 可见性校验
-        Integer visible = noteDO.getVisible();
-        checkNoteVisible(visible, userId, noteDO.getCreatorId());
+        checkNoteVisible(noteDO.getVisible(), userId, noteDO.getCreatorId());
 
         // 并发查询优化
         // RPC: 调用用户服务
@@ -378,6 +399,7 @@ public class NoteServiceImpl implements NoteService {
 
                     return FindNoteDetailRspVO.builder()
                             .id(noteDO.getId())
+                            .revision(noteDO.getRevision())
                             .type(noteDO.getType())
                             .title(noteDO.getTitle())
                             .content(content)
@@ -418,130 +440,80 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Response<?> updateNote(UpdateNoteReqVO updateNoteReqVO) {
-        // 笔记 ID
         Long noteId = updateNoteReqVO.getId();
-        // 笔记类型
         Integer type = updateNoteReqVO.getType();
-
-        // 获取对应类型的枚举
         NoteTypeEnum noteTypeEnum = NoteTypeEnum.valueOf(type);
-
         if (Objects.isNull(noteTypeEnum)) {
             throw new BizException(ResponseCodeEnum.NOTE_TYPE_ERROR);
         }
-
-        String imgUris = null;
-        String videoUri = null;
-        switch (noteTypeEnum) {
-            case IMAGE_TEXT: // 图文笔记
-                List<String> imgUriList = updateNoteReqVO.getImgUris();
-                // 校验图片是否为空
-                Preconditions.checkArgument(CollUtil.isNotEmpty(imgUriList), "笔记图片不能为空");
-                // 校验图片数量
-                Preconditions.checkArgument(imgUriList.size() <= 8, "笔记图片不能多于 8 张");
-
-                imgUris = StringUtils.join(imgUriList, ",");
-                break;
-            case VIDEO: // 视频笔记
-                videoUri = updateNoteReqVO.getVideoUri();
-                // 校验视频链接是否为空
-                Preconditions.checkArgument(StringUtils.isNotBlank(videoUri), "笔记视频不能为空");
-                break;
-            default:
-                break;
-        }
-
-
         Long currUserId = LoginUserContextHolder.getUserId();
-        NoteDO selectNoteDO = noteDOMapper.selectAccessInfoByNoteId(noteId);
-
-        // 笔记不存在
+        NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
         if (Objects.isNull(selectNoteDO)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
-
-        // 判断权限：非笔记发布者不允许更新笔记
         if (!Objects.equals(currUserId, selectNoteDO.getCreatorId())) {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
         }
 
-        // 更新 SQL 是全字段更新；未传字段必须保留原值。
-        Long channelId = Objects.requireNonNullElse(updateNoteReqVO.getChannelId(), selectNoteDO.getChannelId());
-        ChannelDO channelDO = channelDOMapper.selectByPrimaryKey(channelId);
+        if (!Objects.equals(updateNoteReqVO.getExpectedRevision(), selectNoteDO.getRevision())) {
+            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
+        }
+
+        ChannelDO channelDO = channelDOMapper.selectByPrimaryKey(updateNoteReqVO.getChannelId());
         if (Objects.isNull(channelDO) || Boolean.TRUE.equals(channelDO.getIsDeleted())) {
             throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
         }
 
-        // 话题
-        Long topicId = updateNoteReqVO.getTopicId() != null
-                ? updateNoteReqVO.getTopicId()
-                : selectNoteDO.getTopicId();
-        String topicName = selectNoteDO.getTopicName();
-        if (Objects.nonNull(topicId)) {
-            topicName = topicDOMapper.selectNameByPrimaryKey(topicId);
-
-            // 判断一下提交的话题, 是否是真实存在的
-            if (StringUtils.isBlank(topicName)) throw new BizException(ResponseCodeEnum.TOPIC_NOT_FOUND);
-        }
-
-        // 更新笔记元数据表 t_note
-        String content = updateNoteReqVO.getContent();
+        TopicSnapshot topic = resolveTopic(updateNoteReqVO, selectNoteDO);
+        MediaSnapshot media = resolveMedia(updateNoteReqVO, selectNoteDO, noteTypeEnum);
+        ContentSnapshot content = resolveContent(updateNoteReqVO, selectNoteDO);
         String oldContentUuid = selectNoteDO.getContentUuid();
-        // 正文采用不可变版本：先写新 UUID，再由 MySQL 事务切换引用。
-        // 这样数据库回滚时旧正文仍然可读，不会出现元数据与正文跨存储错配。
-        String contentUuid = StringUtils.isBlank(content) ? null : UUID.randomUUID().toString();
-        if (StringUtils.isNotBlank(content)
-                && !keyValueRpcService.saveNoteContent(contentUuid, content)) {
-            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
-        }
-
-        String newContentUuid = contentUuid;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                if (StringUtils.isNotBlank(oldContentUuid)
-                        && !Objects.equals(oldContentUuid, newContentUuid)
-                        && !keyValueRpcService.deleteNoteContent(oldContentUuid)) {
-                    log.error("旧笔记正文删除失败，noteId={}, contentUuid={}", noteId, oldContentUuid);
-                }
-            }
-
-            @Override
-            public void afterCompletion(int status) {
-                if (status != STATUS_COMMITTED
-                        && StringUtils.isNotBlank(newContentUuid)
-                        && !keyValueRpcService.deleteNoteContent(newContentUuid)) {
-                    log.error("回滚后新笔记正文清理失败，noteId={}, contentUuid={}", noteId, newContentUuid);
-                }
-            }
-        });
+        String newContentUuid = content.contentUuid();
 
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
-                .isContentEmpty(StringUtils.isBlank(content))
-                .channelId(channelId)
-                .imgUris(imgUris)
+                .isContentEmpty(content.isEmpty())
+                .channelId(updateNoteReqVO.getChannelId())
+                .imgUris(media.imgUris())
                 .title(updateNoteReqVO.getTitle())
-                .topicId(topicId)
-                .topicName(topicName)
+                .topicId(topic.id())
+                .topicName(topic.name())
                 .type(type)
                 .updateTime(LocalDateTime.now())
-                .videoUri(videoUri)
-                .contentUuid(contentUuid)
+                .videoUri(media.videoUri())
+                .contentUuid(newContentUuid)
+                .revision(updateNoteReqVO.getExpectedRevision())
                 .build();
 
-        if (noteDOMapper.updateByPrimaryKey(noteDO) != 1) {
+        if (noteDOMapper.updateByPrimaryKeyAndRevision(noteDO) != 1) {
             throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
+        }
+
+        List<String> contentTaskBodies = new ArrayList<>();
+        if (content.createdNewContent()) {
+            contentTaskBodies.add(buildNoteContentTask(noteId, newContentUuid, content.value(), NoteContentTaskTypeEnum.UPSERT));
+        }
+        if (StringUtils.isNotBlank(oldContentUuid) && !Objects.equals(oldContentUuid, newContentUuid)) {
+            contentTaskBodies.add(buildNoteContentTask(noteId, oldContentUuid, null, NoteContentTaskTypeEnum.DELETE));
+        }
+        contentTaskBodies.forEach(body -> reliableMqOutbox.enqueue(MQConstants.TOPIC_SYNC_NOTE_CONTENT, body));
+        if (CollUtil.isNotEmpty(contentTaskBodies)) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    contentTaskBodies.forEach(body -> reliableMqOutbox.sendNow(MQConstants.TOPIC_SYNC_NOTE_CONTENT, body));
+                }
+            });
         }
 
         enqueueNoteCacheInvalidation(noteId, currUserId);
 
         Set<String> newMediaUrls = new HashSet<>();
-        if (StringUtils.isNotBlank(imgUris)) {
-            newMediaUrls.addAll(Arrays.asList(StringUtils.split(imgUris, ',')));
+        if (StringUtils.isNotBlank(media.imgUris())) {
+            newMediaUrls.addAll(Arrays.asList(StringUtils.split(media.imgUris(), ',')));
         }
-        if (StringUtils.isNotBlank(videoUri)) {
-            newMediaUrls.add(videoUri);
+        if (StringUtils.isNotBlank(media.videoUri())) {
+            newMediaUrls.add(media.videoUri());
         }
         List<String> obsoleteMediaUrls = getMediaUrls(selectNoteDO).stream()
                 .filter(url -> !newMediaUrls.contains(url))
@@ -556,6 +528,71 @@ public class NoteServiceImpl implements NoteService {
         }
 
         return Response.success();
+    }
+
+    private TopicSnapshot resolveTopic(UpdateNoteReqVO request, NoteDO current) {
+        return switch (request.getTopicOperation()) {
+            case KEEP -> new TopicSnapshot(current.getTopicId(), current.getTopicName());
+            case CLEAR -> new TopicSnapshot(null, null);
+            case SET -> {
+                if (request.getTopicId() == null) {
+                    throw new BizException(ResponseCodeEnum.TOPIC_NOT_FOUND);
+                }
+                String topicName = topicDOMapper.selectNameByPrimaryKey(request.getTopicId());
+                if (StringUtils.isBlank(topicName)) {
+                    throw new BizException(ResponseCodeEnum.TOPIC_NOT_FOUND);
+                }
+                yield new TopicSnapshot(request.getTopicId(), topicName);
+            }
+            case REPLACE -> throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+        };
+    }
+
+    private MediaSnapshot resolveMedia(UpdateNoteReqVO request, NoteDO current, NoteTypeEnum targetType) {
+        if (request.getMediaOperation() == NoteUpdateOperationEnum.KEEP) {
+            if (!Objects.equals(current.getType(), targetType.getCode())) {
+                throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
+            }
+            return new MediaSnapshot(current.getImgUris(), current.getVideoUri());
+        }
+        if (request.getMediaOperation() != NoteUpdateOperationEnum.REPLACE) {
+            throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+        }
+        if (targetType == NoteTypeEnum.IMAGE_TEXT) {
+            List<String> imgUris = request.getImgUris();
+            if (CollUtil.isEmpty(imgUris) || imgUris.size() > 8) {
+                throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+            }
+            return new MediaSnapshot(StringUtils.join(imgUris, ","), null);
+        }
+        if (StringUtils.isBlank(request.getVideoUri())) {
+            throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+        }
+        return new MediaSnapshot(null, request.getVideoUri());
+    }
+
+    private ContentSnapshot resolveContent(UpdateNoteReqVO request, NoteDO current) {
+        return switch (request.getContentOperation()) {
+            case KEEP -> new ContentSnapshot(current.getContentUuid(), current.getIsContentEmpty(), null, false);
+            case CLEAR -> new ContentSnapshot(null, true, null, false);
+            case SET -> {
+                if (StringUtils.isBlank(request.getContent())) {
+                    throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+                }
+                String contentUuid = UUID.randomUUID().toString();
+                yield new ContentSnapshot(contentUuid, false, request.getContent(), true);
+            }
+            case REPLACE -> throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
+        };
+    }
+
+    private record TopicSnapshot(Long id, String name) {
+    }
+
+    private record MediaSnapshot(String imgUris, String videoUri) {
+    }
+
+    private record ContentSnapshot(String contentUuid, Boolean isEmpty, String value, boolean createdNewContent) {
     }
 
     /**
@@ -596,9 +633,18 @@ public class NoteServiceImpl implements NoteService {
                 .id(noteId)
                 .status(NoteStatusEnum.DELETED.getCode())
                 .updateTime(LocalDateTime.now())
+                .revision(selectNoteDO.getRevision())
                 .build();
 
-        noteDOMapper.updateByPrimaryKeySelective(noteDO);
+        if (noteDOMapper.logicalDeleteByPrimaryKeyAndRevision(noteDO) != 1) {
+            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
+        }
+
+        String contentTaskBody = StringUtils.isBlank(selectNoteDO.getContentUuid()) ? null
+                : buildNoteContentTask(noteId, selectNoteDO.getContentUuid(), null, NoteContentTaskTypeEnum.DELETE);
+        if (contentTaskBody != null) {
+            reliableMqOutbox.enqueue(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
+        }
 
         NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
                 .creatorId(selectNoteDO.getCreatorId())
@@ -617,6 +663,9 @@ public class NoteServiceImpl implements NoteService {
             @Override
             public void afterCommit() {
                 reliableMqOutbox.sendNow(destination, eventBody);
+                if (contentTaskBody != null) {
+                    reliableMqOutbox.sendNow(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
+                }
                 if (CollUtil.isNotEmpty(mediaUrls)) {
                     ossRpcService.deleteFiles(mediaUrls);
                 }
@@ -635,6 +684,15 @@ public class NoteServiceImpl implements NoteService {
             mediaUrls.add(noteDO.getVideoUri());
         }
         return mediaUrls;
+    }
+
+    private String buildNoteContentTask(Long noteId, String contentUuid, String content, NoteContentTaskTypeEnum type) {
+        return JsonUtils.toJsonString(NoteContentTaskMqDTO.builder()
+                .noteId(noteId)
+                .contentUuid(contentUuid)
+                .content(content)
+                .type(type.name())
+                .build());
     }
 
     /**
@@ -659,7 +717,7 @@ public class NoteServiceImpl implements NoteService {
         Integer visible = request.getVisible();
         if (!Objects.equals(visible, NoteVisibleEnum.PUBLIC.getCode())
                 && !Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode())) {
-            throw new IllegalArgumentException("无效的笔记可见性");
+            throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
         }
 
         NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
@@ -1368,16 +1426,21 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
-    /**
-     * 校验笔记的可见性（针对 VO 实体类）
-     * @param userId
-     * @param findNoteDetailRspVO
-     */
-    private void checkNoteVisibleFromVO(Long userId, FindNoteDetailRspVO findNoteDetailRspVO) {
-        if (Objects.nonNull(findNoteDetailRspVO)) {
-            Integer visible = findNoteDetailRspVO.getVisible();
-            checkNoteVisible(visible, userId, findNoteDetailRspVO.getCreatorId());
+    private NoteDO requireAccessibleNote(Long noteId, Long userId) {
+        NoteDO accessInfo = noteDOMapper.selectAccessInfoByNoteId(noteId);
+        if (accessInfo == null) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
+        checkNoteVisible(accessInfo.getVisible(), userId, accessInfo.getCreatorId());
+        return accessInfo;
+    }
+
+    private boolean isCurrentAndAccessible(Long noteId, Long userId, FindNoteDetailRspVO snapshot) {
+        if (snapshot == null || snapshot.getRevision() == null) {
+            return false;
+        }
+        NoteDO accessInfo = requireAccessibleNote(noteId, userId);
+        return Objects.equals(snapshot.getRevision(), accessInfo.getRevision());
     }
 
 

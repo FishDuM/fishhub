@@ -10,10 +10,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 import java.net.URI;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 
 @Slf4j
 public class AliyunOSSFileStrategy implements FileStrategy  {
+
+    private static final Pattern OWNED_OBJECT_NAME = Pattern.compile("user/\\d+/[a-f0-9]{32}\\.[a-z0-9]+");
 
     @Resource
     private AliyunOSSProperties aliyunOSSProperties;
@@ -23,7 +27,7 @@ public class AliyunOSSFileStrategy implements FileStrategy  {
 
     @Override
     @SneakyThrows
-    public String uploadFile(MultipartFile file, String bucketName) {
+    public String uploadFile(MultipartFile file, String bucketName, Long ownerId) {
         log.info("## 上传文件至阿里云 OSS ...");
 
         // 判断文件是否为空
@@ -38,10 +42,10 @@ public class AliyunOSSFileStrategy implements FileStrategy  {
         // 生成存储对象的名称（将 UUID 字符串中的 - 替换成空字符串）
         String key = UUID.randomUUID().toString().replace("-", "");
         // 获取文件的后缀，如 .jpg
-        String suffix = originalFileName.substring(originalFileName.lastIndexOf(".")).toLowerCase();
+        String suffix = originalFileName.substring(originalFileName.lastIndexOf(".")).toLowerCase(Locale.ROOT);
 
         // 拼接上文件后缀，即为要存储的文件名
-        String objectName = String.format("%s%s", key, suffix);
+        String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
 
         log.info("==> 开始上传文件至阿里云 OSS, ObjectName: {}", objectName);
 
@@ -56,12 +60,22 @@ public class AliyunOSSFileStrategy implements FileStrategy  {
     }
 
     @Override
-    public void deleteFile(String fileUrl, String bucketName) {
-        String path = URI.create(fileUrl).getPath();
+    public void deleteFile(String fileUrl, String bucketName, Long ownerId) {
+        URI uri = URI.create(fileUrl);
+        String expectedHost = bucketName + "." + aliyunOSSProperties.getEndpoint();
+        if (!"https".equalsIgnoreCase(uri.getScheme())
+                || !expectedHost.equalsIgnoreCase(uri.getHost())
+                || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+            throw new IllegalArgumentException("文件地址不属于当前 OSS Bucket");
+        }
+        String path = uri.getRawPath();
         if (path == null || path.length() <= 1) {
             throw new IllegalArgumentException("文件地址不合法");
         }
         String objectName = path.substring(1);
+        if (!objectName.startsWith("user/" + ownerId + "/") || !OWNED_OBJECT_NAME.matcher(objectName).matches()) {
+            throw new IllegalArgumentException("无权删除该文件");
+        }
         ossClient.deleteObject(bucketName, objectName);
         log.info("==> 阿里云 OSS 文件删除成功, ObjectName: {}", objectName);
     }

@@ -13,7 +13,7 @@ import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.comment.biz.model.dto.CountPublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
+import hk.ljx.fishhub.comment.biz.model.dto.SyncCommentContentMqDTO;
 import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
@@ -49,8 +49,6 @@ public class Comment2DBConsumer {
     private CommentDOMapper commentDOMapper;
     @Resource
     private TransactionTemplate transactionTemplate;
-    @Resource
-    private KeyValueRpcService keyValueRpcService;
     @Resource
     private SendMqRetryHelper sendMqRetryHelper;
     @Resource
@@ -179,7 +177,8 @@ public class Comment2DBConsumer {
                     // 评论内容若不为空
                     String content = publishCommentMqDTO.getContent();
                     if (StringUtils.isNotBlank(content)) {
-                        commentBO.setContentUuid(UUID.randomUUID().toString()); // 生成评论内容的 UUID 标识
+                        commentBO.setContentUuid(UUID.nameUUIDFromBytes(
+                                ("comment:" + commentBO.getId()).getBytes(StandardCharsets.UTF_8)).toString());
                         commentBO.setIsContentEmpty(false);
                         commentBO.setContent(content);
                     }
@@ -220,14 +219,12 @@ public class Comment2DBConsumer {
                             }
                         }
 
-                        // 过滤出评论内容不为空的 BO
-                        List<CommentBO> commentContentNotEmptyBOS = inserted.stream()
+                        List<String> contentTaskBodies = inserted.stream()
                                 .filter(commentBO -> Boolean.FALSE.equals(commentBO.getIsContentEmpty()))
+                                .map(this::buildContentTaskBody)
                                 .toList();
-                        if (CollUtil.isNotEmpty(commentContentNotEmptyBOS)) {
-                            // 批量存入评论内容
-                            keyValueRpcService.batchSaveCommentContent(commentContentNotEmptyBOS);
-                        }
+                        contentTaskBodies.forEach(body ->
+                                sendMqRetryHelper.enqueue(MQConstants.TOPIC_SYNC_COMMENT_CONTENT, body));
 
                         String countEventBody = null;
                         if (CollUtil.isNotEmpty(inserted)) {
@@ -243,7 +240,7 @@ public class Comment2DBConsumer {
                             sendMqRetryHelper.enqueue(MQConstants.TOPIC_COUNT_NOTE_COMMENT, countEventBody);
                         }
 
-                        return new PersistedComments(inserted, countEventBody);
+                        return new PersistedComments(inserted, countEventBody, contentTaskBodies);
                     } catch (Exception ex) {
                         status.setRollbackOnly(); // 标记事务为回滚
                         log.error("", ex);
@@ -260,6 +257,8 @@ public class Comment2DBConsumer {
                     syncOneLevelComment2RedisZSet(insertedCommentBOS);
 
                     // 事件已经随评论记录一起提交；这里只做提交后的即时投递。
+                    persistedComments.contentTaskBodies().forEach(body ->
+                            sendMqRetryHelper.sendNow(MQConstants.TOPIC_SYNC_COMMENT_CONTENT, body));
                     sendMqRetryHelper.sendNow(
                             MQConstants.TOPIC_COUNT_NOTE_COMMENT,
                             persistedComments.countEventBody());
@@ -314,7 +313,18 @@ public class Comment2DBConsumer {
         });
     }
 
-    private record PersistedComments(List<CommentBO> comments, String countEventBody) {
+    private String buildContentTaskBody(CommentBO comment) {
+        return JsonUtils.toJsonString(SyncCommentContentMqDTO.builder()
+                .commentId(comment.getId())
+                .noteId(comment.getNoteId())
+                .createTime(comment.getCreateTime())
+                .contentUuid(comment.getContentUuid())
+                .content(comment.getContent())
+                .build());
+    }
+
+    private record PersistedComments(List<CommentBO> comments, String countEventBody,
+                                     List<String> contentTaskBodies) {
     }
 
     @PreDestroy

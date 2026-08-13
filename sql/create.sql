@@ -202,6 +202,7 @@ CREATE TABLE `t_note`  (
   `status` tinyint NOT NULL DEFAULT 0 COMMENT '状态(0：待审核 1：正常展示 2：被删除(逻辑删除) 3：被下架)',
   `content_uuid` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT '' COMMENT '笔记内容UUID',
   `channel_id` bigint UNSIGNED NULL DEFAULT NULL COMMENT '频道ID',
+  `revision` bigint UNSIGNED NOT NULL DEFAULT 1 COMMENT '笔记聚合版本（编辑乐观锁与缓存版本）',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_creator_id`(`creator_id` ASC) USING BTREE,
   INDEX `idx_topic_id`(`topic_id` ASC) USING BTREE,

@@ -206,6 +206,7 @@ const handleScroll = () => {
 onMounted(() => {
   const channelId = getChannelIdFromRoute()
   activeChannelId.value = channelId
+  loadNotes(channelId, true)
 
   window.addEventListener('scroll', handleScroll)
   window.addEventListener('resize', handleResize)
@@ -222,7 +223,7 @@ watch(() => route.query.channelId, (newChannelId) => {
     activeChannelId.value = channelId
     loadNotes(channelId, true)
   }
-}, { immediate: true })
+})
 </script>
 
 <style scoped>

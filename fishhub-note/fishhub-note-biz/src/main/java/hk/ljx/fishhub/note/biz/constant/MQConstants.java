@@ -14,6 +14,11 @@ public interface MQConstants {
     String TOPIC_INVALIDATE_NOTE_REDIS_CACHE = "InvalidateNoteRedisCacheTopic";
 
     /**
+     * 笔记正文写入/删除任务。任务记录先随笔记事务提交，再由消费者幂等同步到 KV。
+     */
+    String TOPIC_SYNC_NOTE_CONTENT = "SyncNoteContentTopic";
+
+    /**
      * Topic: 点赞、取消点赞共用一个
      */
     String TOPIC_LIKE_OR_UNLIKE = "LikeUnlikeTopic";

@@ -44,6 +44,11 @@ public interface MQConstants {
     String TOPIC_DELETE_COMMENT_CONTENT = "DeleteCommentContentTopic";
 
     /**
+     * 评论正文写入任务；评论事实提交后再幂等同步至 KV。
+     */
+    String TOPIC_SYNC_COMMENT_CONTENT = "SyncCommentContentTopic";
+
+    /**
      * Tag 标签：点赞
      */
     String TAG_LIKE = "Like";

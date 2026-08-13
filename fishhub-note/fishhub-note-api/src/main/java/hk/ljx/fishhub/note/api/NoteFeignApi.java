@@ -6,6 +6,8 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
+import java.util.List;
+
 @FeignClient(name = ApiConstants.SERVICE_NAME)
 public interface NoteFeignApi {
 
@@ -14,4 +16,7 @@ public interface NoteFeignApi {
 
     @PostMapping("/note/accessible")
     Response<Boolean> isAccessible(@RequestBody Long noteId);
+
+    @PostMapping("/note/accessible/batch")
+    Response<List<Long>> findAccessibleNoteIds(@RequestBody List<Long> noteIds);
 }

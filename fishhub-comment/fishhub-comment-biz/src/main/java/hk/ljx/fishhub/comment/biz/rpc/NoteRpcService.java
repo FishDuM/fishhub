@@ -5,6 +5,9 @@ import hk.ljx.fishhub.note.api.NoteFeignApi;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.List;
+
 @Component
 public class NoteRpcService {
 
@@ -18,6 +21,17 @@ public class NoteRpcService {
 
     public boolean isAccessible(Long noteId) {
         Response<Boolean> response = noteFeignApi.isAccessible(noteId);
-        return response != null && response.isSuccess() && Boolean.TRUE.equals(response.getData());
+        if (response == null || !response.isSuccess()) {
+            throw new IllegalStateException("笔记访问鉴权服务调用失败");
+        }
+        return Boolean.TRUE.equals(response.getData());
+    }
+
+    public List<Long> findAccessibleNoteIds(List<Long> noteIds) {
+        Response<List<Long>> response = noteFeignApi.findAccessibleNoteIds(noteIds);
+        if (response == null || !response.isSuccess()) {
+            throw new IllegalStateException("笔记批量访问鉴权服务调用失败");
+        }
+        return response.getData() == null ? Collections.emptyList() : response.getData();
     }
 }

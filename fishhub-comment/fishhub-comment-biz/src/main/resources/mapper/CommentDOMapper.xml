@@ -99,6 +99,15 @@
       limit #{offset}, #{pageSize}
   </select>
 
+  <select id="selectNoteIdsByCommentIds" resultMap="BaseResultMap" parameterType="list">
+    select id, note_id
+    from t_comment
+    where id in
+    <foreach collection="commentIds" open="(" separator="," close=")" item="commentId">
+      #{commentId}
+    </foreach>
+  </select>
+
   <select id="selectOneLevelCountByNoteId" resultType="long">
     select count(1) from t_comment where note_id = #{noteId} and level = 1
   </select>

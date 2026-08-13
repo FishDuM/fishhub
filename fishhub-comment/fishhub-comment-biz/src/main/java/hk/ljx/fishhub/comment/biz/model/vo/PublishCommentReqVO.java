@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.comment.biz.model.vo;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,6 +20,7 @@ public class PublishCommentReqVO {
     /**
      * 评论内容
      */
+    @Size(max = 10000, message = "评论正文不能超过 10000 个字符")
     private String content;
 
     /**
