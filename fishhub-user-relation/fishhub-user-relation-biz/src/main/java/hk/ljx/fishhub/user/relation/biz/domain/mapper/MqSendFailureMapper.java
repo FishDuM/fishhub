@@ -10,6 +10,9 @@ public interface MqSendFailureMapper {
 
     int insertPending(MqSendFailureDO failure);
 
+    int existsEarlierPending(@Param("orderingKey") String orderingKey,
+                             @Param("messageKey") String messageKey);
+
     List<MqSendFailureDO> selectRetryable(@Param("now") LocalDateTime now,
                                           @Param("lockExpiredAt") LocalDateTime lockExpiredAt,
                                           @Param("limit") int limit);

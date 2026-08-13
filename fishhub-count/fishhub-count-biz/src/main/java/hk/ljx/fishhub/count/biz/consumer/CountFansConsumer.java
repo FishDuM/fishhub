@@ -9,6 +9,7 @@ import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.support.MessageBuilder;
@@ -19,7 +20,8 @@ import java.util.Objects;
 
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FANS,
-        topic = MQConstants.TOPIC_COUNT_FANS)
+        topic = MQConstants.TOPIC_COUNT_FANS,
+        consumeMode = ConsumeMode.ORDERLY)
 @Slf4j
 public class CountFansConsumer implements RocketMQListener<String> {
 
@@ -41,8 +43,9 @@ public class CountFansConsumer implements RocketMQListener<String> {
                 .batchId(DigestUtil.sha256Hex(body))
                 .build();
 
-        rocketMQTemplate.syncSend(
+        rocketMQTemplate.syncSendOrderly(
                 MQConstants.TOPIC_COUNT_FANS_2_DB,
-                MessageBuilder.withPayload(JsonUtils.toJsonString(List.of(aggregate))).build());
+                MessageBuilder.withPayload(JsonUtils.toJsonString(List.of(aggregate))).build(),
+                String.valueOf(event.getTargetUserId()));
     }
 }

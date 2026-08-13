@@ -246,10 +246,13 @@ public class CanalSchedule implements Runnable {
      * @param userId
      */
     void syncUserIndex(Long userId) throws Exception {
-        // 1. 同步用户索引
         List<Map<String, Object>> userResult = selectMapper.selectEsUserIndexData(userId);
 
-        // 遍历查询结果，将每条记录同步到 Elasticsearch
+        if (userResult.isEmpty()) {
+            deleteUserDocument(String.valueOf(userId));
+            return;
+        }
+
         for (Map<String, Object> recordMap : userResult) {
             // 创建索引请求对象，指定索引名称
             IndexRequest indexRequest = new IndexRequest(UserIndex.NAME);
@@ -352,10 +355,13 @@ public class CanalSchedule implements Runnable {
      * @throws Exception
      */
     void syncNoteIndex(Long noteId) throws Exception {
-        // 从数据库查询 Elasticsearch 索引数据
         List<Map<String, Object>> result = selectMapper.selectEsNoteIndexData(noteId, null);
 
-        // 遍历查询结果，将每条记录同步到 Elasticsearch
+        if (result.isEmpty()) {
+            deleteNoteDocument(String.valueOf(noteId));
+            return;
+        }
+
         for (Map<String, Object> recordMap : result) {
             // 创建索引请求对象，指定索引名称
             IndexRequest indexRequest = new IndexRequest(NoteIndex.NAME);

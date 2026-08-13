@@ -71,6 +71,7 @@ import { message } from '@/utils/message'
 import EmptyStateIllustration from '@/components/common/EmptyStateIllustration.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useUserStore } from '@/stores/user'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -83,11 +84,16 @@ const loadingMore = ref(false)
 const hasMore = ref(true)
 const pageNo = ref(1)
 const isLoading = ref(false)
+const { begin: beginRequest, isCurrent: isCurrentRequest } = useLatestRequest()
 
 const listType = () => activeTab.value === 'following' ? 'following' : 'fans'
 
 const loadRelationList = async (isLoadMore = false) => {
-  if (isLoading.value) return
+  if (isLoadMore && isLoading.value) return
+  const requestId = beginRequest()
+  const requestUserId = userId.value
+  const requestTab = activeTab.value
+  const requestPageNo = isLoadMore ? pageNo.value : 1
   isLoading.value = true
   
   if (isLoadMore) {
@@ -95,12 +101,13 @@ const loadRelationList = async (isLoadMore = false) => {
   } else {
     loading.value = true
     users.value = []
-    pageNo.value = 1
+    pageNo.value = requestPageNo
   }
   
   try {
-    const request = activeTab.value === 'following' ? getFollowingList : getFansList
-    const res = await request(userId.value, pageNo.value)
+    const request = requestTab === 'following' ? getFollowingList : getFansList
+    const res = await request(requestUserId, requestPageNo)
+    if (!isCurrentRequest(requestId)) return
     if (res.success) {
       const newUsers = (res.data || []).map(user => ({
         ...user,
@@ -117,8 +124,9 @@ const loadRelationList = async (isLoadMore = false) => {
       pageNo.value = res.pageNo + 1
     }
   } catch {
-    message.show('列表加载失败，请稍后重试')
+    if (isCurrentRequest(requestId)) message.show('列表加载失败，请稍后重试')
   } finally {
+    if (!isCurrentRequest(requestId)) return
     loading.value = false
     loadingMore.value = false
     isLoading.value = false
@@ -175,6 +183,11 @@ const handleScroll = () => {
 }
 
 watch(activeTab, () => {
+  loadRelationList()
+})
+
+watch(() => route.params.userId, (newUserId) => {
+  userId.value = newUserId
   loadRelationList()
 })
 

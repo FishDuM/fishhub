@@ -100,8 +100,8 @@ class FollowUnfollowConsumerTest {
                         .createTime(LocalDateTime.now())
                         .build())));
 
-        verify(reliableMqOutbox, times(2)).enqueue(anyString(), anyString());
-        verify(reliableMqOutbox, times(2)).sendNow(anyString(), anyString());
+        verify(reliableMqOutbox, times(2)).enqueue(anyString(), anyString(), anyString());
+        verify(reliableMqOutbox, times(2)).sendNow(anyString(), anyString(), anyString());
     }
 
     @SuppressWarnings("unchecked")

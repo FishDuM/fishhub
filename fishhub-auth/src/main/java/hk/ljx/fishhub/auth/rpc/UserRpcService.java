@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.auth.rpc;
 
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.framework.common.exception.BizException;
+import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
@@ -63,7 +65,10 @@ public class UserRpcService {
         UpdateUserPasswordReqDTO updateUserPasswordReqDTO = new UpdateUserPasswordReqDTO();
         updateUserPasswordReqDTO.setEncodePassword(encodePassword);
 
-        userFeignApi.updatePassword(updateUserPasswordReqDTO);
+        Response<Boolean> response = userFeignApi.updatePassword(updateUserPasswordReqDTO);
+        if (response == null || !response.isSuccess() || !Boolean.TRUE.equals(response.getData())) {
+            throw new BizException(ResponseCodeEnum.PASSWORD_UPDATE_FAIL);
+        }
     }
 
 }

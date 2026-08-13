@@ -16,6 +16,7 @@ public class MqSendFailureDO {
     private Long id;
     private String messageKey;
     private String topic;
+    private String orderingKey;
     private String body;
     private Integer retryCount;
     private LocalDateTime nextRetryTime;

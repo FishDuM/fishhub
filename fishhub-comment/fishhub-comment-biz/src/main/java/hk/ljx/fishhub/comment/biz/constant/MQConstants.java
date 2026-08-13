@@ -39,6 +39,11 @@ public interface MQConstants {
     String TOPIC_DELETE_COMMENT = "DeleteCommentTopic";
 
     /**
+     * Topic: 删除评论正文
+     */
+    String TOPIC_DELETE_COMMENT_CONTENT = "DeleteCommentContentTopic";
+
+    /**
      * Tag 标签：点赞
      */
     String TAG_LIKE = "Like";

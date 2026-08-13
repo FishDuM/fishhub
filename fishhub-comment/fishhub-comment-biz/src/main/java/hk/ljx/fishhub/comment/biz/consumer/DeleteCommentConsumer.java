@@ -13,6 +13,8 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.MqConsumeRecordMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
+import hk.ljx.fishhub.comment.biz.model.dto.DeleteCommentContentMqDTO;
+import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -50,7 +52,7 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     @Resource
     private MqConsumeRecordMapper mqConsumeRecordMapper;
     @Resource
-    private KeyValueRpcService keyValueRpcService;
+    private SendMqRetryHelper sendMqRetryHelper;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
     @Resource
@@ -79,18 +81,20 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         List<CommentDO> targets = collectDeleteTargets(root);
         List<Long> targetIds = targets.stream().map(CommentDO::getId).distinct().toList();
 
-        // Cassandra 删除在 MySQL 事务前执行，失败则不会删除元数据，由 RocketMQ 重试。
-        for (CommentDO target : targets) {
-            if (!Boolean.TRUE.equals(target.getIsContentEmpty())
-                    && StringUtils.isNotBlank(target.getContentUuid())) {
-                keyValueRpcService.deleteCommentContent(
-                        target.getNoteId(), target.getCreateTime(), target.getContentUuid());
-            }
-        }
+        List<DeleteCommentContentMqDTO> contentDeletionTasks = targets.stream()
+                .filter(target -> !Boolean.TRUE.equals(target.getIsContentEmpty())
+                        && StringUtils.isNotBlank(target.getContentUuid()))
+                .map(target -> DeleteCommentContentMqDTO.builder()
+                        .noteId(target.getNoteId())
+                        .createTime(target.getCreateTime())
+                        .contentUuid(target.getContentUuid())
+                        .build())
+                .toList();
+        List<String> contentDeletionBodies = contentDeletionTasks.stream()
+                .map(JsonUtils::toJsonString)
+                .toList();
 
-        invalidateRedis(root, targetIds);
-
-        transactionTemplate.execute(status -> {
+        boolean deleted = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             // 消费幂等：并发重投时只允许一个消费者执行扣减
             String messageKey = DigestUtil.sha256Hex(MQConstants.TOPIC_DELETE_COMMENT + ":" + body);
             if (mqConsumeRecordMapper.exists(
@@ -103,6 +107,9 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             } catch (DuplicateKeyException e) {
                 return null;
             }
+
+            contentDeletionBodies.forEach(bodyItem ->
+                    sendMqRetryHelper.enqueue(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
 
             commentLikeDOMapper.deleteByCommentIds(targetIds);
             commentDOMapper.deleteByIds(targetIds);
@@ -125,7 +132,15 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                 rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(root.getParentId()));
             }
             return true;
-        });
+        }));
+
+        if (!deleted) {
+            return;
+        }
+
+        invalidateRedis(root, targetIds);
+        contentDeletionBodies.forEach(bodyItem ->
+                sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
     }
 
     private List<CommentDO> collectDeleteTargets(CommentDO root) {
@@ -160,6 +175,7 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             redisTemplate.opsForZSet().remove(
                     RedisKeyConstants.buildChildCommentListKey(root.getParentId()), targetIds.toArray());
             redisTemplate.delete(RedisKeyConstants.buildCountCommentKey(root.getParentId()));
+            redisTemplate.delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(root.getParentId()));
         }
         List<String> keys = new ArrayList<>();
         keys.add(RedisKeyConstants.buildNoteCommentTotalKey(root.getNoteId()));

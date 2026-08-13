@@ -72,7 +72,7 @@ public class SendMqRetryHelper {
      * 兜底方案: 将发送失败的 MQ 写入数据库，之后，通过定时任务扫表，将发送失败的 MQ 再次发送，最终发送成功后，将该记录物理删除
      */
     private void fallback(Exception e, String topic, String bodyJson) {
-        log.error("==> 多次发送失败, 进入兜底方案, Topic: {}, bodyJson: {}", topic, bodyJson, e);
+        log.error("MQ 发送失败，已写入 Outbox，topic={}, payloadSize={}", topic, bodyJson.length(), e);
 
         String errorMessage = e.getMessage();
         errorMessage = StringUtils.abbreviate(

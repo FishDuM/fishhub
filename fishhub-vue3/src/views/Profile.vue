@@ -238,6 +238,7 @@ import { useRoute } from 'vue-router'
 import NoteDetailModal from '@/components/note/NoteDetailModal.vue'
 import { followUser, unfollowUser, checkFollowing } from '@/api/relation'
 import { message } from '@/utils/message'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 const userStore = useUserStore()
 const route = useRoute()
@@ -298,15 +299,19 @@ const handleClickOutside = (event) => {
 
 const profile = ref({})
 const isFollowing = ref(false)
+const { begin: beginProfileRequest, isCurrent: isCurrentProfileRequest } = useLatestRequest()
+const { begin: beginNoteRequest, isCurrent: isCurrentNoteRequest } = useLatestRequest()
 
-const loadFollowingState = async (targetUserId) => {
+const loadFollowingState = async (targetUserId, profileRequestId) => {
   if (!isLoggedIn.value || !targetUserId || String(targetUserId) === String(userStore.profile.userId)) {
     isFollowing.value = false
     return
   }
   try {
     const res = await checkFollowing(targetUserId)
-    if (res.success) isFollowing.value = Boolean(res.data)
+    if (isCurrentProfileRequest(profileRequestId) && res.success) {
+      isFollowing.value = Boolean(res.data)
+    }
   } catch (error) {
     console.error('查询关注状态失败:', error)
   }
@@ -348,16 +353,14 @@ const getColumnNotes = (colIndex) => {
 }
 
 
-const getCurrentNoteList = () => {
-  if (activeTab.value === 'collect') return getCollectedNoteList
-  if (activeTab.value === 'like') return getLikedNoteList
-  return getPublishedNoteList
-}
-
 const normalizeNote = (note) => ({ ...note, id: note.noteId ?? note.id })
 
 const loadNotes = async (isFirstPage = true) => {
-  if (isLoading.value || !profile.value.userId) return
+  if ((!isFirstPage && isLoading.value) || !profile.value.userId) return
+  const requestId = beginNoteRequest()
+  const requestUserId = profile.value.userId
+  const requestTab = activeTab.value
+  const requestCursor = isFirstPage ? null : nextCursor.value
   isLoading.value = true
   if (isFirstPage) {
     notes.value = []
@@ -365,7 +368,13 @@ const loadNotes = async (isFirstPage = true) => {
     hasMore.value = true
   }
   try {
-    const res = await getCurrentNoteList()(profile.value.userId, nextCursor.value)
+    const request = requestTab === 'collect'
+      ? getCollectedNoteList
+      : requestTab === 'like'
+        ? getLikedNoteList
+        : getPublishedNoteList
+    const res = await request(requestUserId, requestCursor)
+    if (!isCurrentNoteRequest(requestId)) return
     if (!res.success) {
       hasMore.value = false
       return
@@ -377,7 +386,7 @@ const loadNotes = async (isFirstPage = true) => {
     nextCursor.value = res.data?.nextCursor ?? null
     hasMore.value = Boolean(nextCursor.value && newNotes.length)
   } finally {
-    isLoading.value = false
+    if (isCurrentNoteRequest(requestId)) isLoading.value = false
   }
 }
 
@@ -401,12 +410,7 @@ watch(activeTab, () => loadNotes(true))
 
 const handleProfileUpdated = (updatedProfile) => {
   profile.value = { ...profile.value, ...updatedProfile }
-  
-  getUserProfile(route.params.userId).then(res => {
-    if (res.success) {
-      profile.value = res.data
-    }
-  })
+  loadProfile(route.params.userId)
 }
 
 const handleFollow = async () => {
@@ -431,24 +435,34 @@ const handleFollow = async () => {
   }
 }
 
+const loadProfile = async (targetUserId) => {
+  const requestId = beginProfileRequest()
+  beginNoteRequest()
+  nextCursor.value = null
+  notes.value = []
+  hasMore.value = true
+  isLoading.value = false
+  isFollowing.value = false
+
+  try {
+    const res = await getUserProfile(targetUserId)
+    if (!isCurrentProfileRequest(requestId) || !res.success) return
+
+    profile.value = res.data
+    loadFollowingState(profile.value.userId, requestId)
+    loadNotes(true)
+  } catch (error) {
+    if (isCurrentProfileRequest(requestId)) {
+      message.show('用户资料加载失败，请稍后重试')
+    }
+  }
+}
+
 watch(() => route.params.userId, (newUserId, oldUserId) => {
   if (newUserId !== oldUserId) {
-    nextCursor.value = null
-    notes.value = []
-    hasMore.value = true
-    isLoading.value = false
-    
     activeTab.value = 'notes'
-    
-    getUserProfile(newUserId).then(res => {
-      if (res.success) {
-        profile.value = res.data
-        loadFollowingState(profile.value.userId)
-
-        loadNotes(true)
-      }
-    })
   }
+  loadProfile(newUserId)
 }, { immediate: true })
 </script>
 

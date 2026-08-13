@@ -62,7 +62,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         // 标签
         String tags = message.getTags();
 
-        log.info("==> FollowUnfollowConsumer 消费了消息 {}, tags: {}", bodyJsonStr, tags);
+        log.info("消费关注关系事件，tags={}", tags);
 
         // 根据 MQ 标签，判断操作类型
         if (Objects.equals(tags, MQConstants.TAG_FOLLOW)) { // 关注
@@ -88,7 +88,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         LocalDateTime createTime = followUserMqDTO.getCreateTime();
 
         if (userId == null || followUserId == null || createTime == null) {
-            log.error("丢弃无法恢复的关注消息，必要字段缺失: {}", bodyJsonStr);
+            log.error("丢弃无法恢复的关注消息：必要字段缺失");
             return;
         }
 
@@ -123,8 +123,10 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
                 return false;
             }
 
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FOLLOWING, countEventBody);
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FANS, countEventBody);
+            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FOLLOWING, countEventBody,
+                    followingOrderingKey(userId));
+            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FANS, countEventBody,
+                    fansOrderingKey(followUserId));
             return true;
         }));
 
@@ -132,7 +134,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         redisTemplate.delete(RedisKeyConstants.buildUserFansKey(followUserId));
 
         if (isSuccess) {
-            sendCountEvent(countEventBody);
+            sendCountEvent(countEventBody, userId, followUserId);
         }
     }
 
@@ -152,7 +154,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         LocalDateTime createTime = unfollowUserMqDTO.getCreateTime();
 
         if (userId == null || unfollowUserId == null || createTime == null) {
-            log.error("丢弃无法恢复的取关消息，必要字段缺失: {}", bodyJsonStr);
+            log.error("丢弃无法恢复的取关消息：必要字段缺失");
             return;
         }
 
@@ -176,27 +178,36 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
                 return false;
             }
 
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FOLLOWING, countEventBody);
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FANS, countEventBody);
+            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FOLLOWING, countEventBody,
+                    followingOrderingKey(userId));
+            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FANS, countEventBody,
+                    fansOrderingKey(unfollowUserId));
             return true;
         }));
 
         redisTemplate.delete(RedisKeyConstants.buildUserFansKey(unfollowUserId));
 
         if (isSuccess) {
-            sendCountEvent(countEventBody);
+            sendCountEvent(countEventBody, userId, unfollowUserId);
         }
     }
 
     /**
      * 发送 MQ 通知计数服务
      *
-     * @param countFollowUnfollowMqDTO
      */
-    private void sendCountEvent(String body) {
+    private void sendCountEvent(String body, Long userId, Long targetUserId) {
         // 事件已经在事务中进入 outbox；即时发送失败时由定时任务继续补发。
-        reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_FOLLOWING, body);
-        reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_FANS, body);
+        reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_FOLLOWING, body, followingOrderingKey(userId));
+        reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_FANS, body, fansOrderingKey(targetUserId));
+    }
+
+    private String followingOrderingKey(Long userId) {
+        return MQConstants.TOPIC_COUNT_FOLLOWING + ':' + userId;
+    }
+
+    private String fansOrderingKey(Long userId) {
+        return MQConstants.TOPIC_COUNT_FANS + ':' + userId;
     }
 
 }

@@ -43,7 +43,7 @@ public class DeleteTableXxlJob {
         LocalDate endDate = today.minusMonths(1);
 
         // 循环删除，不含今天和昨天
-        while (startDate.isAfter(endDate)) {
+        while (!startDate.isBefore(endDate)) {
             // 日期字符串
             String date = startDate.format(formatter);
 

@@ -58,6 +58,7 @@ import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
 import { getDiscoverNotePageList } from '@/api/note'
 import { useRoute, useRouter } from 'vue-router'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 
 
 const route = useRoute()
@@ -69,6 +70,7 @@ const hasMore = ref(true)
 const isLoading = ref(false)
 const hasLoaded = ref(false)
 const loadError = ref(false)
+const { begin: beginRequest, isCurrent: isCurrentRequest } = useLatestRequest()
 
 
 const getColumnCount = () => {
@@ -103,19 +105,24 @@ const getChannelIdFromRoute = () => {
   return channelId ? parseInt(channelId) : 0
 }
 
-const loadNotes = (channelId = 0, isFirstPage = true) => {
-  if (isLoading.value) return
+const loadNotes = async (channelId = 0, isFirstPage = true) => {
+  if (!isFirstPage && isLoading.value) return
+
+  const requestId = isFirstPage ? beginRequest() : beginRequest()
+  const pageNo = isFirstPage ? 1 : currPageNo.value
 
   isLoading.value = true
 
   if (isFirstPage) {
     loadingRef.value?.show()
-    currPageNo.value = 1
+    currPageNo.value = pageNo
     notes.value = []
     loadError.value = false
   }
 
-  getDiscoverNotePageList(channelId, currPageNo.value).then(res => {
+  try {
+    const res = await getDiscoverNotePageList(channelId, pageNo)
+    if (!isCurrentRequest(requestId)) return
     if (res.success) {
       const newNotes = (res.data || []).map(note => ({ ...note, id: note.noteId ?? note.id }))
 
@@ -131,17 +138,19 @@ const loadNotes = (channelId = 0, isFirstPage = true) => {
         currPageNo.value++
       }
     }
-  }).catch(() => {
+  } catch {
+    if (!isCurrentRequest(requestId)) return
     if (isFirstPage) {
       loadError.value = true
     }
-  }).finally(() => {
+  } finally {
+    if (!isCurrentRequest(requestId)) return
     isLoading.value = false
     hasLoaded.value = true
     if (isFirstPage) {
       loadingRef.value?.hide()
     }
-  })
+  }
 }
 
 const loadMoreNotes = () => {
@@ -197,8 +206,6 @@ const handleScroll = () => {
 onMounted(() => {
   const channelId = getChannelIdFromRoute()
   activeChannelId.value = channelId
-
-  loadNotes(channelId, true)
 
   window.addEventListener('scroll', handleScroll)
   window.addEventListener('resize', handleResize)

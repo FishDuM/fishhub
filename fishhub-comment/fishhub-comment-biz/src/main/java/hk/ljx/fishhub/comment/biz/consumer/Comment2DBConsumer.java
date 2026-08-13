@@ -99,14 +99,14 @@ public class Comment2DBConsumer {
                         PublishCommentMqDTO comment = JsonUtils.parseObject(msgJson, PublishCommentMqDTO.class);
                         if (comment == null || comment.getCommentId() == null
                                 || comment.getNoteId() == null || comment.getCreatorId() == null) {
-                            log.error("丢弃缺少业务主键的评论消息, msgId: {}, body: {}", msg.getMsgId(),
-                                    StringUtils.abbreviate(msgJson, 500));
+                            log.error("丢弃缺少业务主键的评论消息, msgId={}, payloadSize={}", msg.getMsgId(),
+                                    msgJson.length());
                             return;
                         }
                         rawReceivedComments.add(comment);
                     } catch (Exception e) {
-                        log.error("丢弃无法解析的评论消息, msgId: {}, body: {}", msg.getMsgId(),
-                                StringUtils.abbreviate(msgJson, 500), e);
+                        log.error("丢弃无法解析的评论消息, msgId={}, payloadSize={}", msg.getMsgId(),
+                                msgJson.length(), e);
                     }
                 });
 
@@ -207,7 +207,7 @@ public class Comment2DBConsumer {
                     commentBOS.add(commentBO);
                 }
 
-                log.info("## 清洗后的 CommentBOS: {}", JsonUtils.toJsonString(commentBOS));
+                log.info("评论批量入库前校验完成，count={}", commentBOS.size());
 
                 // 编程式事务，保证整体操作的原子性
                 PersistedComments persistedComments = transactionTemplate.execute(status -> {

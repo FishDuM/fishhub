@@ -44,7 +44,7 @@ public interface UserService {
      * @param updateUserPasswordReqDTO
      * @return
      */
-    Response<?> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO);
+    Response<Boolean> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO);
 
     /**
      * 根据用户 ID 查询用户信息

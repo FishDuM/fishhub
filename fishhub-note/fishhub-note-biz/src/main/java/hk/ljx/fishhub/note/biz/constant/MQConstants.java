@@ -14,11 +14,6 @@ public interface MQConstants {
     String TOPIC_INVALIDATE_NOTE_REDIS_CACHE = "InvalidateNoteRedisCacheTopic";
 
     /**
-     * Topic: 发布笔记事务消息
-     */
-    String TOPIC_PUBLISH_NOTE_TRANSACTION = "PublishNoteTransactionTopic";
-
-    /**
      * Topic: 点赞、取消点赞共用一个
      */
     String TOPIC_LIKE_OR_UNLIKE = "LikeUnlikeTopic";

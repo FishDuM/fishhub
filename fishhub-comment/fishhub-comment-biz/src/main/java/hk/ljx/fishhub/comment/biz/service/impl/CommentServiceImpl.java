@@ -324,18 +324,16 @@ public class CommentServiceImpl implements CommentService {
         // 若缓存不存在，走数据库查询
         if (Objects.isNull(redisCount)) {
             // 查询一级评论下子评论的总数 (直接查询 t_comment 表的 child_comment_total 字段，提升查询性能, 避免 count(*))
-            Long dbCount = commentDOMapper.selectChildCommentTotalById(parentCommentId);
+            List<CommentDO> countRecords = commentDOMapper.selectCommentCountByIds(List.of(parentCommentId));
+            CommentDO countRecord = CollUtil.isEmpty(countRecords) ? null : countRecords.get(0);
 
             // 若数据库中也不存在，则抛出业务异常
-            if (Objects.isNull(dbCount)) {
+            if (Objects.isNull(countRecord)) {
                 throw new BizException(ResponseCodeEnum.PARENT_COMMENT_NOT_FOUND);
             }
 
-            count = dbCount;
-            // 异步将子评论总数同步到 Redis 中
-            threadPoolTaskExecutor.execute(() -> {
-                syncCommentCount2Redis(countCommentKey, dbCount);
-            });
+            count = countRecord.getChildCommentTotal();
+            threadPoolTaskExecutor.execute(() -> syncCommentCount2Redis(countCommentKey, countRecord));
         }
 
         // 若子评论总数为 0，直接返参
@@ -916,8 +914,10 @@ public class CommentServiceImpl implements CommentService {
                         && !Objects.equals(replyCommentId, parentId)) {
                     Long replyUserId = childCommentDO.getReplyUserId();
                     FindUserByIdRspDTO replyUser = userIdAndDTOMap.get(replyUserId);
-                    childCommentRspVO.setReplyUserName(replyUser.getNickName());
-                    childCommentRspVO.setReplyUserId(replyUser.getId());
+                    if (replyUser != null) {
+                        childCommentRspVO.setReplyUserName(replyUser.getNickName());
+                        childCommentRspVO.setReplyUserId(replyUser.getId());
+                    }
                 }
             }
 
@@ -979,17 +979,18 @@ public class CommentServiceImpl implements CommentService {
     /**
      * 同步评论计数到 Redis 中
      * @param countCommentKey
-     * @param dbCount
+     * @param countRecord
      */
-    private void syncCommentCount2Redis(String countCommentKey, Long dbCount) {
+    private void syncCommentCount2Redis(String countCommentKey, CommentDO countRecord) {
         redisTemplate.executePipelined(new SessionCallback<>() {
             @Override
             public Object execute(RedisOperations operations) {
                 // 同步 hash 数据
                 operations.opsForHash()
-                        .put(countCommentKey, RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL, dbCount);
+                        .put(countCommentKey, RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
+                                countRecord.getChildCommentTotal());
                 operations.opsForHash()
-                        .put(countCommentKey, RedisKeyConstants.FIELD_LIKE_TOTAL, 0L);
+                        .put(countCommentKey, RedisKeyConstants.FIELD_LIKE_TOTAL, countRecord.getLikeTotal());
 
                 // 随机过期时间 (保底1小时 + 随机时间)，单位：秒
                 long expireTime = 60*60 + RandomUtil.randomInt(4*60*60);

@@ -20,19 +20,23 @@ public class ReliableMqOutbox {
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
-    public void enqueue(String topic, String body) {
+    public void enqueue(String topic, String body, String orderingKey) {
         mqSendFailureMapper.insertPending(MqSendFailureDO.builder()
                 .messageKey(messageKey(topic, body))
                 .topic(topic)
+                .orderingKey(orderingKey)
                 .body(body)
                 .nextRetryTime(LocalDateTime.now())
                 .build());
     }
 
-    public void sendNow(String topic, String body) {
+    public void sendNow(String topic, String body, String orderingKey) {
         String messageKey = messageKey(topic, body);
+        if (mqSendFailureMapper.existsEarlierPending(orderingKey, messageKey) > 0) {
+            return;
+        }
         try {
-            rocketMQTemplate.syncSend(topic, MessageBuilder.withPayload(body).build());
+            rocketMQTemplate.syncSendOrderly(topic, MessageBuilder.withPayload(body).build(), orderingKey);
             mqSendFailureMapper.deleteByMessageKey(messageKey);
         } catch (Exception e) {
             log.warn("计数消息即时发送失败，已保留在 outbox 中等待补发，topic={}", topic, e);

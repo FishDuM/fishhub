@@ -18,6 +18,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,11 @@ import java.util.*;
 @Service
 @Slf4j
 public class AuthServiceImpl implements AuthService {
+
+    private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CODE_SCRIPT = new DefaultRedisScript<>(
+            "local value = redis.call('get', KEYS[1]); "
+                    + "if value == ARGV[1] then redis.call('del', KEYS[1]); return 1; end; "
+                    + "return 0;", Long.class);
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
@@ -60,14 +66,7 @@ public class AuthServiceImpl implements AuthService {
 
                 Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
 
-                String key = RedisKeyConstants.buildVerificationCodeKey(phone);
-                String sentCode = (String) redisTemplate.opsForValue().get(key);
-
-                if (!StringUtils.equals(verificationCode, sentCode)) {
-                    throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
-                }
-
-                redisTemplate.delete(key);
+                verifyAndConsumeVerificationCode(phone, verificationCode);
 
                 Long userIdTmp = userRpcService.registerUser(phone);
 
@@ -133,19 +132,12 @@ public class AuthServiceImpl implements AuthService {
 
         Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
 
-        String key = RedisKeyConstants.buildVerificationCodeKey(phone);
-        String sentCode = (String) redisTemplate.opsForValue().get(key);
-
-        if (!StringUtils.equals(verificationCode, sentCode)) {
-            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
-        }
-
-        redisTemplate.delete(key);
-
         FindUserByPhoneRspDTO user = userRpcService.findUserByPhone(phone);
         if (user == null || !Objects.equals(user.getId(), LoginUserContextHolder.getUserId())) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
+
+        verifyAndConsumeVerificationCode(phone, verificationCode);
 
         String newPassword = updatePasswordReqVO.getNewPassword();
         String encodePassword = passwordEncoder.encode(newPassword);
@@ -155,6 +147,14 @@ public class AuthServiceImpl implements AuthService {
         StpUtil.logout(LoginUserContextHolder.getUserId());
 
         return Response.success();
+    }
+
+    private void verifyAndConsumeVerificationCode(String phone, String verificationCode) {
+        Long consumed = redisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT,
+                List.of(RedisKeyConstants.buildVerificationCodeKey(phone)), verificationCode);
+        if (!Long.valueOf(1L).equals(consumed)) {
+            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
+        }
     }
 
 }

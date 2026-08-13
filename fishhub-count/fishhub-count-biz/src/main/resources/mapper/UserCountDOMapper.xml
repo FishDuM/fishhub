@@ -103,7 +103,7 @@
   <insert id="insertOrUpdateFansTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, fans_total)
     VALUES (#{userId}, #{count})
-      ON DUPLICATE KEY UPDATE fans_total = fans_total + (#{count});
+      ON DUPLICATE KEY UPDATE fans_total = GREATEST(0, fans_total + (#{count}));
   </insert>
 
   <insert id="insertOrUpdateLikeTotalByUserId" parameterType="map">
@@ -127,7 +127,7 @@
   <insert id="insertOrUpdateFollowingTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, following_total)
     VALUES (#{userId}, #{count})
-      ON DUPLICATE KEY UPDATE following_total = following_total + (#{count});
+      ON DUPLICATE KEY UPDATE following_total = GREATEST(0, following_total + (#{count}));
   </insert>
 
   <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO">

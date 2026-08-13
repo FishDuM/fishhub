@@ -84,19 +84,21 @@ public class LikeUnlikeComment2DBConsumer {
                 msgs.forEach(msg -> {
                     String tag = msg.getTags(); // Tag 标签
                     String msgJson = new String(msg.getBody(), StandardCharsets.UTF_8); // 消息体 Json 字符串
-                    log.info("==> 【评论点赞、取消点赞】Consumer - Tag: {}, Received message: {}", tag, msgJson);
+                    log.info("处理评论点赞事件，tag={}, payloadSize={}", tag, msgJson.length());
 
                     try {
                         LikeUnlikeCommentMqDTO operation = JsonUtils.parseObject(msgJson, LikeUnlikeCommentMqDTO.class);
                         if (operation == null || operation.getCommentId() == null || operation.getUserId() == null
                                 || operation.getType() == null || operation.getCreateTime() == null) {
-                            log.error("丢弃缺少业务主键的评论点赞消息, msgId: {}, body: {}", msg.getMsgId(), msgJson);
+                            log.error("丢弃缺少业务主键的评论点赞消息, msgId={}, payloadSize={}",
+                                    msg.getMsgId(), msgJson.length());
                             return;
                         }
                         likeUnlikeCommentMqDTOS.add(operation);
                     } catch (Exception e) {
                         // 反序列化失败无法通过重试恢复，确认该消息，避免阻塞同一顺序队列。
-                        log.error("丢弃无法解析的评论点赞消息, msgId: {}, body: {}", msg.getMsgId(), msgJson, e);
+                        log.error("丢弃无法解析的评论点赞消息, msgId={}, payloadSize={}",
+                                msg.getMsgId(), msgJson.length(), e);
                     }
                 });
 

@@ -15,7 +15,6 @@ import hk.ljx.framework.common.util.NumberUtils;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.note.biz.convert.NoteConvert;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.ChannelDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
@@ -29,7 +28,6 @@ import hk.ljx.fishhub.note.biz.enums.*;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
-import hk.ljx.fishhub.note.biz.model.dto.PublishNoteDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
@@ -46,8 +44,6 @@ import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.client.producer.TransactionSendResult;
-import org.apache.rocketmq.client.producer.LocalTransactionState;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -218,40 +214,36 @@ public class NoteServiceImpl implements NoteService {
                 .contentUuid(contentUuid)
                 .build();
 
-        // 若笔记正文未填写，不用发事务消息
+        // 正文属于 KV 存储，笔记元数据与后续事件由本地事务和 Outbox 保证一致。
         if (StringUtils.isBlank(content)) {
-            processPublishContentEmptyNote(creatorId, noteDO, snowflakeIdId);
+            persistPublishedNote(creatorId, noteDO);
             return Response.success();
         }
 
-        // 发送事务消息
-        // DO 转 DTO
-        PublishNoteDTO publishNoteDTO = NoteConvert.INSTANCE.convertDO2DTO(noteDO);
-        publishNoteDTO.setContent(content);
-
-        // 构建消息内容
-        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(publishNoteDTO)).build();
-        // 发送事务消息
-        TransactionSendResult transactionSendResult = rocketMQTemplate.sendMessageInTransaction(MQConstants.TOPIC_PUBLISH_NOTE_TRANSACTION, message, null);
-
-        log.info("## 事务消息发送结果: {}", transactionSendResult.getLocalTransactionState());
-        if (transactionSendResult.getLocalTransactionState() != LocalTransactionState.COMMIT_MESSAGE) {
+        if (!keyValueRpcService.saveNoteContent(contentUuid, content)) {
             throw new BizException(ResponseCodeEnum.NOTE_PUBLISH_FAIL);
+        }
+        try {
+            persistPublishedNote(creatorId, noteDO);
+        } catch (Exception e) {
+            if (!keyValueRpcService.deleteNoteContent(contentUuid)) {
+                log.error("笔记发布回滚时无法删除正文，noteId={}, contentUuid={}", noteDO.getId(), contentUuid);
+            }
+            throw e;
         }
 
         return Response.success();
     }
 
     /**
-     * 处理笔记正文为空的情况
+     * 将笔记元数据和发布事件一起持久化。
      * @param creatorId
      * @param noteDO
-     * @param snowflakeIdId
      */
-    private void processPublishContentEmptyNote(Long creatorId, NoteDO noteDO, String snowflakeIdId) {
+    private void persistPublishedNote(Long creatorId, NoteDO noteDO) {
         NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
                 .creatorId(creatorId)
-                .noteId(Long.valueOf(snowflakeIdId))
+                .noteId(noteDO.getId())
                 .type(NoteOperateEnum.PUBLISH.getCode()) // 发布笔记
                 .build();
 

@@ -65,7 +65,7 @@ public class UserController {
 
     @PostMapping("/password/update")
     @ApiOperationLog(description = "密码更新")
-    public Response<?> updatePassword(@Validated @RequestBody UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
+    public Response<Boolean> updatePassword(@Validated @RequestBody UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
         return userService.updatePassword(updateUserPasswordReqDTO);
     }
 

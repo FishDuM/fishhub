@@ -10,6 +10,7 @@ import hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
@@ -18,7 +19,8 @@ import java.util.List;
 
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FANS_2_DB,
-        topic = MQConstants.TOPIC_COUNT_FANS_2_DB)
+        topic = MQConstants.TOPIC_COUNT_FANS_2_DB,
+        consumeMode = ConsumeMode.ORDERLY)
 @Slf4j
 public class CountFans2DBConsumer implements RocketMQListener<String> {
 

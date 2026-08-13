@@ -39,7 +39,12 @@ public class FailedMqRetryJob {
                 continue;
             }
             try {
-                rocketMQTemplate.syncSend(failure.getTopic(), MessageBuilder.withPayload(failure.getBody()).build());
+                if (StringUtils.isBlank(failure.getOrderingKey())) {
+                    rocketMQTemplate.syncSend(failure.getTopic(), MessageBuilder.withPayload(failure.getBody()).build());
+                } else {
+                    rocketMQTemplate.syncSendOrderly(failure.getTopic(),
+                            MessageBuilder.withPayload(failure.getBody()).build(), failure.getOrderingKey());
+                }
                 mqSendFailureMapper.deleteById(failure.getId());
             } catch (Exception e) {
                 int retryCount = failure.getRetryCount() + 1;

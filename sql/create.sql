@@ -70,6 +70,7 @@ CREATE TABLE `t_mq_send_failure` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `message_key` varchar(64) NOT NULL COMMENT '消息幂等键',
   `topic` varchar(255) NOT NULL COMMENT 'RocketMQ Topic',
+  `ordering_key` varchar(255) NULL DEFAULT NULL COMMENT '同一业务实体的有序投递键',
   `body` mediumtext NOT NULL COMMENT '消息体',
   `retry_count` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '补发次数',
   `next_retry_time` datetime NOT NULL COMMENT '下次补发时间',

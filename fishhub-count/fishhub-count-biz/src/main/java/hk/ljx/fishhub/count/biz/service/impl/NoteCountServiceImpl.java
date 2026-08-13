@@ -63,12 +63,12 @@ public class NoteCountServiceImpl implements NoteCountService {
         // 循环入参中需要查询的笔记 ID 集合，构建对应 DTO, 并设置缓存中存在的计数，以及过滤出需要查数据库的笔记 ID
         for (int i = 0; i < noteIds.size(); i++) {
             Long currNoteId = noteIds.get(i);
-            List<Integer> currCountHash = (List<Integer>) countHashes.get(i);
+            List<?> currCountHash = (List<?>) countHashes.get(i);
 
             // 点赞数、收藏数、评论数
-            Integer likeTotal = currCountHash.get(0);
-            Integer collectTotal = currCountHash.get(1);
-            Integer commentTotal = currCountHash.get(2);
+            Long likeTotal = toLong(currCountHash.get(0));
+            Long collectTotal = toLong(currCountHash.get(1));
+            Long commentTotal = toLong(currCountHash.get(2));
 
             // Hash 中存在任意一个 Field 为 null, 都需要查询数据库
             if (Objects.isNull(likeTotal) || Objects.isNull(collectTotal) || Objects.isNull(commentTotal)) {
@@ -78,9 +78,9 @@ public class NoteCountServiceImpl implements NoteCountService {
             // 构建 DTO
             FindNoteCountsByIdRspDTO findNoteCountsByIdRspDTO = FindNoteCountsByIdRspDTO.builder()
                     .noteId(currNoteId)
-                    .likeTotal(Objects.nonNull(likeTotal) ? Long.valueOf(likeTotal) : null)
-                    .collectTotal(Objects.nonNull(collectTotal) ? Long.valueOf(collectTotal) : null)
-                    .commentTotal(Objects.nonNull(commentTotal) ? Long.valueOf(commentTotal) : null)
+                    .likeTotal(likeTotal)
+                    .collectTotal(collectTotal)
+                    .commentTotal(commentTotal)
                     .build();
 
             findNoteCountsByIdRspDTOS.add(findNoteCountsByIdRspDTO);
@@ -120,6 +120,10 @@ public class NoteCountServiceImpl implements NoteCountService {
         }
 
         return Response.success(findNoteCountsByIdRspDTOS);
+    }
+
+    private Long toLong(Object value) {
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     /**

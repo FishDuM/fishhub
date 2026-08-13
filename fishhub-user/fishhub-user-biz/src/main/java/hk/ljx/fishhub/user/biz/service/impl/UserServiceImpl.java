@@ -261,7 +261,7 @@ public class UserServiceImpl implements UserService {
         // 先判断该手机号是否已被注册
         UserDO userDO1 = userDOMapper.selectByPhone(phone);
 
-        log.info("==> 用户是否注册, phone: {}, userDO: {}", phone, JsonUtils.toJsonString(userDO1));
+        log.info("手机号查询完成，found={}", userDO1 != null);
 
         // 若已注册，则直接返回用户 ID
         if (Objects.nonNull(userDO1)) {
@@ -344,7 +344,7 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Response<?> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
+    public Response<Boolean> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
         // 获取当前请求对应的用户 ID
         Long userId = LoginUserContextHolder.getUserId();
 
@@ -353,10 +353,12 @@ public class UserServiceImpl implements UserService {
                 .password(updateUserPasswordReqDTO.getEncodePassword()) // 加密后的密码
                 .updateTime(LocalDateTime.now())
                 .build();
-        // 更新密码
-        userDOMapper.updateByPrimaryKeySelective(userDO);
+        int updated = userDOMapper.updateByPrimaryKeySelective(userDO);
+        if (updated != 1) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+        }
 
-        return Response.success();
+        return Response.success(Boolean.TRUE);
     }
 
     /**
@@ -573,7 +575,7 @@ public class UserServiceImpl implements UserService {
         if (!Objects.equals(userId, LoginUserContextHolder.getUserId())) { // 如果是用户本人查看自己的主页，则不走本地缓存（对本人保证实时性）
             FindUserProfileRspVO userProfileLocalCache = PROFILE_LOCAL_CACHE.getIfPresent(userId);
             if (Objects.nonNull(userProfileLocalCache)) {
-                log.info("## 用户主页信息命中本地缓存: {}", JsonUtils.toJsonString(userProfileLocalCache));
+                log.info("用户主页信息命中本地缓存，userId={}", userId);
                 return Response.success(userProfileLocalCache);
             }
         }

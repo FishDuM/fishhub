@@ -7,6 +7,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.support.MessageBuilder;
@@ -14,7 +15,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING,
-        topic = MQConstants.TOPIC_COUNT_FOLLOWING)
+        topic = MQConstants.TOPIC_COUNT_FOLLOWING,
+        consumeMode = ConsumeMode.ORDERLY)
 @Slf4j
 public class CountFollowingConsumer implements RocketMQListener<String> {
 
@@ -33,8 +35,8 @@ public class CountFollowingConsumer implements RocketMQListener<String> {
         }
 
         // 第一阶段只负责可靠转发。数据库消费者提交后统一失效缓存，避免 Redis 增量与 MySQL 事务分裂。
-        rocketMQTemplate.syncSend(
+        rocketMQTemplate.syncSendOrderly(
                 MQConstants.TOPIC_COUNT_FOLLOWING_2_DB,
-                MessageBuilder.withPayload(body).build());
+                MessageBuilder.withPayload(body).build(), String.valueOf(event.getUserId()));
     }
 }
