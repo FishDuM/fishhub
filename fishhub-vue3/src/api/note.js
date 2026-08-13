@@ -1,57 +1,48 @@
-import axios from "@/axios";
+import axios from '@/axios'
 
-// 接口前缀
 const API_PREFIX = '/note'
 
-// 发布笔记
 export function publishNote(note) {
-    return axios.post(`${API_PREFIX}/note/publish`, note)
+  return axios.post(`${API_PREFIX}/note/publish`, note)
 }
 
-// 获取发现页笔记数据
 export function getDiscoverNotePageList(channelId, pageNo) {
-    return axios.post(`${API_PREFIX}/discover/note/list`, {channelId, pageNo})
+  return axios.post(`${API_PREFIX}/discover/note/list`, { channelId, pageNo })
 }
 
-// 获取笔记详情
 export function getNoteDetail(id) {
-    return axios.post(`${API_PREFIX}/note/detail`, {id})
+  return axios.post(`${API_PREFIX}/note/detail`, { id })
 }
 
-// 获取当前用户对笔记的点赞、收藏状态
 export function getNoteInteractionState(noteId) {
-    return axios.post(`${API_PREFIX}/note/isLikedAndCollectedData`, {noteId})
+  return axios.post(`${API_PREFIX}/note/isLikedAndCollectedData`, { noteId })
 }
 
-// 点赞笔记
 export function likeNote(noteId) {
-    return axios.post(`${API_PREFIX}/note/like`, {id: noteId})
+  return axios.post(`${API_PREFIX}/note/like`, { id: noteId })
 }
 
-// 取消点赞笔记
 export function unlikeNote(noteId) {
-    return axios.post(`${API_PREFIX}/note/unlike`, {id: noteId})
+  return axios.post(`${API_PREFIX}/note/unlike`, { id: noteId })
 }
 
-// 收藏笔记
 export function collectNote(noteId) {
-    return axios.post(`${API_PREFIX}/note/collect`, {id: noteId})
+  return axios.post(`${API_PREFIX}/note/collect`, { id: noteId })
 }
 
-// 取消收藏笔记
 export function uncollectNote(noteId) {
-    return axios.post(`${API_PREFIX}/note/uncollect`, {id: noteId})
+  return axios.post(`${API_PREFIX}/note/uncollect`, { id: noteId })
 }
 
 export function getPublishedNoteList(userId, cursor) {
-    return axios.post(`${API_PREFIX}/note/published/list`, { userId, cursor })
+  return axios.post(`${API_PREFIX}/note/published/list`, { userId, cursor })
 }
 
 export function getCollectedNoteList(userId, cursor) {
-    return axios.post(`${API_PREFIX}/note/collected/list`, { userId, cursor })
+  return axios.post(`${API_PREFIX}/note/collected/list`, { userId, cursor })
 }
 
 export function getLikedNoteList(userId, cursor) {
-    return axios.post(`${API_PREFIX}/note/liked/list`, { userId, cursor })
+  return axios.post(`${API_PREFIX}/note/liked/list`, { userId, cursor })
 }
 

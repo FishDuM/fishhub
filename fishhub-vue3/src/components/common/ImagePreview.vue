@@ -100,6 +100,7 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useImageNavigator } from '@/composables/useImageNavigator'
 
 const props = defineProps({
   visible: {
@@ -119,33 +120,18 @@ const props = defineProps({
 const emit = defineEmits(['update:visible'])
 const currentIndex = ref(props.initialIndex)
 
-// 监听 visible 变化，重置 currentIndex
 watch(() => props.visible, (newVisible) => {
   if (newVisible) {
     currentIndex.value = props.initialIndex
   }
 })
 
-// 关闭预览
 const onClose = () => {
   emit('update:visible', false)
 }
 
-// 上一张
-const prev = () => {
-  if (props.images.length <= 1) return
-  currentIndex.value = currentIndex.value === 0 
-    ? props.images.length - 1 
-    : currentIndex.value - 1
-}
+const { previous: prev, next, handleWheel } = useImageNavigator(() => props.images, currentIndex)
 
-// 下一张
-const next = () => {
-  if (props.images.length <= 1) return
-  currentIndex.value = (currentIndex.value + 1) % props.images.length
-}
-
-// 键盘事件处理
 const handleKeydown = (e) => {
   if (!props.visible) return
   
@@ -162,48 +148,13 @@ const handleKeydown = (e) => {
   }
 }
 
-// 添加键盘事件监听
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
 })
 
-// 移除键盘事件监听
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown)
 })
-
-// 添加滚动节流控制
-let wheelTimeout = null
-const WHEEL_DELAY = 200 // 200ms 的节流延迟
-
-// 处理鼠标滚轮事件
-const handleWheel = (e) => {
-  e.preventDefault() // 阻止页面滚动
-  
-  // 如果已经有待执行的滚动，则忽略新的滚动
-  if (wheelTimeout) return
-  
-  // 执行滚动并设置节流
-  if (e.deltaY > 0) {
-    next()
-  } else {
-    prev()
-  }
-  
-  // 设置节流定时器
-  wheelTimeout = setTimeout(() => {
-    wheelTimeout = null
-  }, WHEEL_DELAY)
-}
-
-// 组件卸载时清理定时器
-onBeforeUnmount(() => {
-  if (wheelTimeout) {
-    clearTimeout(wheelTimeout)
-  }
-})
-
-// 控件显示状态
 const showControls = ref(false)
 </script>
 

@@ -35,7 +35,7 @@ public class OneLevelCommentFirstReplyCommentIdUpdateConsumer implements RocketM
     private RedisTemplate<String, Object> redisTemplate;
     @Resource
     private CommentDOMapper commentDOMapper;
-    @Resource(name = "taskExecutor")
+    @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     private RocketMQTemplate rocketMQTemplate;

@@ -140,20 +140,16 @@ const props = defineProps({
 const showPreview = ref(false)
 const isLiked = computed(() => Boolean(props.comment.isLiked))
 
-// 修改 emit 定义，添加 like 事件
 const emit = defineEmits(['reply', 'expand-replies', 'like', 'delete'])
 
-// 修改点赞切换函数
 const toggleLike = () => {
   emit('like', { comment: props.comment, liked: !isLiked.value })
 }
 
-// 点击回复
 const onReplyClick = () => {
   emit('reply', props.comment)
 }
 
-// 添加展开回复的点击处理
 const handleExpandReplies = (comment) => {
   emit('expand-replies', comment)
 }

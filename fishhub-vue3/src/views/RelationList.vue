@@ -39,7 +39,7 @@
       
       <div v-else-if="!loading">
         <div v-for="user in users" :key="user.userId" class="mb-2">
-          <UserCard :user="user" @follow="handleFollowUser" @login-required="handleLoginRequired" :type="listType" />
+          <UserCard :user="user" @follow="handleFollowUser" @login-required="handleLoginRequired" :type="listType()" />
         </div>
         
         <div v-if="hasMore" class="text-center py-4">
@@ -82,9 +82,11 @@ const loading = ref(true)
 const loadingMore = ref(false)
 const hasMore = ref(true)
 const pageNo = ref(1)
-const listType = ref('following')
+const isLoading = ref(false)
 
-const fetchFollowingList = async (isLoadMore = false) => {
+const listType = () => activeTab.value === 'following' ? 'following' : 'fans'
+
+const loadRelationList = async (isLoadMore = false) => {
   if (isLoading.value) return
   isLoading.value = true
   
@@ -97,68 +99,25 @@ const fetchFollowingList = async (isLoadMore = false) => {
   }
   
   try {
-    const res = await getFollowingList(userId.value, pageNo.value)
+    const request = activeTab.value === 'following' ? getFollowingList : getFansList
+    const res = await request(userId.value, pageNo.value)
     if (res.success) {
-      const newUsers = res.data || []
-      
-      // 后端明确返回关注状态；关注列表中的用户始终是已关注状态。
-      const processedUsers = newUsers.map(user => ({
+      const newUsers = (res.data || []).map(user => ({
         ...user,
         isFollowed: Boolean(user.isFollowed)
       }))
       
       if (isLoadMore) {
-        users.value = [...users.value, ...processedUsers]
+        users.value = [...users.value, ...newUsers]
       } else {
-        users.value = processedUsers
+        users.value = newUsers
       }
       
       hasMore.value = res.pageNo < res.totalPage
       pageNo.value = res.pageNo + 1
     }
-  } catch (error) {
-    console.error('获取关注列表失败', error)
-  } finally {
-    loading.value = false
-    loadingMore.value = false
-    isLoading.value = false
-  }
-}
-
-const fetchFollowersList = async (isLoadMore = false) => {
-  if (isLoading.value) return
-  isLoading.value = true
-  
-  if (isLoadMore) {
-    loadingMore.value = true
-  } else {
-    loading.value = true
-    users.value = []
-    pageNo.value = 1
-  }
-  
-  try {
-    const res = await getFansList(userId.value, pageNo.value)
-    if (res.success) {
-      const newUsers = res.data || []
-      
-      // 粉丝是否被当前用户关注由后端计算，游客固定为 false。
-      const processedUsers = newUsers.map(user => ({
-        ...user,
-        isFollowed: Boolean(user.isFollowed)
-      }))
-      
-      if (isLoadMore) {
-        users.value = [...users.value, ...processedUsers]
-      } else {
-        users.value = processedUsers
-      }
-      
-      hasMore.value = res.pageNo < res.totalPage
-      pageNo.value = res.pageNo + 1
-    }
-  } catch (error) {
-    console.error('获取粉丝列表失败', error)
+  } catch {
+    message.show('列表加载失败，请稍后重试')
   } finally {
     loading.value = false
     loadingMore.value = false
@@ -167,11 +126,7 @@ const fetchFollowersList = async (isLoadMore = false) => {
 }
 
 const loadMore = () => {
-  if (activeTab.value === 'following') {
-    fetchFollowingList(true)
-  } else {
-    fetchFollowersList(true)
-  }
+  loadRelationList(true)
 }
 
 const handleFollowUser = (followUserId) => {
@@ -207,8 +162,6 @@ const handleLoginRequired = () => {
   showLoginModal.value = true
 }
 
-const isLoading = ref(false)
-
 const handleScroll = () => {
   if (loading.value || loadingMore.value || !hasMore.value) return
   
@@ -221,24 +174,14 @@ const handleScroll = () => {
   }
 }
 
-watch(activeTab, (newTab) => {
-  if (newTab === 'following') {
-    listType.value = 'following'
-    fetchFollowingList()
-  } else {
-    listType.value = 'fans'
-    fetchFollowersList()
-  }
+watch(activeTab, () => {
+  loadRelationList()
 })
 
 onMounted(() => {
   window.addEventListener('scroll', handleScroll)
   
-  if (activeTab.value === 'following') {
-    fetchFollowingList()
-  } else {
-    fetchFollowersList()
-  }
+  loadRelationList()
 })
 
 onUnmounted(() => {

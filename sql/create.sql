@@ -11,8 +11,6 @@
  Target Server Version : 80027
  File Encoding         : 65001
 
- Clean bootstrap script: schema plus required system seed data only.
- It intentionally contains no users, notes, comments, relationships, counts, or media URLs.
 */
 
 SET NAMES utf8mb4;
@@ -62,7 +60,6 @@ CREATE TABLE `t_channel_topic_rel`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '频道-话题关联表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_channel_topic_rel starts empty. Topics can be associated by normal business operations.
 -- ----------------------------
 
 -- ----------------------------
@@ -133,7 +130,6 @@ CREATE TABLE `t_comment`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 38003 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '评论表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
--- t_comment starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -150,7 +146,6 @@ CREATE TABLE `t_comment_like`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 51 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '评论点赞表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
--- t_comment_like starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -167,7 +162,6 @@ CREATE TABLE `t_fans`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 50310 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户粉丝列表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_fans starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -184,7 +178,6 @@ CREATE TABLE `t_following`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 91309 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户关注列表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_following starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -216,7 +209,6 @@ CREATE TABLE `t_note`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_note starts empty. Media is uploaded after user registration.
 -- ----------------------------
 
 -- ----------------------------
@@ -235,7 +227,6 @@ CREATE TABLE `t_note_collection`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记收藏表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_note_collection starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -253,7 +244,6 @@ CREATE TABLE `t_note_count`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 82 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记计数表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_note_count starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -271,7 +261,6 @@ CREATE TABLE `t_note_like`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 38 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记点赞表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_note_like starts empty.
 -- ----------------------------
 
 -- ----------------------------
@@ -420,7 +409,6 @@ CREATE TABLE `t_user`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 2101 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_user starts empty. Register the first account through the application.
 -- ----------------------------
 
 -- ----------------------------
@@ -440,7 +428,6 @@ CREATE TABLE `t_user_count`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 6503 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户计数表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_user_count starts empty. It is created on the first count update or scheduled alignment.
 -- ----------------------------
 
 -- ----------------------------
@@ -459,7 +446,6 @@ CREATE TABLE `t_user_role_rel`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 17 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户角色表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
--- t_user_role_rel starts empty. Registration assigns the common-user role.
 -- ----------------------------
 
 SET FOREIGN_KEY_CHECKS = 1;

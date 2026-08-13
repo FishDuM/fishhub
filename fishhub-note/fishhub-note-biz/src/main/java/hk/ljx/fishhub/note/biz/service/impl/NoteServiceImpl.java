@@ -40,6 +40,7 @@ import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
+import hk.ljx.fishhub.note.biz.service.UserNoteListService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
@@ -85,7 +86,7 @@ public class NoteServiceImpl implements NoteService {
     private KeyValueRpcService keyValueRpcService;
     @Resource
     private UserRpcService userRpcService;
-    @Resource(name = "taskExecutor")
+    @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     private RedisTemplate<String, String> redisTemplate;
@@ -103,6 +104,8 @@ public class NoteServiceImpl implements NoteService {
     private NotePersistenceService notePersistenceService;
     @Resource
     private NoteInteractionCacheService noteInteractionCacheService;
+    @Resource
+    private UserNoteListService userNoteListService;
     @Resource
     private OssRpcService ossRpcService;
 
@@ -134,7 +137,6 @@ public class NoteServiceImpl implements NoteService {
         // 获取对应类型的枚举
         NoteTypeEnum noteTypeEnum = NoteTypeEnum.valueOf(type);
 
-        // 若非图文、视频，抛出业务业务异常
         if (Objects.isNull(noteTypeEnum)) {
             throw new BizException(ResponseCodeEnum.NOTE_TYPE_ERROR);
         }
@@ -414,7 +416,6 @@ public class NoteServiceImpl implements NoteService {
         // 获取对应类型的枚举
         NoteTypeEnum noteTypeEnum = NoteTypeEnum.valueOf(type);
 
-        // 若非图文、视频，抛出业务业务异常
         if (Objects.isNull(noteTypeEnum)) {
             throw new BizException(ResponseCodeEnum.NOTE_TYPE_ERROR);
         }
@@ -732,26 +733,21 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<?> likeNote(LikeNoteReqVO likeNoteReqVO) {
-        // 笔记ID
         Long noteId = likeNoteReqVO.getId();
 
         // 校验笔记仍然存在，并获取发布者 ID 供计数消息使用
         Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
 
-        // 2. 判断目标笔记，是否已经点赞过
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.addLike(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_ALREADY_LIKED);
         }
 
-        // 用户点赞列表 ZSet Key
         String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
 
-        // 3. 更新用户 ZSET 点赞列表
         LocalDateTime now = LocalDateTime.now();
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        // Lua 脚本路径
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_like_check_and_update_zset.lua")));
         script.setResultType(Long.class);
 
@@ -759,14 +755,11 @@ public class NoteServiceImpl implements NoteService {
 
         // 若 ZSet 列表不存在，需要重新初始化
         if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
-            // 查询当前用户最新点赞的 100 篇笔记
             List<NoteLikeDO> noteLikeDOS = noteLikeDOMapper.selectLikedByUserIdAndLimit(userId, 100);
 
-            // 保底1天+随机秒数
             long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
 
             DefaultRedisScript<Long> script2 = new DefaultRedisScript<>();
-            // Lua 脚本路径
             script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/batch_add_note_like_zset_and_expire.lua")));
             script2.setResultType(Long.class);
 
@@ -788,7 +781,6 @@ public class NoteServiceImpl implements NoteService {
             }
         }
 
-        // 4. 发送 MQ, 将点赞数据落库
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
@@ -800,7 +792,6 @@ public class NoteServiceImpl implements NoteService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeNoteMqDTO))
                 .build();
 
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
         String hashKey = String.valueOf(userId);
@@ -824,26 +815,20 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<?> unlikeNote(UnlikeNoteReqVO unlikeNoteReqVO) {
-        // 笔记ID
         Long noteId = unlikeNoteReqVO.getId();
 
-        // 1. 校验笔记是否真实存在，若存在，则获取发布者用户 ID
         Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
 
-        // 2. 校验笔记是否被点赞过
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeLike(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_LIKED);
         }
 
-        // 3. 状态缓存确认已点赞后，删除 ZSET 中对应的笔记 ID
-        // 用户点赞列表 ZSet Key
         String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
 
         redisTemplate.opsForZSet().remove(userNoteLikeZSetKey, noteId);
 
-        // 4. 发送 MQ, 数据更新落库
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
@@ -855,7 +840,6 @@ public class NoteServiceImpl implements NoteService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeNoteMqDTO))
                 .build();
 
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
         String hashKey = String.valueOf(userId);
@@ -879,26 +863,21 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<?> collectNote(CollectNoteReqVO collectNoteReqVO) {
-        // 笔记ID
         Long noteId = collectNoteReqVO.getId();
 
         // 校验笔记仍然存在，并获取发布者 ID 供计数消息使用
         Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
 
-        // 2. 判断目标笔记，是否已经收藏过
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.addCollect(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_ALREADY_COLLECTED);
         }
 
-        // 用户收藏列表 ZSet Key
         String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
 
-        // 3. 更新用户 ZSET 收藏列表
         LocalDateTime now = LocalDateTime.now();
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        // Lua 脚本路径
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_collect_check_and_update_zset.lua")));
         script.setResultType(Long.class);
 
@@ -906,14 +885,11 @@ public class NoteServiceImpl implements NoteService {
 
         // 若 ZSet 列表不存在，需要重新初始化
         if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
-            // 查询当前用户最新收藏的 300 篇笔记
             List<NoteCollectionDO> noteCollectionDOS = noteCollectionDOMapper.selectCollectedByUserIdAndLimit(userId, 300);
 
-            // 保底1天+随机秒数
             long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
 
             DefaultRedisScript<Long> script2 = new DefaultRedisScript<>();
-            // Lua 脚本路径
             script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/batch_add_note_collect_zset_and_expire.lua")));
             script2.setResultType(Long.class);
 
@@ -935,7 +911,6 @@ public class NoteServiceImpl implements NoteService {
             }
         }
 
-        // 4. 发送 MQ, 将收藏数据落库
         CollectUnCollectNoteMqDTO collectUnCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
@@ -947,7 +922,6 @@ public class NoteServiceImpl implements NoteService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(collectUnCollectNoteMqDTO))
                 .build();
 
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_COLLECT;
 
         String hashKey = String.valueOf(userId);
@@ -971,27 +945,21 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<?> unCollectNote(UnCollectNoteReqVO unCollectNoteReqVO) {
-        // 笔记ID
         Long noteId = unCollectNoteReqVO.getId();
 
         // 校验笔记仍然存在，并获取发布者 ID 供计数消息使用
         Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
 
-        // 2. 校验笔记是否被收藏过
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeCollect(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_COLLECTED);
         }
 
-        // 3. 删除 ZSET 中已收藏的笔记 ID
-        // 状态缓存确认已收藏后，删除 ZSET 中对应的笔记 ID
-        // 用户收藏列表 ZSet Key
         String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
 
         redisTemplate.opsForZSet().remove(userNoteCollectZSetKey, noteId);
 
-        // 4. 发送 MQ, 数据更新落库
         CollectUnCollectNoteMqDTO unCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
@@ -1003,7 +971,6 @@ public class NoteServiceImpl implements NoteService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(unCollectNoteMqDTO))
                 .build();
 
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_UN_COLLECT;
 
         String hashKey = String.valueOf(userId);
@@ -1182,45 +1149,12 @@ public class NoteServiceImpl implements NoteService {
 
     @Override
     public Response<FindPublishedNoteListRspVO> findCollectedNoteList(FindPublishedNoteListReqVO request) {
-        return findUserNoteList(noteDOMapper.selectCollectedNoteListByUserIdAndCursor(request.getUserId(), request.getCursor()));
+        return userNoteListService.findCollectedNotes(request);
     }
 
     @Override
     public Response<FindPublishedNoteListRspVO> findLikedNoteList(FindPublishedNoteListReqVO request) {
-        return findUserNoteList(noteDOMapper.selectLikedNoteListByUserIdAndCursor(request.getUserId(), request.getCursor()));
-    }
-
-    private Response<FindPublishedNoteListRspVO> findUserNoteList(List<NoteDO> noteDOS) {
-        if (CollUtil.isEmpty(noteDOS)) {
-            return Response.success(FindPublishedNoteListRspVO.builder().notes(Collections.emptyList()).nextCursor(null).build());
-        }
-
-        List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
-                .noteId(note.getId())
-                .type(note.getType())
-                .cover(StringUtils.isBlank(note.getImgUris()) ? null : StringUtils.split(note.getImgUris(), ',')[0])
-                .videoUri(note.getVideoUri())
-                .title(note.getTitle())
-                .creatorId(note.getCreatorId())
-                .likeTotal("0")
-                .isLiked(false)
-                .build()).collect(Collectors.toList());
-
-        Map<Long, FindUserByIdRspDTO> users = noteDOS.stream().map(NoteDO::getCreatorId).distinct()
-                .map(userRpcService::findById).filter(Objects::nonNull)
-                .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
-        notes.forEach(note -> {
-            FindUserByIdRspDTO user = users.get(note.getCreatorId());
-            if (user != null) {
-                note.setNickname(user.getNickName());
-                note.setAvatar(user.getAvatar());
-            }
-        });
-
-        setVOListLikeTotal(notes, countRpcService.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
-        batchGetAndSetNoteIsLiked(notes);
-        Long nextCursor = noteDOS.stream().map(NoteDO::getId).min(Long::compareTo).orElse(null);
-        return Response.success(FindPublishedNoteListRspVO.builder().notes(notes).nextCursor(nextCursor).build());
+        return userNoteListService.findLikedNotes(request);
     }
 
     /**

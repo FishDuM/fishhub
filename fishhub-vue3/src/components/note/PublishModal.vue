@@ -567,7 +567,7 @@ const handleFileChange = async (e) => {
 
   if (noteType.value === 'video') {
     if (!selectedFiles[0].type.startsWith('video/')) {
-      message.show({ type: 'error', content: '请选择视频文件' })
+      message.show('请选择视频文件', { type: 'error' })
       return
     }
     isVideo.value = true
@@ -577,7 +577,7 @@ const handleFileChange = async (e) => {
   } else {
     const imageFiles = selectedFiles.filter(file => file.type.startsWith('image/'))
     if (imageFiles.length !== selectedFiles.length) {
-      message.show({ type: 'error', content: '请只选择图片文件' })
+      message.show('请只选择图片文件', { type: 'error' })
       return
     }
     isVideo.value = false
@@ -588,13 +588,13 @@ const handleFileChange = async (e) => {
     if (files.value.length === 0) {
       filesToAdd = [selectedFiles[0]]
     } else {
-      message.show({ type: 'error', content: '只能上传一个视频' })
+      message.show('只能上传一个视频', { type: 'error' })
       return
     }
   } else {
     const remainingSlots = 8 - files.value.length
     if (remainingSlots <= 0) {
-      message.show({ type: 'error', content: '最多只能上传8张图片' })
+      message.show('最多只能上传8张图片', { type: 'error' })
       return
     }
     filesToAdd = selectedFiles.slice(0, remainingSlots)
@@ -625,10 +625,7 @@ const handleFileChange = async (e) => {
         if (index !== -1) {
           files.value.splice(index, 1)
         }
-        message.show({
-          type: 'error',
-          content: `文件 ${file.name} 上传失败: ${res.message || '未知错误'}`
-        })
+        message.show(`文件 ${file.name} 上传失败: ${res.message || '未知错误'}`, { type: 'error' })
       }
     }
 
@@ -640,7 +637,7 @@ const handleFileChange = async (e) => {
 
   } catch (error) {
     console.error('文件上传出错:', error)
-    message.show({ type: 'error', content: '文件上传出错，请重试' })
+    message.show('文件上传出错，请重试', { type: 'error' })
   } finally {
     isUploading.value = false
     e.target.value = ''
@@ -734,7 +731,7 @@ const handleTopicEnter = () => {
       return
     }
 
-    message.show({ type: 'warning', content: '请选择已有话题' })
+    message.show('请选择已有话题', { type: 'warning' })
   }
 }
 
@@ -799,17 +796,17 @@ const handlePublish = async () => {
   }
 
   if (fileUrls.value.length !== files.value.length) {
-    message.show({ type: 'warning', content: '文件正在上传中，请等待上传完成' })
+    message.show('文件正在上传中，请等待上传完成', { type: 'warning' })
     return
   }
 
   if (fileUrls.value.length === 0) {
-    message.show({ type: 'warning', content: '请上传文件' })
+    message.show('请上传文件', { type: 'warning' })
     return
   }
 
   if (!selectedChannel.value) {
-    message.show({ type: 'warning', content: '请选择频道' })
+    message.show('请选择频道', { type: 'warning' })
     return
   }
 

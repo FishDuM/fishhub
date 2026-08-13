@@ -80,7 +80,7 @@ public class CountNoteCollectConsumer implements RocketMQListener<String> {
 
                 switch (collectUnCollectNoteTypeEnum) {
                     case COLLECT -> finalCount += 1; // 如果为收藏操作，点赞数 +1
-                    case UN_COLLECT -> finalCount -= 1; // 如果为取消收藏操作，点赞数 -1
+                    case UN_COLLECT -> finalCount -= 1;
                 }
             }
             // 将分组后统计出的最终计数，存入 countList 中

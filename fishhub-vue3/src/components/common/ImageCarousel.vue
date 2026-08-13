@@ -89,6 +89,7 @@
 <script setup>
 import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import ImagePreview from './ImagePreview.vue'
+import { useImageNavigator } from '@/composables/useImageNavigator'
 
 const props = defineProps({
   images: {
@@ -103,11 +104,6 @@ const imageRefs = ref([])
 const showControls = ref(false)
 const showPreview = ref(false)
 
-// 添加滚动节流控制
-let wheelTimeout = null
-const WHEEL_DELAY = 200 // 200ms 的节流延迟
-
-// 图片加载完成后的处理
 const onImageLoad = (event) => {
   const img = event.target
   const container = img.parentElement.parentElement.parentElement
@@ -115,18 +111,17 @@ const onImageLoad = (event) => {
   const containerHeight = container.clientHeight
   const newWidth = containerHeight * ratio
 
-  // 设置容器宽度为图片等比缩放后的宽度
   container.style.width = `${newWidth}px`
 }
 
-// 监听 images 变化，重置 currentIndex
 watch(() => props.images, (newImages) => {
   if (newImages && newImages.length) {
     currentIndex.value = 0
   }
 }, { immediate: true })
 
-// 键盘事件处理
+const { previous: prev, next, handleWheel } = useImageNavigator(() => props.images, currentIndex)
+
 const handleKeydown = (e) => {
   if (!props.images.length || props.images.length <= 1) return
   
@@ -144,55 +139,17 @@ const handleKeydown = (e) => {
   }
 }
 
-// 组件挂载时添加键盘事件监听
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
 })
 
-// 组件卸载时移除键盘事件监听
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown)
   currentIndex.value = 0
-  if (wheelTimeout) {
-    clearTimeout(wheelTimeout)
-  }
 })
 
-const next = () => {
-  if (!props.images.length) return
-  currentIndex.value = (currentIndex.value + 1) % props.images.length
-}
-
-const prev = () => {
-  if (!props.images.length) return
-  currentIndex.value = currentIndex.value === 0 
-    ? props.images.length - 1 
-    : currentIndex.value - 1
-}
-
-// 修改图片点击事件
 const onImageClick = () => {
   showPreview.value = true
-}
-
-// 处理鼠标滚轮事件
-const handleWheel = (e) => {
-  e.preventDefault() // 阻止页面滚动
-  
-  // 如果已经有待执行的滚动，则忽略新的滚动
-  if (wheelTimeout) return
-  
-  // 执行滚动并设置节流
-  if (e.deltaY > 0) {
-    next()
-  } else {
-    prev()
-  }
-  
-  // 设置节流定时器
-  wheelTimeout = setTimeout(() => {
-    wheelTimeout = null
-  }, WHEEL_DELAY)
 }
 </script>
 
@@ -241,4 +198,4 @@ const handleWheel = (e) => {
 .fade-leave-to {
   opacity: 0;
 }
-</style> 
+</style>

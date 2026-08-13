@@ -2,8 +2,8 @@
   <Transition name="fade">
     <div 
       v-if="visible"
-      class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] bg-[#333] text-white px-6 py-3
-       rounded-full whitespace-nowrap font-bold"
+      :class="typeClass"
+      class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] px-6 py-3 rounded-full whitespace-nowrap font-bold text-white"
     >
       {{ message }}
     </div>
@@ -11,17 +11,28 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const visible = ref(false)
 const message = ref('')
+const type = ref('info')
+let dismissTimer
 
-// 显示消息
-const show = (msg, duration = 2000) => {
-  message.value = msg
+const typeClass = computed(() => ({
+  info: 'bg-[#333]',
+  warning: 'bg-amber-600',
+  error: 'bg-red-600',
+  success: 'bg-emerald-600'
+}[type.value] || 'bg-[#333]'))
+
+const show = ({ content, type: nextType = 'info', duration = 2000 }) => {
+  if (dismissTimer) {
+    clearTimeout(dismissTimer)
+  }
+  message.value = content
+  type.value = nextType
   visible.value = true
-  
-  setTimeout(() => {
+  dismissTimer = setTimeout(() => {
     visible.value = false
   }, duration)
 }
@@ -42,4 +53,4 @@ defineExpose({
 .fade-leave-to {
   opacity: 0;
 }
-</style> 
+</style>

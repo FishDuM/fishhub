@@ -81,7 +81,7 @@ public class CommentServiceImpl implements CommentService {
     private RedisTemplate<String, Object> redisTemplate;
     @Resource
     private CommentDetailCache commentDetailCache;
-    @Resource(name = "taskExecutor")
+    @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
@@ -107,9 +107,7 @@ public class CommentServiceImpl implements CommentService {
      */
     @Override
     public Response<?> publishComment(PublishCommentReqVO publishCommentReqVO) {
-        // 评论正文
         String content = publishCommentReqVO.getContent();
-        // 附近图片
         String imageUrl = publishCommentReqVO.getImageUrl();
 
         // 评论内容和图片不能同时为空
@@ -437,19 +435,14 @@ public class CommentServiceImpl implements CommentService {
      */
     @Override
     public Response<?> likeComment(LikeCommentReqVO likeCommentReqVO) {
-        // 被点赞的评论 ID
         Long commentId = likeCommentReqVO.getCommentId();
 
-        // 1. 校验被点赞的评论是否存在
         checkCommentIsExist(commentId);
 
-        // 2. 判断目标评论，是否已经被点赞
         Long userId = LoginUserContextHolder.getUserId();
-        // 布隆过滤器 Key
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
 
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        // Lua 脚本路径
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_comment_like_check.lua")));
         script.setResultType(Long.class);
 
@@ -467,7 +460,6 @@ public class CommentServiceImpl implements CommentService {
                 // 从数据库中校验评论是否被点赞，并异步初始化布隆过滤器，设置过期时间
                 int count = commentLikeDOMapper.selectCountByUserIdAndCommentId(userId, commentId);
 
-                // 保底1小时 + 随机秒数
                 long expireSeconds = 60*60 + RandomUtil.randomInt(60*60);
 
                 // 目标评论已经被点赞
@@ -481,8 +473,6 @@ public class CommentServiceImpl implements CommentService {
                 // 若目标评论未被点赞，查询当前用户是否有点赞其他评论，有则同步初始化布隆过滤器
                 batchAddCommentLike2BloomAndExpire(userId, expireSeconds, bloomUserCommentLikeListKey);
 
-                // 添加当前点赞评论 ID 到布隆过滤器中
-                // Lua 脚本路径
                 script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_add_comment_like_and_expire.lua")));
                 script.setResultType(Long.class);
                 redisTemplate.execute(script, Collections.singletonList(bloomUserCommentLikeListKey), commentId, expireSeconds);
@@ -498,7 +488,6 @@ public class CommentServiceImpl implements CommentService {
             }
         }
 
-        // 3. 发送 MQ, 异步将评论点赞记录落库
         LikeUnlikeCommentMqDTO likeUnlikeCommentMqDTO = LikeUnlikeCommentMqDTO.builder()
                 .userId(userId)
                 .commentId(commentId)
@@ -509,10 +498,8 @@ public class CommentServiceImpl implements CommentService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeCommentMqDTO))
                 .build();
 
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
-        // MQ 分区键
         String hashKey = String.valueOf(userId);
 
         try {
@@ -533,19 +520,14 @@ public class CommentServiceImpl implements CommentService {
      */
     @Override
     public Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO) {
-        // 被取消点赞的评论 ID
         Long commentId = unLikeCommentReqVO.getCommentId();
 
-        // 1. 校验评论是否存在
         checkCommentIsExist(commentId);
 
-        // 2. 校验评论是否被点赞过
         Long userId = LoginUserContextHolder.getUserId();
-        // 布隆过滤器 Key
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
 
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        // Lua 脚本路径
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_comment_unlike_check.lua")));
         script.setResultType(Long.class);
 
@@ -562,7 +544,6 @@ public class CommentServiceImpl implements CommentService {
             case NOT_EXIST -> {
                 // 异步初始化布隆过滤器
                 threadPoolTaskExecutor.submit(() -> {
-                    // 保底1小时+随机秒数
                     long expireSeconds = 60*60 + RandomUtil.randomInt(60*60);
                     batchAddCommentLike2BloomAndExpire(userId, expireSeconds, bloomUserCommentLikeListKey);
                 });
@@ -577,7 +558,6 @@ public class CommentServiceImpl implements CommentService {
             case COMMENT_NOT_LIKED -> throw new BizException(ResponseCodeEnum.COMMENT_NOT_LIKED);
         }
 
-        // 3. 发送顺序 MQ，删除评论点赞记录
         LikeUnlikeCommentMqDTO likeUnlikeCommentMqDTO = LikeUnlikeCommentMqDTO.builder()
                 .userId(userId)
                 .commentId(commentId)
@@ -588,10 +568,8 @@ public class CommentServiceImpl implements CommentService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeCommentMqDTO))
                 .build();
 
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
-        // MQ 分区键
         String hashKey = String.valueOf(userId);
 
         try {

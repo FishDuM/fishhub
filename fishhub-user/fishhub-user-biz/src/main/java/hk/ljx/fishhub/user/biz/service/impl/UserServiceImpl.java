@@ -76,7 +76,7 @@ public class UserServiceImpl implements UserService {
     private RedisTemplate<String, Object> redisTemplate;
     @Resource
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    @Resource(name = "taskExecutor")
+    @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     private UserDOMapper userMapper;

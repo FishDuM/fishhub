@@ -35,7 +35,7 @@ public class UserCountServiceImpl implements UserCountService {
     private UserCountDOMapper userCountDOMapper;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-    @Resource(name = "taskExecutor")
+    @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
 
     /**
