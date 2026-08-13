@@ -34,7 +34,7 @@
 import { ref, onMounted } from 'vue'
 import { useChannelStore } from '@/stores/channel'
 
-const props = defineProps({
+defineProps({
   activeChannelId: {
     type: Number,
     default: 0
@@ -49,7 +49,7 @@ const channels = ref([])
 // 处理频道点击
 const handleChannelClick = (channelId) => {
   // 触发自定义事件，将频道ID传递给父组件
-  emit('channel-change', channelId)
+  emit('channel-change', Number(channelId))
 }
 
 // 组件挂载时获取频道列表
@@ -67,8 +67,6 @@ onMounted(async () => {
 
 <style scoped>
 .category-nav {
-  /* border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-  background-color: #fff; */
   height: 72px;
 }
 

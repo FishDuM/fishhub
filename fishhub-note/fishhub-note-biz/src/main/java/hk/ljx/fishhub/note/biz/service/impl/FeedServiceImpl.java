@@ -5,14 +5,10 @@ import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
-import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
-import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.ChannelDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
-import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
-import hk.ljx.fishhub.note.biz.enums.NoteLikeLuaResultEnum;
 import hk.ljx.fishhub.note.biz.model.vo.FindChannelRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindDiscoverNoteListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindTopicListReqVO;
@@ -21,14 +17,11 @@ import hk.ljx.fishhub.note.biz.model.vo.NoteItemRspVO;
 import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.note.biz.service.FeedService;
+import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.scripting.support.ResourceScriptSource;
 
 import java.util.Collections;
 import java.util.List;
@@ -49,9 +42,7 @@ public class FeedServiceImpl implements FeedService {
     @Resource
     private NoteDOMapper noteDOMapper;
     @Resource
-    private NoteLikeDOMapper noteLikeDOMapper;
-    @Resource
-    private RedisTemplate<String, String> redisTemplate;
+    private NoteInteractionCacheService noteInteractionCacheService;
     @Resource
     private UserRpcService userRpcService;
     @Resource
@@ -131,30 +122,7 @@ public class FeedServiceImpl implements FeedService {
         }
 
         List<Long> noteIds = notes.stream().map(NoteItemRspVO::getNoteId).toList();
-        String bitmapKey = RedisKeyConstants.buildRBitmapUserNoteLikeListKey(userId);
-        DefaultRedisScript<List> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/rbitmap_batch_get_note_liked.lua")));
-        script.setResultType(List.class);
-        List<Long> bitmapResults = redisTemplate.execute(script, Collections.singletonList(bitmapKey), noteIds.toArray());
-
-        // 点赞操作会同步更新 Roaring Bitmap、异步写库；优先读取 Bitmap，刷新后即可反映刚完成的操作。
-        if (CollUtil.isNotEmpty(bitmapResults)
-                && !NoteLikeLuaResultEnum.NOT_EXIST.getCode().equals(bitmapResults.get(0))) {
-            for (int index = 0; index < notes.size(); index++) {
-                notes.get(index).setIsLiked(NoteLikeLuaResultEnum.NOTE_LIKED.getCode().equals(bitmapResults.get(index)));
-            }
-            return;
-        }
-
-        // Bitmap 尚未初始化时使用已落库的历史点赞记录兜底。
-        List<NoteLikeDO> likedRecords = noteLikeDOMapper.selectByUserIdAndNoteIds(userId, noteIds);
-        if (CollUtil.isEmpty(likedRecords)) {
-            return;
-        }
-
-        Set<Long> likedNoteIds = likedRecords.stream()
-                .map(NoteLikeDO::getNoteId)
-                .collect(Collectors.toSet());
+        Set<Long> likedNoteIds = noteInteractionCacheService.findLikedNoteIds(userId, noteIds);
         notes.forEach(note -> note.setIsLiked(likedNoteIds.contains(note.getNoteId())));
     }
 

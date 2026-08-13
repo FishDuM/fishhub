@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper">
+  <delete id="deleteByCommentIds" parameterType="list">
+    delete from t_comment_like where comment_id in
+    <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
+      #{commentId}
+    </foreach>
+  </delete>
   <resultMap id="BaseResultMap" type="hk.ljx.fishhub.comment.biz.domain.dataobject.CommentLikeDO">
     <id column="id" jdbcType="BIGINT" property="id" />
     <result column="user_id" jdbcType="BIGINT" property="userId" />
@@ -27,6 +33,14 @@
     where user_id = #{userId}
   </select>
 
+  <select id="selectLikedCommentIds" resultType="long">
+    select comment_id from t_comment_like
+    where user_id = #{userId} and comment_id in
+    <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
+      #{commentId}
+    </foreach>
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_comment_like
     where id = #{id,jdbcType=BIGINT}
@@ -48,6 +62,16 @@
     </foreach>
     ON DUPLICATE KEY UPDATE id=id
   </insert>
+
+  <insert id="insertIfAbsent" parameterType="hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO">
+    INSERT IGNORE INTO t_comment_like (comment_id, user_id, create_time)
+    VALUES (#{commentId}, #{userId}, #{createTime})
+  </insert>
+
+  <delete id="deleteIfPresent" parameterType="hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO">
+    DELETE FROM t_comment_like
+    WHERE comment_id = #{commentId} AND user_id = #{userId}
+  </delete>
 
   <insert id="insert" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.CommentLikeDO">
     insert into t_comment_like (id, user_id, comment_id, 

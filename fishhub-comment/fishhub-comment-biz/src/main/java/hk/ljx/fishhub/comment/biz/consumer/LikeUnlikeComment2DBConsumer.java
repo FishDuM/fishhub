@@ -5,9 +5,9 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
-import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
-import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
+import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
+import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
-import java.util.Collection;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -37,7 +37,9 @@ public class LikeUnlikeComment2DBConsumer {
     private String namesrvAddr;
 
     @Resource
-    private CommentLikeDOMapper commentLikeDOMapper;
+    private CommentLikePersistenceService persistenceService;
+    @Resource
+    private SendMqRetryHelper sendMqRetryHelper;
 
     private DefaultMQPushConsumer consumer;
 
@@ -65,7 +67,7 @@ public class LikeUnlikeComment2DBConsumer {
         consumer.setMessageModel(MessageModel.CLUSTERING);
 
         // 最大重试次数, 以防消息重试过多次仍然没有成功，避免消息卡在消费队列中。
-        consumer.setMaxReconsumeTimes(3);
+        consumer.setMaxReconsumeTimes(16);
         // 设置每批次消费的最大消息数量，这里设置为 30，表示每次拉取时最多消费 30 条消息。
         consumer.setConsumeMessageBatchMaxSize(30);
 
@@ -81,13 +83,26 @@ public class LikeUnlikeComment2DBConsumer {
 
                 msgs.forEach(msg -> {
                     String tag = msg.getTags(); // Tag 标签
-                    String msgJson = new String(msg.getBody()); // 消息体 Json 字符串
+                    String msgJson = new String(msg.getBody(), StandardCharsets.UTF_8); // 消息体 Json 字符串
                     log.info("==> 【评论点赞、取消点赞】Consumer - Tag: {}, Received message: {}", tag, msgJson);
 
-                    // Json 转 DTO
-                    likeUnlikeCommentMqDTOS.add(JsonUtils.parseObject(msgJson, LikeUnlikeCommentMqDTO.class));
-
+                    try {
+                        LikeUnlikeCommentMqDTO operation = JsonUtils.parseObject(msgJson, LikeUnlikeCommentMqDTO.class);
+                        if (operation == null || operation.getCommentId() == null || operation.getUserId() == null
+                                || operation.getType() == null || operation.getCreateTime() == null) {
+                            log.error("丢弃缺少业务主键的评论点赞消息, msgId: {}, body: {}", msg.getMsgId(), msgJson);
+                            return;
+                        }
+                        likeUnlikeCommentMqDTOS.add(operation);
+                    } catch (Exception e) {
+                        // 反序列化失败无法通过重试恢复，确认该消息，避免阻塞同一顺序队列。
+                        log.error("丢弃无法解析的评论点赞消息, msgId: {}, body: {}", msg.getMsgId(), msgJson, e);
+                    }
                 });
+
+                if (CollUtil.isEmpty(likeUnlikeCommentMqDTOS)) {
+                    return ConsumeOrderlyStatus.SUCCESS;
+                }
 
                 // 按评论 ID 分组
                 Map<Long, List<LikeUnlikeCommentMqDTO>> commentIdAndListMap = likeUnlikeCommentMqDTOS.stream()
@@ -110,8 +125,12 @@ public class LikeUnlikeComment2DBConsumer {
                     finalLikeUnlikeCommentMqDTOS.addAll(userLastOp.values());
                 });
 
-                // 批量操作数据库
-                executeBatchSQL(finalLikeUnlikeCommentMqDTOS);
+                for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
+                    String eventBody = JsonUtils.toJsonString(operation);
+                    if (persistenceService.apply(operation, eventBody)) {
+                        sendMqRetryHelper.sendNow(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE, eventBody);
+                    }
+                }
 
                 // 手动 ACK，告诉 RocketMQ 这批次消息消费成功
                 return ConsumeOrderlyStatus.SUCCESS;
@@ -125,32 +144,6 @@ public class LikeUnlikeComment2DBConsumer {
         // 启动消费者
         consumer.start();
         return consumer;
-    }
-
-    /**
-     * 批量操作数据库
-     * @param values
-     */
-    private void executeBatchSQL(Collection<LikeUnlikeCommentMqDTO> values) {
-        // 过滤出点赞操作
-        List<LikeUnlikeCommentMqDTO> likes = values.stream()
-                .filter(op -> Objects.equals(op.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode()))
-                .toList();
-
-        // 过滤出取消点赞操作
-        List<LikeUnlikeCommentMqDTO> unlikes = values.stream()
-                .filter(op -> Objects.equals(op.getType(), LikeUnlikeCommentTypeEnum.UNLIKE.getCode()))
-                .toList();
-
-        // 取消点赞：批量删除
-        if (CollUtil.isNotEmpty(unlikes)) {
-            commentLikeDOMapper.batchDelete(unlikes);
-        }
-
-        // 点赞：批量新增
-        if (CollUtil.isNotEmpty(likes)) {
-            commentLikeDOMapper.batchInsert(likes);
-        }
     }
 
     @PreDestroy

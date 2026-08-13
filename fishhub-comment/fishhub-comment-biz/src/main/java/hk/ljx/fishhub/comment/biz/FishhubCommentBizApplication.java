@@ -5,10 +5,12 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.retry.annotation.EnableRetry;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @MapperScan("hk.ljx.fishhub.comment.biz.domain.mapper")
 @EnableRetry // 启用 Spring Retry
+@EnableScheduling
 @EnableFeignClients(basePackages = "hk.ljx.fishhub")
 public class FishhubCommentBizApplication {
 

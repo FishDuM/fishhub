@@ -3,38 +3,38 @@
 <mapper namespace="hk.ljx.fishhub.data.align.domain.mapper.UpdateMapper">
 
     <update id="updateUserFollowingTotalByUserId" parameterType="map">
-        update t_user_count set following_total = #{followingTotal}
-        where user_id = #{userId}
+        insert into t_user_count (user_id, following_total) values (#{userId}, #{followingTotal})
+        on duplicate key update following_total = values(following_total)
     </update>
 
     <update id="updateUserFansTotalByUserId" parameterType="map">
-        update t_user_count set fans_total = #{fansTotal}
-        where user_id = #{userId}
+        insert into t_user_count (user_id, fans_total) values (#{userId}, #{fansTotal})
+        on duplicate key update fans_total = values(fans_total)
     </update>
 
     <update id="updateUserLikeTotalByUserId" parameterType="map">
-        update t_user_count set like_total = #{likeTotal}
-        where user_id = #{userId}
+        insert into t_user_count (user_id, like_total) values (#{userId}, #{likeTotal})
+        on duplicate key update like_total = values(like_total)
     </update>
 
     <update id="updateUserCollectTotalByUserId" parameterType="map">
-        update t_user_count set collect_total = #{collectTotal}
-        where user_id = #{userId}
+        insert into t_user_count (user_id, collect_total) values (#{userId}, #{collectTotal})
+        on duplicate key update collect_total = values(collect_total)
     </update>
 
     <update id="updateUserNoteTotalByUserId" parameterType="map">
-        update t_user_count set note_total = #{noteTotal}
-        where user_id = #{userId}
+        insert into t_user_count (user_id, note_total) values (#{userId}, #{noteTotal})
+        on duplicate key update note_total = values(note_total)
     </update>
 
     <update id="updateNoteLikeTotalByUserId" parameterType="map">
-        update t_note_count set like_total = #{noteLikeTotal}
-        where note_id = #{noteId}
+        insert into t_note_count (note_id, like_total) values (#{noteId}, #{noteLikeTotal})
+        on duplicate key update like_total = values(like_total)
     </update>
 
     <update id="updateNoteCollectTotalByUserId" parameterType="map">
-        update t_note_count set collect_total = #{noteCollectTotal}
-        where note_id = #{noteId}
+        insert into t_note_count (note_id, collect_total) values (#{noteId}, #{noteCollectTotal})
+        on duplicate key update collect_total = values(collect_total)
     </update>
 
 </mapper>

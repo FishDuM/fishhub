@@ -18,6 +18,24 @@
     from t_user_role_rel
     where id = #{id,jdbcType=BIGINT}
   </select>
+  <select id="selectEnabledList" resultMap="BaseResultMap">
+    select <include refid="Base_Column_List" />
+    from t_user_role_rel
+    where is_deleted = 0
+  </select>
+  <insert id="insertDefaultRoleForUsersWithoutRole">
+    insert into t_user_role_rel (user_id, role_id, create_time, update_time, is_deleted)
+    select u.id, #{roleId}, now(), now(), b'0'
+    from t_user u
+    where u.is_deleted = b'0'
+      and not exists (
+        select 1 from t_user_role_rel urr
+        where urr.user_id = u.id and urr.is_deleted = b'0'
+      )
+    on duplicate key update
+      is_deleted = b'0',
+      update_time = now()
+  </insert>
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_user_role_rel
     where id = #{id,jdbcType=BIGINT}

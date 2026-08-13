@@ -52,6 +52,13 @@ public class CommentController {
         return commentService.unlikeComment(unLikeCommentReqVO);
     }
 
+    @PostMapping("/liked/ids")
+    @ApiOperationLog(description = "查询当前用户已点赞的评论")
+    public Response<java.util.List<Long>> findLikedCommentIds(
+            @Validated @RequestBody FindLikedCommentIdsReqVO reqVO) {
+        return commentService.findLikedCommentIds(reqVO);
+    }
+
     @PostMapping("/delete")
     @ApiOperationLog(description = "删除评论")
     public Response<?> deleteComment(@Validated @RequestBody DeleteCommentReqVO deleteCommentReqVO) {

@@ -14,24 +14,14 @@ public class RedisKeyConstants {
     private static final String PUBLISHED_NOTE_LIST_KEY = "note:published:list:";
 
     /**
-     * 布隆过滤器：用户笔记点赞 前缀
+     * 用户笔记点赞状态 Set 前缀
      */
-    public static final String BLOOM_USER_NOTE_LIKE_LIST_KEY = "bloom:note:likes:";
+    private static final String USER_NOTE_LIKE_SET_KEY = "set:note:likes:";
 
     /**
-     * Roaring Bitmap：用户笔记点赞 前缀
+     * 用户笔记收藏状态 Set 前缀
      */
-    public static final String R_BITMAP_USER_NOTE_LIKE_LIST_KEY = "rbitmap:note:likes:";
-
-    /**
-     * 布隆过滤器：用户笔记收藏 前缀
-     */
-    public static final String BLOOM_USER_NOTE_COLLECT_LIST_KEY = "bloom:note:collects:";
-
-    /**
-     * Roaring Bitmap：用户笔记收藏 前缀
-     */
-    public static final String R_BITMAP_USER_NOTE_COLLECT_LIST_KEY = "rbitmap:note:collects:";
+    private static final String USER_NOTE_COLLECT_SET_KEY = "set:note:collects:";
 
     /**
      * 用户笔记点赞列表 ZSet 前缀
@@ -62,40 +52,12 @@ public class RedisKeyConstants {
     }
 
 
-    /**
-     * 构建完整的布隆过滤器：用户笔记点赞 KEY
-     * @param userId
-     * @return
-     */
-    public static String buildBloomUserNoteLikeListKey(Long userId) {
-        return BLOOM_USER_NOTE_LIKE_LIST_KEY + userId;
+    public static String buildUserNoteLikeSetKey(Long userId) {
+        return USER_NOTE_LIKE_SET_KEY + userId;
     }
 
-    /**
-     * 构建完整的 Roaring Bitmap：用户笔记点赞 KEY
-     * @param userId
-     * @return
-     */
-    public static String buildRBitmapUserNoteLikeListKey(Long userId) {
-        return R_BITMAP_USER_NOTE_LIKE_LIST_KEY + userId;
-    }
-
-    /**
-     * 构建完整的布隆过滤器：用户笔记收藏 KEY
-     * @param userId
-     * @return
-     */
-    public static String buildBloomUserNoteCollectListKey(Long userId) {
-        return BLOOM_USER_NOTE_COLLECT_LIST_KEY + userId;
-    }
-
-    /**
-     * 构建完整的 Roaring Bitmap：用户笔记收藏 KEY
-     * @param userId
-     * @return
-     */
-    public static String buildRBitmapUserNoteCollectListKey(Long userId) {
-        return R_BITMAP_USER_NOTE_COLLECT_LIST_KEY + userId;
+    public static String buildUserNoteCollectSetKey(Long userId) {
+        return USER_NOTE_COLLECT_SET_KEY + userId;
     }
 
     /**

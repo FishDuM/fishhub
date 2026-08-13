@@ -104,4 +104,11 @@ public interface SelectMapper {
      * @return
      */
     int selectCountFromNoteCollectionTableByUserId(long noteId);
+
+    /**
+     * 判断日增量临时表是否存在
+     * @param tableName 完整表名
+     * @return 1 存在，0 不存在
+     */
+    int selectTempTableExists(@Param("tableName") String tableName);
 }

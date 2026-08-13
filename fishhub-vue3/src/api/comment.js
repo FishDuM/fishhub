@@ -28,3 +28,11 @@ export function unlikeComment(commentId) {
     return axios.post(`${API_PREFIX}/unlike`, {commentId})
 }
 
+export function getLikedCommentIds(commentIds) {
+    return axios.post(`${API_PREFIX}/liked/ids`, {commentIds})
+}
+
+export function deleteComment(commentId) {
+    return axios.post(`${API_PREFIX}/delete`, {commentId})
+}
+

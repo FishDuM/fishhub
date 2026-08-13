@@ -31,36 +31,21 @@ public final class ParamUtils {
         Pattern pattern = Pattern.compile(NICK_NAME_REGEX);
         return !pattern.matcher(nickname).find();
     }
-    // 定义 ID 长度范围
     private static final int ID_MIN_LENGTH = 6;
     private static final int ID_MAX_LENGTH = 15;
-
-    // 定义正则表达式
-    private static final String ID_REGEX = "^[a-zA-Z0-9_]+$";
+    private static final Pattern ID_FORMAT_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
+    private static final Pattern ID_LETTER_PATTERN = Pattern.compile("[a-zA-Z]");
 
     
     public static boolean checkFishhubId(String fishhubId) {
-        // 检查长度
+        if (fishhubId == null) {
+            return false;
+        }
         if (fishhubId.length() < ID_MIN_LENGTH || fishhubId.length() > ID_MAX_LENGTH) {
             return false;
         }
-        // 检查格式
-        Pattern pattern = Pattern.compile(ID_REGEX);
-        return pattern.matcher(fishhubId).matches();
+        return ID_FORMAT_PATTERN.matcher(fishhubId).matches()
+                && ID_LETTER_PATTERN.matcher(fishhubId).find();
     }
 
-    /**
-     * 字符串长度校验
-     *
-     * @param str
-     * @param length
-     * @return
-     */
-    public static boolean checkLength(String str, int length) {
-        // 检查长度
-        if (str.isEmpty() || str.length() > length) {
-            return false;
-        }
-        return true;
-    }
 }

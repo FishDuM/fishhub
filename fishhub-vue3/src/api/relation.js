@@ -13,6 +13,14 @@ export function unfollowUser(unfollowUserId) {
     return axios.post(`${API_PREFIX}/unfollow`, {unfollowUserId})
 }
 
+export function checkFollowing(targetUserId) {
+    return axios.post(`${API_PREFIX}/is-following`, {targetUserId})
+}
+
+export function checkFollowingBatch(targetUserIds) {
+    return axios.post(`${API_PREFIX}/is-following/batch`, {targetUserIds})
+}
+
 // 获取关注列表
 export function getFollowingList(userId, pageNo) {
     return axios.post(`${API_PREFIX}/following/list`, {userId, pageNo})

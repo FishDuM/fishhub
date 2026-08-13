@@ -27,14 +27,4 @@ public class NumberUtils {
         }
     }
 
-    public static void main(String[] args) {
-        // 测试
-        System.out.println(formatNumberString(1000));         // 1000
-        System.out.println(formatNumberString(11130));        // 1.1万
-        System.out.println(formatNumberString(26719300));     // 2671.9万
-        System.out.println(formatNumberString(10000000));    // 1000万
-        System.out.println(formatNumberString(999999));       // 99.9万
-        System.out.println(formatNumberString(150000000));    // 超过一亿，展示9999万
-        System.out.println(formatNumberString(99999));        // 9.9万
-    }
 }

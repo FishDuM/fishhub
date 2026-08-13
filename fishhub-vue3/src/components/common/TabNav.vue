@@ -15,9 +15,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-
-const props = defineProps({
+defineProps({
   tabs: {
     type: Array,
     required: true
@@ -59,24 +57,13 @@ defineEmits(['update:modelValue'])
 }
 
 .tab-item.active {
-    color: var(--color-primary-label);
+  color: var(--color-primary-label);
   font-weight: 600;
-  /* padding: 0px 16px; */
   background-color: var(--color-surface-muted);
   border-radius: 20px;
 }
 
 .tab-item:hover {
-    color: var(--color-primary-label);
-}
-
-
-.tab-count {
-  color: var(--color-tertiary-label);
-  font-size: 14px;
-}
-
-.tab-item.active .tab-count {
   color: var(--color-primary-label);
 }
 

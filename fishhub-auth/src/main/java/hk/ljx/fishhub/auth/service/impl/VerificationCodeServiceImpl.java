@@ -11,7 +11,6 @@ import hk.ljx.fishhub.auth.sms.AliyunSmsHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -23,10 +22,11 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-    @Resource(name = "taskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     private AliyunSmsHelper aliyunSmsHelper;
+
+    private static final String GLOBAL_RATE_LIMIT_KEY = "verification_code:global:minute";
+    private static final int GLOBAL_RATE_LIMIT_PER_MINUTE = 100;
 
     /**
      * 发送短信验证码
@@ -42,28 +42,36 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         // 构建验证码 redis key
         String key = RedisKeyConstants.buildVerificationCodeKey(phone);
 
-        // 判断是否已发送验证码
-        boolean isSent = redisTemplate.hasKey(key);
-        if (isSent) {
-            // 若之前发送的验证码未过期，则提示发送频繁
+        org.springframework.data.redis.core.script.DefaultRedisScript<Long> limitScript = new org.springframework.data.redis.core.script.DefaultRedisScript<>();
+        limitScript.setScriptText("local current = redis.call('incr', KEYS[1]); " +
+                "if current == 1 then redis.call('expire', KEYS[1], ARGV[1]); end; " +
+                "return current;");
+        limitScript.setResultType(Long.class);
+        Long requestCount = (Long) redisTemplate.execute(limitScript, java.util.Collections.singletonList(GLOBAL_RATE_LIMIT_KEY), 60);
+        if (requestCount != null && requestCount > GLOBAL_RATE_LIMIT_PER_MINUTE) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
         }
 
         // 生成 6 位随机数字验证码
         String verificationCode = RandomUtil.randomNumbers(6);
 
-        log.info("==> 手机号: {}, 已生成验证码：【{}】", phone, verificationCode);
+        Boolean reserved = redisTemplate.opsForValue()
+                .setIfAbsent(key, verificationCode, 3, TimeUnit.MINUTES);
+        if (!Boolean.TRUE.equals(reserved)) {
+            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
+        }
 
-        // 调用第三方短信发送服务
-        threadPoolTaskExecutor.submit(() -> {
-            String signName = "阿里云短信测试";
-            String templateCode = "SMS_154950909";
-            String templateParam = String.format("{\"code\":\"%s\"}", verificationCode);
-            aliyunSmsHelper.sendMessage(signName, templateCode, phone, templateParam);
-        });
+        String signName = "阿里云短信测试";
+        String templateCode = "SMS_154950909";
+        String templateParam = String.format("{\"code\":\"%s\"}", verificationCode);
+        boolean sent = aliyunSmsHelper.sendMessage(signName, templateCode, phone, templateParam);
+        if (!sent) {
+            redisTemplate.delete(key);
+            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FAIL);
+        }
 
-        // 存储验证码到 redis, 并设置过期时间为 3 分钟
-        redisTemplate.opsForValue().set(key, verificationCode, 3, TimeUnit.MINUTES);
+        log.info("==> 验证码短信发送成功, phone: {}****{}",
+                phone.substring(0, 3), phone.substring(phone.length() - 4));
 
         return Response.success();
     }

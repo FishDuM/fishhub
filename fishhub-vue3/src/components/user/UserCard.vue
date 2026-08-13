@@ -5,8 +5,9 @@
       <div class="flex items-center">
         <!-- 头像 -->
         <div class="flex-shrink-0">
-          <img 
-            :src="user.avatar" 
+          <UserAvatar
+            :src="user.avatar"
+            :alt="`${user.nickname || '用户'}的头像`"
             class="avatar"
           />
         </div>
@@ -34,7 +35,8 @@
     </router-link>
     
     <!-- 右侧关注按钮 - 根据关注状态显示不同样式 -->
-    <button 
+    <button
+      v-if="!isSelf"
       :class="[
         'follow-button', 
         user.isFollowed ? 'followed' : ''
@@ -47,7 +49,8 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue'
+import { computed } from 'vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
@@ -74,10 +77,16 @@ const props = defineProps({
 
 const emit = defineEmits(['follow', 'login-required'])
 const userStore = useUserStore()
+const isSelf = computed(() => {
+  const currentUserId = userStore.profile?.userId
+  const cardUserId = props.user?.userId
+  return currentUserId != null
+    && cardUserId != null
+    && String(cardUserId) === String(currentUserId)
+})
 
 // 处理关注按钮点击
 const handleFollow = () => {
-  console.log('点击关注了')
   // 检查用户是否已登录
   if (!userStore.token) {
     // 可以触发登录弹窗
@@ -132,7 +141,6 @@ const handleFollow = () => {
 .nickname {
     display: flex;
     align-items: center;
-    /* justify-content: center; */
     color: var(--color-primary-label);
     font-size: 18px;
     font-weight: 600;

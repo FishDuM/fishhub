@@ -27,7 +27,7 @@ public class DeleteTableXxlJob {
     private DeleteTableMapper deleteTableMapper;
 
     /**
-     * 1、简单任务示例（Bean模式）
+     * 清理一个月前的数据对齐分片表。
      */
     @XxlJob("deleteTableJobHandler")
     public void deleteTableJobHandler() throws Exception {
@@ -38,14 +38,12 @@ public class DeleteTableXxlJob {
         // 日期格式
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
-        LocalDate startDate = today;
-        // 从昨天开始往前推一个月
+        // 前天开始往前推一个月；昨天的表当天凌晨的分片对齐任务还会处理，不能删
+        LocalDate startDate = today.minusDays(2);
         LocalDate endDate = today.minusMonths(1);
 
-        // 循环最近一个月的日期，不包括今天
+        // 循环删除，不含今天和昨天
         while (startDate.isAfter(endDate)) {
-            // 往前推一天
-            startDate = startDate.minusDays(1);
             // 日期字符串
             String date = startDate.format(formatter);
 
@@ -63,6 +61,9 @@ public class DeleteTableXxlJob {
                 deleteTableMapper.deleteDataAlignNoteLikeCountTempTable(tableNameSuffix);
                 deleteTableMapper.deleteDataAlignNotePublishCountTempTable(tableNameSuffix);
             }
+
+            // 往前推一天
+            startDate = startDate.minusDays(1);
         }
         XxlJobHelper.log("## 结束删除最近一个月的日增量临时表");
     }

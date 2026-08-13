@@ -36,7 +36,7 @@ public class RedisKeyConstants {
     /**
      * Key 前缀：评论详情 JSON
      */
-    private static final String COMMENT_DETAIL_KEY_PREFIX = "comment:detail:";
+    private static final String COMMENT_DETAIL_KEY_PREFIX = "comment:detail:v2:";
 
     /**
      * Hash Field 键：评论总数

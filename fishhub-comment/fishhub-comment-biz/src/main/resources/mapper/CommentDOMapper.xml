@@ -39,6 +39,13 @@
     where reply_comment_id = #{commentId}
   </select>
 
+  <select id="selectByParentId" resultMap="BaseResultMap" parameterType="long">
+    select <include refid="Base_Column_List" />
+    from t_comment
+    where parent_id = #{parentId}
+    order by id asc
+  </select>
+
   <select id="selectByCommentIds" resultMap="BaseResultMap" parameterType="list">
     select
     id, user_id, content_uuid, is_content_empty, image_url, like_total,
@@ -90,6 +97,10 @@
     from t_comment
     where note_id = #{noteId} and level = 1 order by heat desc
       limit #{offset}, #{pageSize}
+  </select>
+
+  <select id="selectOneLevelCountByNoteId" resultType="long">
+    select count(1) from t_comment where note_id = #{noteId} and level = 1
   </select>
 
   <select id="selectChildPageList" resultMap="BaseResultMap" parameterType="map">
@@ -327,6 +338,12 @@
   <update id="updateFirstReplyCommentIdByPrimaryKey" parameterType="map">
     update t_comment
     set first_reply_comment_id = #{firstReplyCommentId}
+    where id = #{id}
+  </update>
+
+  <update id="updateChildCommentTotal" parameterType="map">
+    update t_comment
+    set child_comment_total = greatest(coalesce(child_comment_total, 0) + #{delta}, 0)
     where id = #{id}
   </update>
 

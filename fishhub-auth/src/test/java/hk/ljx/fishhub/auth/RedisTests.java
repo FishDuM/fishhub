@@ -1,49 +1,34 @@
 package hk.ljx.fishhub.auth;
 
 import jakarta.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 @SpringBootTest
-@Slf4j
+@EnabledIfEnvironmentVariable(named = "FISHHUB_RUN_INTEGRATION_TESTS", matches = "true")
 class RedisTests {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
-    /**
-     * set key value
-     */
     @Test
-    void testSetKeyValue() {
-    	// 添加一个 key 为 name, value 值为 飞鱼社区
-        redisTemplate.opsForValue().set("name", "飞鱼社区");
+    void valueRoundTrip() {
+        String key = "fishhub:test:auth:" + UUID.randomUUID();
+        try {
+            redisTemplate.opsForValue().set(key, "飞鱼社区");
+            assertTrue(Boolean.TRUE.equals(redisTemplate.hasKey(key)));
+            assertEquals("飞鱼社区", redisTemplate.opsForValue().get(key));
+        } finally {
+            redisTemplate.delete(key);
+        }
+        assertFalse(Boolean.TRUE.equals(redisTemplate.hasKey(key)));
     }
-
-    /**
-     * 判断某个 key 是否存在
-     */
-    @Test
-    void testHasKey() {
-        log.info("key 是否存在：{}", Boolean.TRUE.equals(redisTemplate.hasKey("name")));
-    }
-
-    /**
-     * 获取某个 key 的 value
-     */
-    @Test
-    void testGetValue() {
-        log.info("value 值：{}", redisTemplate.opsForValue().get("name"));
-    }
-
-    /**
-     * 删除某个 key
-     */
-    @Test
-    void testDelete() {
-        redisTemplate.delete("name");
-    }
-
 }

@@ -33,6 +33,11 @@
 
         <dependency>
             <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-oss-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
             <artifactId>fishhub-user-api</artifactId>
         </dependency>
 

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.fishhub.__SERVICE__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>__RELEASE_ROOT__/ops/fishhub-service.sh</string>
+    <string>__SERVICE__</string>
+  </array>
+  <key>WorkingDirectory</key><string>__RELEASE_ROOT__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FISHHUB_RUNTIME_ROOT</key><string>__RELEASE_ROOT__</string>
+    <key>MINIO_ACCESS_KEY</key><string>fishhub</string>
+    <key>MINIO_SECRET_KEY</key><string>fish1234</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>__RUNTIME_ROOT__/logs/__SERVICE__.out</string>
+  <key>StandardErrorPath</key><string>__RUNTIME_ROOT__/logs/__SERVICE__.err</string>
+</dict>
+</plist>

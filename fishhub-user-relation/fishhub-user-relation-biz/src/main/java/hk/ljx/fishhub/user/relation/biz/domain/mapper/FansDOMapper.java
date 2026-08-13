@@ -13,6 +13,8 @@ public interface FansDOMapper {
 
     int insert(FansDO record);
 
+    int insertIgnore(FansDO record);
+
     int insertSelective(FansDO record);
 
     FansDO selectByPrimaryKey(Long id);

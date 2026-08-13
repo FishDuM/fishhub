@@ -5,6 +5,7 @@ target/
 .kotlin
 
 ### IntelliJ IDEA ###
+.idea/
 .idea/modules.xml
 .idea/jarRepositories.xml
 .idea/compiler.xml
@@ -44,3 +45,13 @@ build/
 **/.flattened-pom.xml
 **/application-dev.yml
 **/application-dev.yaml
+
+# 随项目维护的 XXL-JOB 管理端：仅提交可复现构建所需源码
+/xxl-job/**/target/
+/xxl-job/executor-logs/
+
+# 本地服务输出
+*.log
+*.log.*
+*.out
+*.err

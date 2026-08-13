@@ -60,7 +60,8 @@
     INSERT INTO t_note_like (user_id, note_id, create_time, status)
     VALUES (#{userId}, #{noteId}, #{createTime}, #{status})
       ON DUPLICATE KEY UPDATE
-          create_time = #{createTime}, status = #{status};
+          create_time = IF(status &lt;&gt; VALUES(status), VALUES(create_time), create_time),
+          status = VALUES(status)
   </insert>
 
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">

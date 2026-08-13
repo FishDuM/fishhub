@@ -28,37 +28,18 @@
       <h3 class="note-title">{{ note.title }}</h3>
       <div class="flex items-center">
         <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
-          <img
-          v-if="note.avatar"
-          :src="note.avatar" 
-          class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200"
-        />
-          <div 
-            v-else 
-            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200
-             flex items-center justify-center bg-gray-100 text-gray-400"
-          >
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="12" cy="7" r="4" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </div>
+          <UserAvatar
+            :src="note.avatar"
+            :alt="`${note.nickname || '用户'}的头像`"
+            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 object-cover"
+          />
         </router-link>
         <div v-else>
-          <img
-            v-if="note.avatar"
+          <UserAvatar
             :src="note.avatar"
-            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200"
+            :alt="`${note.nickname || '用户'}的头像`"
+            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 object-cover"
           />
-          <div
-            v-else
-            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 flex items-center justify-center bg-gray-100 text-gray-400"
-          >
-            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 0 0-4 4v2" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="12" cy="7" r="4" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </div>
         </div>
         <span class="text-[12px] text-gray-600 hover:text-gray-800 flex-1 truncate">
           <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
@@ -70,18 +51,11 @@
           class="flex items-center transition-colors group"
           @click.stop="toggleLike"
         >
-          <svg 
-            class="w-[16px] h-[16px] transition-all duration-300" 
+          <LikeIcon
+            :active="isLiked"
+            class="w-[16px] h-[16px] transition-all duration-300"
             :class="{'scale-animation': isLiked}"
-            viewBox="0 0 24 24" 
-            :style="{
-              fill: isLiked ? '#ff2442' : 'none',
-              stroke: isLiked ? '#ff2442' : 'currentColor'
-            }"
-            stroke-width="2"
-          >
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-          </svg>
+          />
           <span 
             class="ml-1 text-[12px] text-gray-600 transition-all duration-300"
             :class="{'scale-animation': isLiked}"
@@ -99,6 +73,8 @@ import { ref, computed, inject, watch } from 'vue'
 import { likeNote, unlikeNote } from '@/api/note'
 import { message } from '@/utils/message'
 import { useUserStore } from '@/stores/user'
+import LikeIcon from '@/components/common/LikeIcon.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 
 const userStore = useUserStore()
 

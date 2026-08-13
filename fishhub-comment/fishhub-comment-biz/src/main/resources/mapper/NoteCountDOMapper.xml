@@ -99,7 +99,7 @@
 
   <update id="updateCommentTotalByNoteId" parameterType="map">
     update t_note_count
-    set comment_total = comment_total + #{count}
+    set comment_total = greatest(coalesce(comment_total, 0) + #{count}, 0)
     where note_id = #{noteId}
   </update>
 </mapper>

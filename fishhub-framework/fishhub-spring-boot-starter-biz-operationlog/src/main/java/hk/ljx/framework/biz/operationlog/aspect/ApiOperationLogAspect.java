@@ -86,7 +86,25 @@ public class ApiOperationLogAspect {
      * @return
      */
     private Function<Object, String> toJsonStr() {
-        return JsonUtils::toJsonString;
+        return arg -> {
+            if (arg == null) {
+                return "null";
+            }
+            if (arg instanceof org.springframework.web.multipart.MultipartFile) {
+                return "MultipartFile";
+            }
+            if (arg instanceof jakarta.servlet.http.HttpServletRequest) {
+                return "HttpServletRequest";
+            }
+            if (arg instanceof jakarta.servlet.http.HttpServletResponse) {
+                return "HttpServletResponse";
+            }
+            try {
+                return JsonUtils.toJsonString(arg);
+            } catch (Exception e) {
+                return "UnserializableObject";
+            }
+        };
     }
 
 }

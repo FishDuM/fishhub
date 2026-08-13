@@ -1,7 +1,7 @@
 -- LUA 脚本：评论点赞布隆过滤器
 
 local key = KEYS[1] -- 操作的 Redis Key
-local commentId = ARGV[1] -- 笔记ID
+local commentId = ARGV[1] -- 评论 ID
 
 -- 使用 EXISTS 命令检查布隆过滤器是否存在
 local exists = redis.call('EXISTS', key)
@@ -18,8 +18,3 @@ end
 -- 未被点赞，添加点赞数据
 redis.call('BF.ADD', key, commentId)
 return 0
-
-
-
-
-

@@ -2,7 +2,6 @@ package hk.ljx.fishhub.comment.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.RandomUtil;
-import com.github.phantomthief.collection.BufferTrigger;
 import com.google.common.collect.Lists;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
@@ -15,13 +14,11 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisCallback;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -40,18 +37,13 @@ public class OneLevelCommentFirstReplyCommentIdUpdateConsumer implements RocketM
     private CommentDOMapper commentDOMapper;
     @Resource(name = "taskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-
-    private BufferTrigger<String> bufferTrigger = BufferTrigger.<String>batchBlocking()
-            .bufferSize(50000) // 缓存队列的最大容量
-            .batchSize(1000)   // 一批次最多聚合 1000 条
-            .linger(Duration.ofSeconds(1)) // 多久聚合一次（1s 一次）
-            .setConsumerEx(this::consumeMessage) // 设置消费者方法
-            .build();
+    @Resource
+    private RocketMQTemplate rocketMQTemplate;
 
     @Override
     public void onMessage(String body) {
-        // 往 bufferTrigger 中添加元素
-        bufferTrigger.enqueue(body);
+        // 业务完成后再返回，RocketMQ 才能正确确认消息。
+        consumeMessage(List.of(body));
     }
 
     private void consumeMessage(List<String> bodys) {
@@ -63,9 +55,15 @@ public class OneLevelCommentFirstReplyCommentIdUpdateConsumer implements RocketM
         bodys.forEach(body -> {
             try {
                 List<CountPublishCommentMqDTO> list = JsonUtils.parseList(body, CountPublishCommentMqDTO.class);
+                if (CollUtil.isEmpty(list) || list.stream().anyMatch(item -> item.getCommentId() == null
+                        || item.getLevel() == null
+                        || (Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode())
+                        && item.getParentId() == null))) {
+                    throw new IllegalArgumentException("一级评论首条回复消息缺少必要字段");
+                }
                 publishCommentMqDTOS.addAll(list);
             } catch (Exception e) {
-                log.error("", e);
+                throw new IllegalArgumentException("一级评论首条回复消息格式错误", e);
             }
         });
 
@@ -141,19 +139,14 @@ public class OneLevelCommentFirstReplyCommentIdUpdateConsumer implements RocketM
      * @param needSyncCommentIds
      */
     private void sync2Redis(List<Long> needSyncCommentIds) {
-        // 获取 ValueOperations
-        ValueOperations<String, Object> valueOperations = redisTemplate.opsForValue();
-
-        // 使用 RedisTemplate 的管道模式，允许在一个操作中批量发送多个命令，防止频繁操作 Redis
-        redisTemplate.executePipelined((RedisCallback<?>) (connection) -> {
-            needSyncCommentIds.forEach(needSyncCommentId -> {
-                // 构建 Redis Key
-                String key = RedisKeyConstants.buildHaveFirstReplyCommentKey(needSyncCommentId);
-
-                // 批量设置值并指定过期时间（5小时以内）
-                valueOperations.set(key, 1, RandomUtil.randomInt(5 * 60 * 60), TimeUnit.SECONDS);
-            });
-            return null;
+        needSyncCommentIds.forEach(commentId -> {
+            redisTemplate.opsForValue().set(
+                    RedisKeyConstants.buildHaveFirstReplyCommentKey(commentId),
+                    1,
+                    RandomUtil.randomInt(1, 5 * 60 * 60),
+                    TimeUnit.SECONDS);
+            redisTemplate.delete(RedisKeyConstants.buildCommentDetailKey(commentId));
+            rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(commentId));
         });
     }
 

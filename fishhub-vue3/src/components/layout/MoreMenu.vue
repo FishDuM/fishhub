@@ -61,11 +61,6 @@
         <div class="px-3 py-2 text-gray-400 text-xs">
           设置
         </div>
-        <!-- <div 
-          class="px-3 py-2 hover:bg-gray-50 text-gray-600 hover:text-gray-800 rounded-lg cursor-pointer"
-        >
-          修改密码
-        </div> -->
         <div 
           class="px-3 py-2 hover:bg-gray-50 text-gray-600 hover:text-gray-800 rounded-lg cursor-pointer"
           @click="handleLogout"

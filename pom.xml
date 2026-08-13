@@ -11,7 +11,7 @@
     <!-- 项目名称 -->
     <name>${project.artifactId}</name>
     <!-- 项目描述 -->
-    <description>Fishhub（仿小红书），基于 Spring Cloud Alibaba 微服务架构</description>
+    <description>Fishhub（仿飞鱼社区），基于 Spring Cloud Alibaba 微服务架构</description>
 
     <!-- 多模块项目需要配置打包方式为 pom -->
     <packaging>pom</packaging>
@@ -41,7 +41,6 @@
         <!-- 数据对齐服务 -->
         <module>fishhub-data-align</module>
         <!-- 搜索服务 -->
-        <module>fishhub-search-api</module>
         <module>fishhub-search</module>
         <!-- 评论服务 -->
         <module>fishhub-comment</module>
@@ -75,7 +74,6 @@
         <hutool.version>5.8.26</hutool.version>
         <commons-lang3.version>3.12.0</commons-lang3.version>
         <dysmsapi.version>2.0.24</dysmsapi.version>
-        <nacos-config.version>0.3.0-RC</nacos-config.version>
         <transmittable-thread-local.version>2.14.2</transmittable-thread-local.version>
         <minio.version>8.2.1</minio.version>
         <aliyun-sdk-oss.version>3.17.4</aliyun-sdk-oss.version>
@@ -86,11 +84,12 @@
         <caffeine.version>3.1.8</caffeine.version>
         <rocketmq.version>2.2.3</rocketmq.version>
         <rocketmq-client.version>4.9.4</rocketmq-client.version>
-        <buffertrigger.version>0.2.21</buffertrigger.version>
         <xxl-job.version>2.4.1</xxl-job.version>
         <elasticsearch.version>7.3.0</elasticsearch.version>
         <canal.version>1.1.7</canal.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
+        <!-- 覆盖 SCA BOM 中 sentinel 版本，1.8.8 起支持 Spring Boot 3 / Spring Cloud Gateway 4 -->
+        <sentinel.version>1.8.8</sentinel.version>
     </properties>
 
     <!-- 统一依赖管理 -->
@@ -111,6 +110,12 @@
             <dependency>
                 <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-user-api</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>hk.ljx</groupId>
+                <artifactId>fishhub-note-api</artifactId>
                 <version>${revision}</version>
             </dependency>
 
@@ -166,6 +171,28 @@
                 <version>${spring-boot.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!-- Sentinel 组件版本管理（显式覆盖 SCA BOM 中的 1.8.6，需声明在 BOM import 之前） -->
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-spring-cloud-gateway-adapter</artifactId>
+                <version>${sentinel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-api-gateway-adapter-common</artifactId>
+                <version>${sentinel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-transport-simple-http</artifactId>
+                <version>${sentinel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-datasource-nacos</artifactId>
+                <version>${sentinel.version}</version>
             </dependency>
 
             <!-- Spring Cloud Alibaba 官方依赖管理 -->
@@ -273,13 +300,6 @@
                 <version>${dysmsapi.version}</version>
             </dependency>
 
-            <!-- Nacos 配置中心 -->
-            <dependency>
-                <groupId>com.alibaba.boot</groupId>
-                <artifactId>nacos-config-spring-boot-starter</artifactId>
-                <version>${nacos-config.version}</version>
-            </dependency>
-
             <dependency>
                 <groupId>com.alibaba</groupId>
                 <artifactId>transmittable-thread-local</artifactId>
@@ -342,13 +362,6 @@
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-client</artifactId>
                 <version>${rocketmq-client.version}</version>
-            </dependency>
-
-            <!-- 快手 Buffer Trigger -->
-            <dependency>
-                <groupId>com.github.phantomthief</groupId>
-                <artifactId>buffer-trigger</artifactId>
-                <version>${buffertrigger.version}</version>
             </dependency>
 
             <!-- XXL-JOB 分布式定时任务调度 -->

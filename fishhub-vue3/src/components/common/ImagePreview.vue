@@ -99,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   visible: {
@@ -118,9 +118,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible'])
 const currentIndex = ref(props.initialIndex)
-
-// 当前显示的图片
-const currentImage = computed(() => props.images[currentIndex.value])
 
 // 监听 visible 变化，重置 currentIndex
 watch(() => props.visible, (newVisible) => {
@@ -251,4 +248,4 @@ const showControls = ref(false)
 button {
   transition: all 0.2s ease;
 }
-</style> 
+</style>

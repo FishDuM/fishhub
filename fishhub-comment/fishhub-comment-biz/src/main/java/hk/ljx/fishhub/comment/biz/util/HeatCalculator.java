@@ -26,16 +26,4 @@ public class HeatCalculator {
         return heat.setScale(2, RoundingMode.HALF_UP);
     }
 
-    public static void main(String[] args) {
-        int likeCount = 150;    // 点赞数
-        int replyCount = 10;    // 被回复数
-
-        // 计算热度
-        BigDecimal heat = calculateHeat(likeCount, replyCount);
-
-        // 输出热度值
-        System.out.println("Calculated Heat: " + heat);
-    }
-
-
 }

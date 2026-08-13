@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+
 
 @Data
 @AllArgsConstructor
@@ -39,6 +41,11 @@ public class FindUserProfileRspVO {
      * 岁数
      */
     private Integer age;
+
+    /**
+     * 生日，未设置时为空
+     */
+    private LocalDate birthday;
 
     /**
      * 个人介绍

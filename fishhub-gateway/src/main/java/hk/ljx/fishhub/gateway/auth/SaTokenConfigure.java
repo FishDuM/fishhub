@@ -8,7 +8,6 @@ import cn.dev33.satoken.exception.SaTokenException;
 import cn.dev33.satoken.reactor.filter.SaReactorFilter;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
-import cn.dev33.satoken.util.SaResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -46,18 +45,27 @@ public class SaTokenConfigure {
                             .check(r -> StpUtil.checkLogin()) // 校验是否登录
                     ;
 
-                    // 权限认证 -- 不同模块, 校验不同权限
-                    // SaRouter.match("/auth/logout", r -> StpUtil.checkPermission("app:note:publish"));
-                    // SaRouter.match("/auth/user/logout", r -> StpUtil.checkRole("admin"));
-                    // SaRouter.match("/admin/**", r -> StpUtil.checkPermission("admin"))1;
-                    // SaRouter.match("/goods/**", r -> StpUtil.checkPermission("goods"));
-                    // SaRouter.match("/orders/**", r -> StpUtil.checkPermission("orders"));
+                    // 对外业务接口按权限校验。
+                    SaRouter.match("/note/note/publish",
+                            r -> StpUtil.checkPermission("app:note:publish"));
+                    SaRouter.match("/comment/comment/publish",
+                            r -> StpUtil.checkPermission("app:comment:publish"));
 
-                    // 更多匹配 ...  */
+                    // 以下接口仅供服务间 Feign 直连调用，不允许经 Gateway 对外访问。
+                    SaRouter.match("/user/user/register", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/user/user/findByPhone", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/user/user/password/update", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/user/user/findById", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/user/user/findByIds", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/note/note/exists", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/oss/file/delete", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/search/search/note/document/rebuild",
+                            r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/search/search/user/document/rebuild",
+                            r -> StpUtil.checkPermission("internal:service"));
                 })
                 // 异常处理方法：每次setAuth函数出现异常时进入
                 .setError(e -> {
-                    // return SaResult.error(e.getMessage());
                     // 手动抛出异常，抛给全局异常处理器
                     if (e instanceof NotLoginException) {
                         throw new NotLoginException(e.getMessage(), null, null);

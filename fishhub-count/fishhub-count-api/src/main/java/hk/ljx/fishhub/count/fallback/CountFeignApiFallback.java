@@ -7,6 +7,7 @@ import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -35,6 +36,22 @@ public class CountFeignApiFallback implements CountFeignApi {
                         .fansTotal(0L)
                         .collectTotal(0L)
                         .build());
+    }
+
+    @Override
+    public Response<List<FindUserCountsByIdRspDTO>> findUsersCount(FindUserCountsByIdsReqDTO findUserCountsByIdsReqDTO) {
+        List<FindUserCountsByIdRspDTO> counts = findUserCountsByIdsReqDTO.getUserIds().stream()
+                .distinct()
+                .map(userId -> FindUserCountsByIdRspDTO.builder()
+                        .userId(userId)
+                        .noteTotal(0L)
+                        .likeTotal(0L)
+                        .followingTotal(0L)
+                        .fansTotal(0L)
+                        .collectTotal(0L)
+                        .build())
+                .toList();
+        return Response.success(counts);
     }
 
     /**

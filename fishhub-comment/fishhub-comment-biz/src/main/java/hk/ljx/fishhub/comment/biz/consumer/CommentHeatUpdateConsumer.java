@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.comment.biz.consumer;
 
-import com.github.phantomthief.collection.BufferTrigger;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import hk.ljx.framework.common.util.JsonUtils;
@@ -21,7 +20,6 @@ import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -41,17 +39,9 @@ public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
-    private BufferTrigger<String> bufferTrigger = BufferTrigger.<String>batchBlocking()
-            .bufferSize(50000) // 缓存队列的最大容量
-            .batchSize(300)   // 一批次最多聚合 300 条
-            .linger(Duration.ofSeconds(2)) // 多久聚合一次（2s 一次）
-            .setConsumerEx(this::consumeMessage) // 设置消费者方法
-            .build();
-
     @Override
     public void onMessage(String body) {
-        // 往 bufferTrigger 中添加元素
-        bufferTrigger.enqueue(body);
+        consumeMessage(List.of(body));
     }
 
     private void consumeMessage(List<String> bodys) {
@@ -60,19 +50,29 @@ public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
 
         // 将聚合后的消息体 Json 转 Set<Long>, 去重相同的评论 ID, 防止重复计算
         Set<Long> commentIds = Sets.newHashSet();
-        bodys.forEach(body -> {
+        for (String body : bodys) {
             try {
-                Set<Long> list = JsonUtils.parseSet(body, Long.class);
-                commentIds.addAll(list);
+                commentIds.addAll(JsonUtils.parseSet(body, Long.class));
             } catch (Exception e) {
-                log.error("", e);
+                throw new IllegalArgumentException("评论热度消息格式错误", e);
             }
-        });
+        }
+
+        if (commentIds.isEmpty()) {
+            return;
+        }
 
         log.info("==> 去重后的评论 ID: {}", commentIds);
 
         // 批量查询评论
         List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(commentIds.stream().toList());
+
+        // 热度消息可能晚于删评论消息到达。目标评论已不存在时直接确认消费，
+        // 避免生成没有 WHEN 和 IN 参数的无效批量更新 SQL 并反复重试。
+        if (commentDOS == null || commentDOS.isEmpty()) {
+            log.info("==> 评论已不存在，忽略本次热度更新, commentIds: {}", commentIds);
+            return;
+        }
 
         // 评论 ID
         List<Long> ids = Lists.newArrayList();

@@ -14,19 +14,25 @@ import org.springframework.context.annotation.Configuration;
 @RefreshScope
 public class FileStrategyFactory {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.config.AutowireCapableBeanFactory beanFactory;
+
     @Value("${storage.type}")
     private String strategyType;
 
     @Bean
     @RefreshScope
     public FileStrategy getFileStrategy() {
+        FileStrategy strategy;
         if (StringUtils.equals(strategyType, "minio")) {
-            return new MinioFileStrategy();
+            strategy = new MinioFileStrategy();
         } else if (StringUtils.equals(strategyType, "aliyun")) {
-            return new AliyunOSSFileStrategy();
+            strategy = new AliyunOSSFileStrategy();
+        } else {
+            throw new IllegalArgumentException("不可用的存储类型");
         }
-
-        throw new IllegalArgumentException("不可用的存储类型");
+        beanFactory.autowireBean(strategy);
+        return strategy;
     }
 
 }

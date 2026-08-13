@@ -9,19 +9,14 @@ public interface MQConstants {
     String TOPIC_DELETE_NOTE_LOCAL_CACHE = "DeleteNoteLocalCacheTopic";
 
     /**
-     * Topic 主题：延迟双删 Redis 笔记缓存
+     * Topic 主题：失效 Redis 中的笔记详情及作者发布列表
      */
-    String TOPIC_DELAY_DELETE_NOTE_REDIS_CACHE = "DelayDeleteNoteRedisCacheTopic";
+    String TOPIC_INVALIDATE_NOTE_REDIS_CACHE = "InvalidateNoteRedisCacheTopic";
 
     /**
      * Topic: 发布笔记事务消息
      */
     String TOPIC_PUBLISH_NOTE_TRANSACTION = "PublishNoteTransactionTopic";
-
-    /**
-     * Topic 主题：延迟双删 Redis 已发布笔记列表缓存
-     */
-    String TOPIC_DELAY_DELETE_PUBLISHED_NOTE_LIST_REDIS_CACHE = "DelayDeletePublishedNoteListRedisCacheTopic";
 
     /**
      * Topic: 点赞、取消点赞共用一个

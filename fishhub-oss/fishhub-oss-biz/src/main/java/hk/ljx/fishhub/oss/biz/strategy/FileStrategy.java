@@ -14,4 +14,6 @@ public interface FileStrategy {
      */
     String uploadFile(MultipartFile file, String bucketName);
 
+    void deleteFile(String fileUrl, String bucketName);
+
 }

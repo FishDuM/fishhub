@@ -1,7 +1,6 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
-import com.github.phantomthief.collection.BufferTrigger;
 import com.google.common.collect.Lists;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
@@ -11,8 +10,6 @@ import hk.ljx.fishhub.count.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.count.biz.model.dto.CountPublishCommentMqDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -20,7 +17,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,19 +36,14 @@ public class CountNoteChildCommentConsumer implements RocketMQListener<String> {
     @Resource
     private RocketMQTemplate rocketMQTemplate;
     @Resource
+    private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
+    @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
-    private BufferTrigger<String> bufferTrigger = BufferTrigger.<String>batchBlocking()
-            .bufferSize(50000) // 缓存队列的最大容量
-            .batchSize(1000)   // 一批次最多聚合 1000 条
-            .linger(Duration.ofSeconds(1)) // 多久聚合一次（1s 一次）
-            .setConsumerEx(this::consumeMessage) // 设置消费者方法
-            .build();
 
     @Override
     public void onMessage(String body) {
-        // 往 bufferTrigger 中添加元素
-        bufferTrigger.enqueue(body);
+        // 完成处理后才由 RocketMQ 确认消息，避免仅入内存队列即 ACK。
+        consumeMessage(List.of(body));
     }
 
     private void consumeMessage(List<String> bodys) {
@@ -64,9 +55,15 @@ public class CountNoteChildCommentConsumer implements RocketMQListener<String> {
         bodys.forEach(body -> {
             try {
                 List<CountPublishCommentMqDTO> list = JsonUtils.parseList(body, CountPublishCommentMqDTO.class);
+                if (CollUtil.isEmpty(list) || list.stream().anyMatch(item -> item.getNoteId() == null
+                        || item.getCommentId() == null || item.getLevel() == null
+                        || (Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode())
+                        && item.getParentId() == null))) {
+                    throw new IllegalArgumentException("二级评论计数消息缺少必要字段");
+                }
                 countPublishCommentMqDTOList.addAll(list);
             } catch (Exception e) {
-                log.error("", e);
+                throw new IllegalArgumentException("二级评论计数消息格式错误", e);
             }
         });
 
@@ -78,48 +75,22 @@ public class CountNoteChildCommentConsumer implements RocketMQListener<String> {
         // 若无二级评论，则直接 return
         if (CollUtil.isEmpty(groupMap)) return;
 
-        // 循环分组字典
-        for (Map.Entry<Long, List<CountPublishCommentMqDTO>> entry : groupMap.entrySet()) {
-            // 一级评论 ID
-            Long parentId = entry.getKey();
-            // 评论数
-            int count = CollUtil.size(entry.getValue());
-
-            // 更新 Redis 缓存中的评论计数数据
-            // 构建 Key
-            String commentCountHashKey = RedisKeyConstants.buildCountCommentKey(parentId);
-            // 判断 Hash 是否存在
-            boolean hasKey = redisTemplate.hasKey(commentCountHashKey);
-
-            // 若 Hash 存在，则更新子评论总数
-            if (hasKey) {
-                // 累加
-                redisTemplate.opsForHash()
-                        .increment(commentCountHashKey, RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL, count);
-            }
-
-            // 更新一级评论的下级评论总数，进行累加操作
-            commentDOMapper.updateChildCommentTotal(parentId, count);
-        }
+        String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(String.join("|", bodys));
+        mqIdempotentExecutor.execute("count-child-comment", batchId, () ->
+                groupMap.forEach((parentId, comments) ->
+                        commentDOMapper.updateChildCommentTotal(parentId, CollUtil.size(comments))));
 
         // 获取字典中所有评论 ID
         Set<Long> commentIds = groupMap.keySet();
+        redisTemplate.delete(commentIds.stream()
+                .map(RedisKeyConstants::buildCountCommentKey)
+                .toList());
 
         // 异步发送计数 MQ, 更新评论热度值
         org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(commentIds))
                 .build();
 
-        // 异步发送 MQ 消息
-        rocketMQTemplate.asyncSend(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-                log.info("==> 【评论热度值更新】MQ 发送成功，SendResult: {}", sendResult);
-            }
-
-            @Override
-            public void onException(Throwable throwable) {
-                log.error("==> 【评论热度值更新】MQ 发送异常: ", throwable);
-            }
-        });
+        // 热度消费者按数据库最新值重算，重复投递安全；同步发送失败时让源消息重试。
+        rocketMQTemplate.syncSend(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, message);
     }
 }

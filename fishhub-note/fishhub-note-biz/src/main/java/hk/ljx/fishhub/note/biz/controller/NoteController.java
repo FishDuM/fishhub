@@ -21,6 +21,11 @@ public class NoteController {
     @Resource
     private NoteService noteService;
 
+    @PostMapping(value = "/exists")
+    public Response<Boolean> exists(@RequestBody Long noteId) {
+        return noteService.exists(noteId);
+    }
+
     @PostMapping(value = "/publish")
     @ApiOperationLog(description = "笔记发布")
     public Response<?> publishNote(@Validated @RequestBody PublishNoteReqVO publishNoteReqVO) {

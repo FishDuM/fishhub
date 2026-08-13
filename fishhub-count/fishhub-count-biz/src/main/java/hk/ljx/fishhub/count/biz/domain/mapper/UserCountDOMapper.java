@@ -58,6 +58,13 @@ public interface UserCountDOMapper {
      */
     UserCountDO selectByUserId(Long userId);
 
+    /**
+     * 根据用户 ID 批量查询
+     * @param userIds
+     * @return
+     */
+    java.util.List<UserCountDO> selectByUserIds(@Param("userIds") java.util.List<Long> userIds);
+
     int updateByPrimaryKeySelective(UserCountDO record);
 
     int updateByPrimaryKey(UserCountDO record);

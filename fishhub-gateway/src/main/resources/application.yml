@@ -3,6 +3,9 @@ server:
 spring:
   cloud:
     gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 8s
       routes:
         - id: auth
           uri: lb://fishhub-auth
@@ -46,10 +49,19 @@ spring:
             - Path=/search/**
           filters:
             - StripPrefix=1
+    sentinel:
+      transport:
+        dashboard: 192.168.0.100:8858 # Sentinel Dashboard 地址
+        port: 8719 # 客户端上报端口
+      datasource:
+        nacos:
+          server-addr: 192.168.0.100:8848
+          group-id: DEFAULT_GROUP
+          rule-data-id: fishhub-gateway-flow-rules
   data:
     redis:
       database: 0 # Redis 数据库索引（默认为 0）
-      host: 127.0.0.1 # Redis 服务器地址
+      host: 192.168.0.100 # Redis 服务器地址
       port: 6379 # Redis 服务器连接端口
       password: 3057433102 # Redis 服务器连接密码（默认为空）
       timeout: 5s # 读超时时间

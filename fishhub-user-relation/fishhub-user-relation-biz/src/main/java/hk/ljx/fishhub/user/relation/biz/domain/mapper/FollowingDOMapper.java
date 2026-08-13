@@ -13,6 +13,8 @@ public interface FollowingDOMapper {
 
     int insert(FollowingDO record);
 
+    int insertIgnore(FollowingDO record);
+
     int insertSelective(FollowingDO record);
 
     FollowingDO selectByPrimaryKey(Long id);

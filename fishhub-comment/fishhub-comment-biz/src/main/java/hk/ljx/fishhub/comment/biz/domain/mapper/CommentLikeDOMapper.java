@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import java.util.List;
 
 public interface CommentLikeDOMapper {
+    int deleteByCommentIds(@Param("commentIds") List<Long> commentIds);
     int deleteByPrimaryKey(Long id);
 
     /**
@@ -22,6 +23,10 @@ public interface CommentLikeDOMapper {
      * @return
      */
     int batchInsert(@Param("likes") List<LikeUnlikeCommentMqDTO> likes);
+
+    int insertIfAbsent(LikeUnlikeCommentMqDTO operation);
+
+    int deleteIfPresent(LikeUnlikeCommentMqDTO operation);
 
     int insert(CommentLikeDO record);
 
@@ -45,6 +50,9 @@ public interface CommentLikeDOMapper {
      * @return
      */
     List<CommentLikeDO> selectByUserId(@Param("userId") Long userId);
+
+    List<Long> selectLikedCommentIds(@Param("userId") Long userId,
+                                     @Param("commentIds") List<Long> commentIds);
 
     int updateByPrimaryKeySelective(CommentLikeDO record);
 

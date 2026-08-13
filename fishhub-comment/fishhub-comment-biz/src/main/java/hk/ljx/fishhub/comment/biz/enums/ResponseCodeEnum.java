@@ -19,6 +19,8 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     COMMENT_ALREADY_LIKED("COMMENT-20002", "您已经点赞过该评论"),
     COMMENT_NOT_LIKED("COMMENT-20003", "您未点赞该评论，无法取消点赞"),
     COMMENT_CANT_OPERATE("COMMENT-20004", "您无法操作该评论"),
+    NOTE_NOT_FOUND("COMMENT-20005", "笔记不存在或不可评论"),
+    REPLY_COMMENT_INVALID("COMMENT-20006", "被回复评论不属于当前笔记"),
     ;
 
     // 异常码

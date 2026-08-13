@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 
 @Service
@@ -79,21 +78,19 @@ public class CommentContentServiceImpl implements CommentContentService {
         // 查询评论的发布年月、内容 UUID
         List<FindCommentContentReqDTO> commentContentKeys = batchFindCommentContentReqDTO.getCommentContentKeys();
 
-        // 过滤出年月
-        List<String> yearMonths = commentContentKeys.stream()
-                .map(FindCommentContentReqDTO::getYearMonth)
-                .distinct() // 去重
-                .collect(Collectors.toList());
-
-        // 过滤出评论内容 UUID
-        List<UUID> contentIds = commentContentKeys.stream()
-                .map(commentContentKey -> UUID.fromString(commentContentKey.getContentId()))
-                .distinct() // 去重
-                .collect(Collectors.toList());
-
-        // 批量查询 Cassandra
-        List<CommentContentDO> commentContentDOS = commentContentRepository
-                .findByPrimaryKeyNoteIdAndPrimaryKeyYearMonthInAndPrimaryKeyContentIdIn(noteId, yearMonths, contentIds);
+        // 批量查询 Cassandra (Cassandra不支持多键 IN 查询，此处改为精确主键循环查询，或使用并行流)
+        List<CommentContentDO> commentContentDOS = Lists.newArrayList();
+        if (CollUtil.isNotEmpty(commentContentKeys)) {
+            for (FindCommentContentReqDTO key : commentContentKeys) {
+                commentContentRepository.findById(
+                        CommentContentPrimaryKey.builder()
+                                .noteId(noteId)
+                                .yearMonth(key.getYearMonth())
+                                .contentId(UUID.fromString(key.getContentId()))
+                                .build()
+                ).ifPresent(commentContentDOS::add);
+            }
+        }
 
         // DO 转 DTO
         List<FindCommentContentRspDTO> findCommentContentRspDTOS = Lists.newArrayList();

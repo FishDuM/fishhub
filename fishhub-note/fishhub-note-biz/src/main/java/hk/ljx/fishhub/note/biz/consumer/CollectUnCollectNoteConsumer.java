@@ -4,18 +4,15 @@ import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
-import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
+import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
+import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -31,9 +28,9 @@ import java.util.Objects;
 public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
 
     @Resource
-    private NoteCollectionDOMapper noteCollectionDOMapper;
+    private ReliableMqOutbox reliableMqOutbox;
     @Resource
-    private RocketMQTemplate rocketMQTemplate;
+    private NoteInteractionPersistenceService persistenceService;
 
     // 每秒创建 5000 个令牌
     private RateLimiter rateLimiter = RateLimiter.create(5000);
@@ -87,27 +84,9 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
                 .status(type)
                 .build();
 
-        // 添加或更新笔记收藏记录
-        int count = noteCollectionDOMapper.insertOrUpdate(noteCollectionDO);
-
-        if (count == 0) return;
-
-        // 更新数据库成功后，发送计数 MQ
-        org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(bodyJsonStr)
-                .build();
-
-        // 异步发送 MQ 消息
-        rocketMQTemplate.asyncSend(MQConstants.TOPIC_COUNT_NOTE_COLLECT, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-                log.info("==> 【计数: 笔记收藏】MQ 发送成功，SendResult: {}", sendResult);
-            }
-
-            @Override
-            public void onException(Throwable throwable) {
-                log.error("==> 【计数: 笔记收藏】MQ 发送异常: ", throwable);
-            }
-        });
+        if (persistenceService.saveCollect(noteCollectionDO, bodyJsonStr)) {
+            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_COLLECT, bodyJsonStr);
+        }
     }
 
     /**
@@ -137,27 +116,9 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
                 .status(type)
                 .build();
 
-        // 取消收藏：记录更新
-        int count = noteCollectionDOMapper.update2UnCollectByUserIdAndNoteId(noteCollectionDO);
-
-        if (count == 0) return;
-
-        // 更新数据库成功后，发送计数 MQ
-        org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(bodyJsonStr)
-                .build();
-
-        // 异步发送 MQ 消息
-        rocketMQTemplate.asyncSend(MQConstants.TOPIC_COUNT_NOTE_COLLECT, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-                log.info("==> 【计数: 笔记取消收藏】MQ 发送成功，SendResult: {}", sendResult);
-            }
-
-            @Override
-            public void onException(Throwable throwable) {
-                log.error("==> 【计数: 笔记取消收藏】MQ 发送异常: ", throwable);
-            }
-        });
+        if (persistenceService.saveUncollect(noteCollectionDO, bodyJsonStr)) {
+            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_COLLECT, bodyJsonStr);
+        }
     }
 
 }

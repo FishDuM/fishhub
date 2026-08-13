@@ -44,6 +44,8 @@ public interface CommentDOMapper {
      */
     CommentDO selectByReplyCommentId(Long commentId);
 
+    List<CommentDO> selectByParentId(Long parentId);
+
     /**
      * 根据评论 ID 批量查询
      * @param commentIds
@@ -92,6 +94,8 @@ public interface CommentDOMapper {
                                    @Param("offset") long offset,
                                    @Param("pageSize") long pageSize);
 
+    Long selectOneLevelCountByNoteId(Long noteId);
+
     /**
      * 查询二级评论分页数据
      * @param parentId
@@ -138,5 +142,7 @@ public interface CommentDOMapper {
      */
     int updateFirstReplyCommentIdByPrimaryKey(@Param("firstReplyCommentId") Long firstReplyCommentId,
                                               @Param("id") Long id);
+
+    int updateChildCommentTotal(@Param("id") Long id, @Param("delta") long delta);
 
 }

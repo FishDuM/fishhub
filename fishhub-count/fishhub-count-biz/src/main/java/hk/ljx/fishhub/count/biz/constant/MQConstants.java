@@ -64,9 +64,19 @@ public interface MQConstants {
     String TOPIC_COMMENT_LIKE_OR_UNLIKE = "CommentLikeUnlikeTopic";
 
     /**
+     * 评论点赞关系实际变化后产生的计数事件
+     */
+    String TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE = "AppliedCommentLikeUnlikeTopic";
+
+    /**
      * Topic: 计数 - 评论点赞数落库
      */
     String TOPIC_COUNT_COMMENT_LIKE_2_DB = "CountCommentLike2DBTTopic";
+
+    /**
+     * Topic: 删除本地缓存 —— 评论详情
+     */
+    String TOPIC_DELETE_COMMENT_LOCAL_CACHE = "DeleteCommentDetailLocalCacheTopic";
 
     /**
      * Tag 标签：笔记发布

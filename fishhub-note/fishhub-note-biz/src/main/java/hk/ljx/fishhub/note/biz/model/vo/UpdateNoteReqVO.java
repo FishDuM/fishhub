@@ -29,5 +29,7 @@ public class UpdateNoteReqVO {
 
     private String content;
 
+    private Long channelId;
+
     private Long topicId;
 }

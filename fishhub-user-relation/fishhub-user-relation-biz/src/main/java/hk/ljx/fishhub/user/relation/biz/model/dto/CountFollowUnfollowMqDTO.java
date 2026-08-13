@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 
 @Data
 @AllArgsConstructor
@@ -26,5 +28,10 @@ public class CountFollowUnfollowMqDTO {
      * 1:关注 0:取关
      */
     private Integer type;
+
+    /**
+     * 关系操作时间，与用户和操作类型共同标识一次真实状态迁移。
+     */
+    private LocalDateTime createTime;
 
 }

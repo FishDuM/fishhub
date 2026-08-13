@@ -1,7 +1,6 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
-import com.github.phantomthief.collection.BufferTrigger;
 import com.google.common.collect.Lists;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
@@ -15,7 +14,6 @@ import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,18 +30,13 @@ public class CountNoteCommentConsumer implements RocketMQListener<String> {
     private NoteCountDOMapper noteCountDOMapper;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-
-    private BufferTrigger<String> bufferTrigger = BufferTrigger.<String>batchBlocking()
-            .bufferSize(50000) // 缓存队列的最大容量
-            .batchSize(1000)   // 一批次最多聚合 1000 条
-            .linger(Duration.ofSeconds(1)) // 多久聚合一次（1s 一次）
-            .setConsumerEx(this::consumeMessage) // 设置消费者方法
-            .build();
+    @Resource
+    private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
 
     @Override
     public void onMessage(String body) {
-        // 往 bufferTrigger 中添加元素
-        bufferTrigger.enqueue(body);
+        // 完成处理后才由 RocketMQ 确认消息，避免仅入内存队列即 ACK。
+        consumeMessage(List.of(body));
     }
 
     private void consumeMessage(List<String> bodys) {
@@ -55,9 +48,13 @@ public class CountNoteCommentConsumer implements RocketMQListener<String> {
         bodys.forEach(body -> {
             try {
                 List<CountPublishCommentMqDTO> list = JsonUtils.parseList(body, CountPublishCommentMqDTO.class);
+                if (CollUtil.isEmpty(list) || list.stream().anyMatch(item -> item.getNoteId() == null
+                        || item.getCommentId() == null || item.getLevel() == null)) {
+                    throw new IllegalArgumentException("笔记评论计数消息缺少必要字段");
+                }
                 countPublishCommentMqDTOList.addAll(list);
             } catch (Exception e) {
-                log.error("", e);
+                throw new IllegalArgumentException("笔记评论计数消息格式错误", e);
             }
         });
 
@@ -65,30 +62,16 @@ public class CountNoteCommentConsumer implements RocketMQListener<String> {
         Map<Long, List<CountPublishCommentMqDTO>> groupMap = countPublishCommentMqDTOList.stream()
                 .collect(Collectors.groupingBy(CountPublishCommentMqDTO::getNoteId));
 
-        // 循环分组字典
-        for (Map.Entry<Long, List<CountPublishCommentMqDTO>> entry : groupMap.entrySet()) {
-            // 笔记 ID
-            Long noteId = entry.getKey();
-            // 评论数
-            int count = CollUtil.size(entry.getValue());
-
-            // 更新 Redis 缓存中的笔记评论总数
-            // 构建 Key
-            String noteCountHashKey = RedisKeyConstants.buildCountNoteKey(noteId);
-            // 判断 Hash 是否存在
-            boolean hasKey = redisTemplate.hasKey(noteCountHashKey);
-
-            // 若 Hash 存在
-            if (hasKey) {
-                // 累加更新
-                redisTemplate.opsForHash()
-                        .increment(noteCountHashKey, RedisKeyConstants.FIELD_COMMENT_TOTAL, count);
-            }
-
-            // 若评论数大于零，则执行更新操作：累加评论总数
-            if (count > 0) {
-                noteCountDOMapper.insertOrUpdateCommentTotalByNoteId(count, noteId);
-            }
-        }
+        String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(String.join("|", bodys));
+        mqIdempotentExecutor.execute("count-note-comment", batchId, () ->
+                groupMap.forEach((noteId, comments) -> {
+                    int count = CollUtil.size(comments);
+                    if (count > 0) {
+                        noteCountDOMapper.insertOrUpdateCommentTotalByNoteId(count, noteId);
+                    }
+                }));
+        redisTemplate.delete(groupMap.keySet().stream()
+                .map(RedisKeyConstants::buildCountNoteKey)
+                .toList());
     }
 }

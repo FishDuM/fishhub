@@ -6,6 +6,7 @@ import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
 import hk.ljx.fishhub.count.fallback.CountFeignApiFallback;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,7 +16,6 @@ import java.util.List;
 
 
 @FeignClient(name = ApiConstants.SERVICE_NAME, fallback = CountFeignApiFallback.class)
-//@FeignClient(name = ApiConstants.SERVICE_NAME)
 public interface CountFeignApi {
 
     String PREFIX = "/count";
@@ -28,6 +28,12 @@ public interface CountFeignApi {
      */
     @PostMapping(value = PREFIX + "/user/data")
     Response<FindUserCountsByIdRspDTO> findUserCount(@RequestBody FindUserCountsByIdReqDTO findUserCountsByIdReqDTO);
+
+    /**
+     * 批量查询用户计数
+     */
+    @PostMapping(value = PREFIX + "/users/data")
+    Response<List<FindUserCountsByIdRspDTO>> findUsersCount(@RequestBody FindUserCountsByIdsReqDTO findUserCountsByIdsReqDTO);
 
     /**
      * 批量查询笔记计数

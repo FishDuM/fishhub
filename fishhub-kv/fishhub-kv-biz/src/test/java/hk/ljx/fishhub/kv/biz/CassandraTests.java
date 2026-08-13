@@ -2,62 +2,35 @@ package hk.ljx.fishhub.kv.biz;
 
 import hk.ljx.fishhub.kv.biz.domain.dataobject.NoteContentDO;
 import hk.ljx.fishhub.kv.biz.domain.repository.NoteContentRepository;
-import hk.ljx.framework.common.util.JsonUtils;
 import jakarta.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 @SpringBootTest
-@Slf4j
+@EnabledIfEnvironmentVariable(named = "FISHHUB_RUN_INTEGRATION_TESTS", matches = "true")
 class CassandraTests {
 
     @Resource
     private NoteContentRepository noteContentRepository;
 
-    /**
-     * 测试插入数据
-     */
     @Test
-    void testInsert() {
-        NoteContentDO nodeContent = NoteContentDO.builder()
-                .id(UUID.randomUUID())
-                .content("代码测试笔记内容插入")
-                .build();
+    void noteContentRoundTrip() {
+        UUID id = UUID.randomUUID();
+        try {
+            noteContentRepository.save(new NoteContentDO(id, "初始内容"));
+            assertEquals("初始内容", noteContentRepository.findById(id).orElseThrow().getContent());
 
-        noteContentRepository.save(nodeContent);
-    }
-
-    /**
-     * 测试修改数据
-     */
-    @Test
-    void testUpdate() {
-        NoteContentDO nodeContent = NoteContentDO.builder()
-                .id(UUID.fromString("e36b1612-ca1e-4dea-a25a-a0479fcc3451"))
-                .content("代码测试笔记内容更新")
-                .build();
-
-        noteContentRepository.save(nodeContent);
-    }
-
-    /**
-     * 测试查询数据
-     */
-    @Test
-    void testSelect() {
-        Optional<NoteContentDO> optional = noteContentRepository.findById(UUID.fromString("e36b1612-ca1e-4dea-a25a-a0479fcc3451"));
-        optional.ifPresent(noteContentDO -> log.info("查询结果：{}", JsonUtils.toJsonString(noteContentDO)));
-    }
-
-    /**
-     * 测试删除数据
-     */
-    @Test
-    void testDelete() {
-        noteContentRepository.deleteById(UUID.fromString("e36b1612-ca1e-4dea-a25a-a0479fcc3451"));
+            noteContentRepository.save(new NoteContentDO(id, "更新后的内容"));
+            assertEquals("更新后的内容", noteContentRepository.findById(id).orElseThrow().getContent());
+        } finally {
+            noteContentRepository.deleteById(id);
+        }
+        assertFalse(noteContentRepository.existsById(id));
     }
 }

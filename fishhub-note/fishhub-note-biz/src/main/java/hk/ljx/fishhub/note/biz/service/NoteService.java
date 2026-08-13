@@ -6,6 +6,8 @@ import hk.ljx.fishhub.note.biz.model.vo.*;
 
 public interface NoteService {
 
+    Response<Boolean> exists(Long noteId);
+
     /**
      * 笔记发布
      * @param publishNoteReqVO

@@ -14,6 +14,7 @@ import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.comment.biz.model.dto.CountPublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
+import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -22,21 +23,18 @@ import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -54,7 +52,7 @@ public class Comment2DBConsumer {
     @Resource
     private KeyValueRpcService keyValueRpcService;
     @Resource
-    private RocketMQTemplate rocketMQTemplate;
+    private SendMqRetryHelper sendMqRetryHelper;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
 
@@ -94,12 +92,50 @@ public class Comment2DBConsumer {
                 rateLimiter.acquire();
 
                 // 消息体 Json 字符串转 DTO
-                List<PublishCommentMqDTO> publishCommentMqDTOS = Lists.newArrayList();
+                List<PublishCommentMqDTO> rawReceivedComments = Lists.newArrayList();
                 msgs.forEach(msg -> {
-                    String msgJson = new String(msg.getBody());
-                    log.info("==> Consumer - Received message: {}", msgJson);
-                    publishCommentMqDTOS.add(JsonUtils.parseObject(msgJson, PublishCommentMqDTO.class));
+                    String msgJson = new String(msg.getBody(), StandardCharsets.UTF_8);
+                    try {
+                        PublishCommentMqDTO comment = JsonUtils.parseObject(msgJson, PublishCommentMqDTO.class);
+                        if (comment == null || comment.getCommentId() == null
+                                || comment.getNoteId() == null || comment.getCreatorId() == null) {
+                            log.error("丢弃缺少业务主键的评论消息, msgId: {}, body: {}", msg.getMsgId(),
+                                    StringUtils.abbreviate(msgJson, 500));
+                            return;
+                        }
+                        rawReceivedComments.add(comment);
+                    } catch (Exception e) {
+                        log.error("丢弃无法解析的评论消息, msgId: {}, body: {}", msg.getMsgId(),
+                                StringUtils.abbreviate(msgJson, 500), e);
+                    }
                 });
+
+                // 同一批消息可能包含重复投递，保留第一条。
+                Map<Long, PublishCommentMqDTO> uniqueComments = new LinkedHashMap<>();
+                for (PublishCommentMqDTO comment : rawReceivedComments) {
+                    uniqueComments.putIfAbsent(comment.getCommentId(), comment);
+                }
+                List<PublishCommentMqDTO> receivedComments = new ArrayList<>(uniqueComments.values());
+                if (CollUtil.isEmpty(receivedComments)) {
+                    return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+                }
+
+                // RocketMQ 是至少一次投递，先过滤已落库的评论，避免重复消费导致重复计数
+                List<Long> commentIds = receivedComments.stream()
+                        .map(PublishCommentMqDTO::getCommentId)
+                        .toList();
+                List<CommentDO> existingComments = CollUtil.isEmpty(commentIds)
+                        ? Collections.emptyList()
+                        : commentDOMapper.selectByCommentIds(commentIds);
+                Set<Long> existingCommentIds = existingComments.stream()
+                        .map(CommentDO::getId)
+                        .collect(Collectors.toSet());
+                List<PublishCommentMqDTO> publishCommentMqDTOS = receivedComments.stream()
+                        .filter(comment -> !existingCommentIds.contains(comment.getCommentId()))
+                        .toList();
+                if (CollUtil.isEmpty(publishCommentMqDTOS)) {
+                    return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+                }
 
                 // 提取所有不为空的回复评论 ID
                 List<Long> replyCommentIds = publishCommentMqDTOS.stream()
@@ -174,13 +210,18 @@ public class Comment2DBConsumer {
                 log.info("## 清洗后的 CommentBOS: {}", JsonUtils.toJsonString(commentBOS));
 
                 // 编程式事务，保证整体操作的原子性
-                Integer insertedRows =transactionTemplate.execute(status -> {
+                PersistedComments persistedComments = transactionTemplate.execute(status -> {
                     try {
-                        // 先批量存入评论元数据
-                        int count = commentDOMapper.batchInsert(commentBOS);
+                        // 逐条使用 INSERT IGNORE 认领业务主键，避免并发重复消费时重复计数
+                        List<CommentBO> inserted = Lists.newArrayList();
+                        for (CommentBO commentBO : commentBOS) {
+                            if (commentDOMapper.batchInsert(Collections.singletonList(commentBO)) == 1) {
+                                inserted.add(commentBO);
+                            }
+                        }
 
                         // 过滤出评论内容不为空的 BO
-                        List<CommentBO> commentContentNotEmptyBOS = commentBOS.stream()
+                        List<CommentBO> commentContentNotEmptyBOS = inserted.stream()
                                 .filter(commentBO -> Boolean.FALSE.equals(commentBO.getIsContentEmpty()))
                                 .toList();
                         if (CollUtil.isNotEmpty(commentContentNotEmptyBOS)) {
@@ -188,7 +229,21 @@ public class Comment2DBConsumer {
                             keyValueRpcService.batchSaveCommentContent(commentContentNotEmptyBOS);
                         }
 
-                        return count;
+                        String countEventBody = null;
+                        if (CollUtil.isNotEmpty(inserted)) {
+                            List<CountPublishCommentMqDTO> countEvents = inserted.stream()
+                                    .map(commentBO -> CountPublishCommentMqDTO.builder()
+                                            .noteId(commentBO.getNoteId())
+                                            .commentId(commentBO.getId())
+                                            .level(commentBO.getLevel())
+                                            .parentId(commentBO.getParentId())
+                                            .build())
+                                    .toList();
+                            countEventBody = JsonUtils.toJsonString(countEvents);
+                            sendMqRetryHelper.enqueue(MQConstants.TOPIC_COUNT_NOTE_COMMENT, countEventBody);
+                        }
+
+                        return new PersistedComments(inserted, countEventBody);
                     } catch (Exception ex) {
                         status.setRollbackOnly(); // 标记事务为回滚
                         log.error("", ex);
@@ -196,38 +251,18 @@ public class Comment2DBConsumer {
                     }
                 });
 
-                // 如果批量插入的行数大于 0
-                if (Objects.nonNull(insertedRows) && insertedRows > 0) {
+                List<CommentBO> insertedCommentBOS = Objects.requireNonNull(persistedComments).comments();
+
+                // 只处理本批次真正落库成功的评论，防止并发重复消费导致重复计数
+                if (CollUtil.isNotEmpty(insertedCommentBOS)) {
 
                     // 同步一级评论到 Redis 热点评论 ZSET 中
-                    syncOneLevelComment2RedisZSet(commentBOS);
+                    syncOneLevelComment2RedisZSet(insertedCommentBOS);
 
-                    // 构建发送给计数服务的 DTO 集合
-                    List<CountPublishCommentMqDTO> countPublishCommentMqDTOS = commentBOS.stream()
-                            .map(commentBO -> CountPublishCommentMqDTO.builder()
-                                    .noteId(commentBO.getNoteId())
-                                    .commentId(commentBO.getId())
-                                    .level(commentBO.getLevel())
-                                    .parentId(commentBO.getParentId())
-                                    .build())
-                            .toList();
-
-                    // 异步发送计数 MQ
-                    org.springframework.messaging.Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(countPublishCommentMqDTOS))
-                            .build();
-
-                    // 异步发送 MQ 消息
-                    rocketMQTemplate.asyncSend(MQConstants.TOPIC_COUNT_NOTE_COMMENT, message, new SendCallback() {
-                        @Override
-                        public void onSuccess(SendResult sendResult) {
-                            log.info("==> 【计数: 评论发布】MQ 发送成功，SendResult: {}", sendResult);
-                        }
-
-                        @Override
-                        public void onException(Throwable throwable) {
-                            log.error("==> 【计数: 评论发布】MQ 发送异常: ", throwable);
-                        }
-                    });
+                    // 事件已经随评论记录一起提交；这里只做提交后的即时投递。
+                    sendMqRetryHelper.sendNow(
+                            MQConstants.TOPIC_COUNT_NOTE_COMMENT,
+                            persistedComments.countEventBody());
 
                 }
 
@@ -277,6 +312,9 @@ public class Comment2DBConsumer {
             // 执行 Lua 脚本
             redisTemplate.execute(script, Collections.singletonList(key), args.toArray());
         });
+    }
+
+    private record PersistedComments(List<CommentBO> comments, String countEventBody) {
     }
 
     @PreDestroy

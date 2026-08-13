@@ -8,6 +8,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.service.UserCountService;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
+import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 
 
@@ -30,12 +33,14 @@ public class UserCountController {
     @ApiOperationLog(description = "获取用户计数数据")
     @SentinelResource(value = "findUserCountData4Controller", blockHandler = "blockHandler4findUserCountData")
     public Response<FindUserCountsByIdRspDTO> findUserCountData(@Validated @RequestBody FindUserCountsByIdReqDTO findUserCountsByIdReqDTO) {
-        // 模拟接口随机发生异常，抛出概率约为 50%
-        if (Math.random() > 0.5) {
-            throw new RuntimeException();
-        }
-
         return userCountService.findUserCountData(findUserCountsByIdReqDTO);
+    }
+
+    @PostMapping(value = "/users/data")
+    @ApiOperationLog(description = "批量获取用户计数数据")
+    public Response<List<FindUserCountsByIdRspDTO>> findUsersCountData(
+            @Validated @RequestBody FindUserCountsByIdsReqDTO findUserCountsByIdsReqDTO) {
+        return userCountService.findUsersCountData(findUserCountsByIdsReqDTO);
     }
 
     /**

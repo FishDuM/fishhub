@@ -41,10 +41,10 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
             // 构建响应结果
             result = Response.fail(ResponseCodeEnum.UNAUTHORIZED.getErrorCode(), ex.getMessage());
         } else if (ex instanceof NotPermissionException) { // 无权限异常
-            // 权限认证失败时，设置 401 状态码
-            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            // 已登录但没有权限，与登录失效是两种状态。
+            response.setStatusCode(HttpStatus.FORBIDDEN);
             // 构建响应结果
-            result = Response.fail(ResponseCodeEnum.UNAUTHORIZED.getErrorCode(), ResponseCodeEnum.UNAUTHORIZED.getErrorMessage());
+            result = Response.fail(ResponseCodeEnum.FORBIDDEN);
         } else { // 其他异常，则统一提示 “系统繁忙” 错误
             result = Response.fail(ResponseCodeEnum.SYSTEM_ERROR);
         }

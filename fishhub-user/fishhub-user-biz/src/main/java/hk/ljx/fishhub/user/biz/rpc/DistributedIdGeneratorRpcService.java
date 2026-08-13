@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class DistributedIdGeneratorRpcService {
 
+    private static final String FISHHUB_ID_PREFIX = "fish";
+
     @Resource
     private DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
 
@@ -21,7 +23,8 @@ public class DistributedIdGeneratorRpcService {
 
     
     public String getFishhubId() {
-        return distributedIdGeneratorFeignApi.getSegmentId(BIZ_TAG_FISHHUB_ID);
+        String segmentId = distributedIdGeneratorFeignApi.getSegmentId(BIZ_TAG_FISHHUB_ID);
+        return FISHHUB_ID_PREFIX + segmentId;
     }
 
     /**

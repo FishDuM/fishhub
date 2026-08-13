@@ -166,8 +166,9 @@ public class UserServiceImpl implements UserService {
 
         // 个人简介
         String introduction = updateUserInfoReqVO.getIntroduction();
-        if (StringUtils.isNotBlank(introduction)) {
-            Preconditions.checkArgument(ParamUtils.checkLength(introduction, 100), ResponseCodeEnum.INTRODUCTION_VALID_FAIL.getErrorMessage());
+        if (introduction != null) {
+            Preconditions.checkArgument(introduction.length() <= 100,
+                    ResponseCodeEnum.INTRODUCTION_VALID_FAIL.getErrorMessage());
             userDO.setIntroduction(introduction);
             needUpdate = true;
         }
@@ -187,15 +188,23 @@ public class UserServiceImpl implements UserService {
         }
 
         if (needUpdate) {
-            // 删除用户缓存
-            deleteUserRedisCache(userId);
-
             // 更新用户信息
             userDO.setUpdateTime(LocalDateTime.now());
             userDOMapper.updateByPrimaryKeySelective(userDO);
 
+            // 数据落库后立即清理当前节点和 Redis 缓存，避免读到旧资料。
+            deleteUserLocalCache(userId);
+            deleteUserRedisCache(userId);
+
             // 延时双删
             sendDelayDeleteUserRedisCacheMQ(userId);
+
+            // 广播用于清理其他节点的本地缓存；失败不应影响已经成功的资料更新。
+            try {
+                rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_USER_LOCAL_CACHE, String.valueOf(userId));
+            } catch (Exception e) {
+                log.error("发送本地缓存清理消息失败, userId: {}", userId, e);
+            }
         }
         return Response.success();
     }
@@ -205,16 +214,11 @@ public class UserServiceImpl implements UserService {
      * @param userId
      */
     private void sendDelayDeleteUserRedisCacheMQ(Long userId) {
-        Message<String> message = MessageBuilder.withPayload(String.valueOf(userId))
-                .build();
-
-        rocketMQTemplate.asyncSend(MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE, message,
-                new SendCallback() {
+        Message<String> message = MessageBuilder.withPayload(String.valueOf(userId)).build();
+        rocketMQTemplate.asyncSend(MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE, message, new SendCallback() {
                     @Override
                     public void onSuccess(SendResult sendResult) {
-                        log.info("## 延时删除 Redis 用户缓存消息发送成功...");
                     }
-
                     @Override
                     public void onException(Throwable e) {
                         log.error("## 延时删除 Redis 用户缓存消息发送失败...", e);
@@ -230,12 +234,17 @@ public class UserServiceImpl implements UserService {
      * @param userId
      */
     private void deleteUserRedisCache(Long userId) {
-        // 构建 Redis Key
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
         // 批量删除
         redisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+    }
+
+    @Override
+    public void deleteUserLocalCache(Long userId) {
+        LOCAL_CACHE.invalidate(userId);
+        PROFILE_LOCAL_CACHE.invalidate(userId);
     }
 
     /**
@@ -269,19 +278,15 @@ public class UserServiceImpl implements UserService {
         UserDO userDO = UserDO.builder()
                 .id(userId)
                 .phone(phone)
-                .fishhubId(fishhubId) // 自动生成小红书号 ID
-                .nickname("小红薯" + fishhubId) // 自动生成昵称, 如：小红薯10000
+                .fishhubId(fishhubId) // 自动生成小鱼号 ID
+                .nickname("小鱼" + fishhubId) // 自动生成昵称, 如：小鱼10000
                 .status(StatusEnum.ENABLE.getValue()) // 状态为启用
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
                 .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
                 .build();
 
-        // 添加入库
         userDOMapper.insert(userDO);
-
-        // 获取刚刚添加入库的用户 ID
-        // Long userId = userDO.getId();
 
         // 给该用户分配一个默认角色
         UserRoleDO userRoleDO = UserRoleDO.builder()
@@ -323,7 +328,6 @@ public class UserServiceImpl implements UserService {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        // 构建返参
         FindUserByPhoneRspDTO findUserByPhoneRspDTO = FindUserByPhoneRspDTO.builder()
                 .id(userDO.getId())
                 .password(userDO.getPassword())
@@ -339,6 +343,7 @@ public class UserServiceImpl implements UserService {
      * @return
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Response<?> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
         // 获取当前请求对应的用户 ID
         Long userId = LoginUserContextHolder.getUserId();
@@ -379,6 +384,9 @@ public class UserServiceImpl implements UserService {
 
         // 若 Redis 缓存中存在该用户信息
         if (StringUtils.isNotBlank(userInfoRedisValue)) {
+            if ("null".equals(userInfoRedisValue)) {
+                throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+            }
             // 将存储的 Json 字符串转换成对象，并返回
             FindUserByIdRspDTO findUserByIdRspDTO = JsonUtils.parseObject(userInfoRedisValue, FindUserByIdRspDTO.class);
             // 异步线程中将用户信息存入本地缓存
@@ -404,7 +412,6 @@ public class UserServiceImpl implements UserService {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        // 构建返参
         FindUserByIdRspDTO findUserByIdRspDTO = FindUserByIdRspDTO.builder()
                 .id(userDO.getId())
                 .nickName(userDO.getNickname())
@@ -434,7 +441,10 @@ public class UserServiceImpl implements UserService {
         // 需要查询的用户 ID 集合
         List<Long> userIds = findUsersByIdsReqDTO.getIds();
 
-        // 构建 Redis Key 集合
+        if (CollUtil.isEmpty(userIds)) {
+            return Response.success(Collections.emptyList());
+        }
+
         List<String> redisKeys = userIds.stream()
                 .map(RedisKeyConstants::buildUserInfoKey)
                 .toList();
@@ -444,7 +454,10 @@ public class UserServiceImpl implements UserService {
         // 如果缓存中不为空
         if (CollUtil.isNotEmpty(redisValues)) {
             // 过滤掉为空的数据
-            redisValues = redisValues.stream().filter(Objects::nonNull).toList();
+            redisValues = redisValues.stream()
+                    .filter(Objects::nonNull)
+                    .filter(value -> !"null".equals(String.valueOf(value)))
+                    .toList();
         }
 
         // 返参
@@ -452,8 +465,10 @@ public class UserServiceImpl implements UserService {
 
         // 将过滤后的缓存集合，转换为 DTO 返参实体类
         if (CollUtil.isNotEmpty(redisValues)) {
-            findUserByIdRspDTOS = redisValues.stream()
-                    .map(value -> JsonUtils.parseObject(String.valueOf(value), FindUserByIdRspDTO.class)).toList();
+            findUserByIdRspDTOS.addAll(redisValues.stream()
+                    .map(value -> JsonUtils.parseObject(String.valueOf(value), FindUserByIdRspDTO.class))
+                    .filter(Objects::nonNull)
+                    .toList());
         }
 
         // 如果被查询的用户信息，都在 Redis 缓存中, 则直接返回
@@ -479,7 +494,10 @@ public class UserServiceImpl implements UserService {
         }
 
         // 从数据库中批量查询
-        List<UserDO> userDOS = userDOMapper.selectByIds(userIdsNeedQuery);
+        List<UserDO> userDOS = null;
+        if (CollUtil.isNotEmpty(userIdsNeedQuery)) {
+            userDOS = userDOMapper.selectByIds(userIdsNeedQuery);
+        }
 
         List<FindUserByIdRspDTO> findUserByIdRspDTOS2 = null;
 
@@ -497,6 +515,7 @@ public class UserServiceImpl implements UserService {
 
             // 异步线程将用户信息同步到 Redis 中
             List<FindUserByIdRspDTO> finalFindUserByIdRspDTOS = findUserByIdRspDTOS2;
+            List<UserDO> finalUserDOS = userDOS;
             threadPoolTaskExecutor.submit(() -> {
                 // DTO 集合转 Map
                 Map<Long, FindUserByIdRspDTO> map = finalFindUserByIdRspDTOS.stream()
@@ -506,7 +525,7 @@ public class UserServiceImpl implements UserService {
                 redisTemplate.executePipelined(new SessionCallback<>() {
                     @Override
                     public Object execute(RedisOperations operations) {
-                        for (UserDO userDO : userDOS) {
+                        for (UserDO userDO : finalUserDOS) {
                             Long userId = userDO.getId();
 
                             // 用户信息缓存 Redis Key
@@ -551,28 +570,28 @@ public class UserServiceImpl implements UserService {
         }
 
         // 1. 优先查本地缓存
-//        if (!Objects.equals(userId, LoginUserContextHolder.getUserId())) { // 如果是用户本人查看自己的主页，则不走本地缓存（对本人保证实时性）
-//            FindUserProfileRspVO userProfileLocalCache = PROFILE_LOCAL_CACHE.getIfPresent(userId);
-//            if (Objects.nonNull(userProfileLocalCache)) {
-//                log.info("## 用户主页信息命中本地缓存: {}", JsonUtils.toJsonString(userProfileLocalCache));
-//                return Response.success(userProfileLocalCache);
-//            }
-//        }
-//
-//        // 2. 再查询 Redis 缓存
-//        String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
-//
-//        String userProfileJson = (String) redisTemplate.opsForValue().get(userProfileRedisKey);
-//
-//        if (StringUtils.isNotBlank(userProfileJson)) {
-//            FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
-//            // 异步同步到本地缓存
-//            syncUserProfile2LocalCache(userId, findUserProfileRspVO);
-//            // 如果是作者本人查看，保证计数的实时性
-//            authorGetActualCountData(userId, findUserProfileRspVO);
-//
-//            return Response.success(findUserProfileRspVO);
-//        }
+        if (!Objects.equals(userId, LoginUserContextHolder.getUserId())) { // 如果是用户本人查看自己的主页，则不走本地缓存（对本人保证实时性）
+            FindUserProfileRspVO userProfileLocalCache = PROFILE_LOCAL_CACHE.getIfPresent(userId);
+            if (Objects.nonNull(userProfileLocalCache)) {
+                log.info("## 用户主页信息命中本地缓存: {}", JsonUtils.toJsonString(userProfileLocalCache));
+                return Response.success(userProfileLocalCache);
+            }
+        }
+
+        // 2. 再查询 Redis 缓存
+        String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
+
+        String userProfileJson = (String) redisTemplate.opsForValue().get(userProfileRedisKey);
+
+        if (StringUtils.isNotBlank(userProfileJson)) {
+            FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
+            // 异步同步到本地缓存
+            syncUserProfile2LocalCache(userId, findUserProfileRspVO);
+            // 如果是作者本人查看，保证计数的实时性
+            authorGetActualCountData(userId, findUserProfileRspVO);
+
+            return Response.success(findUserProfileRspVO);
+        }
 
         // 3. 若 Redis 中无缓存，再查询数据库
         UserDO userDO = userMapper.selectByPrimaryKey(userId);
@@ -588,21 +607,22 @@ public class UserServiceImpl implements UserService {
                 .nickname(userDO.getNickname())
                 .fishhubId(userDO.getFishhubId())
                 .sex(userDO.getSex())
+                .birthday(userDO.getBirthday())
                 .introduction(userDO.getIntroduction())
                 .build();
 
         // 计算年龄
         LocalDate birthday = userDO.getBirthday();
-        findUserProfileRspVO.setAge(Objects.isNull(birthday) ? 0 : DateUtils.calculateAge(birthday));
+        findUserProfileRspVO.setAge(Objects.isNull(birthday) ? null : DateUtils.calculateAge(birthday));
 
         // RPC: Feign 调用计数服务
         // 关注数、粉丝数、收藏与点赞总数；获得的点赞数、收藏数
         rpcCountServiceAndSetData(userId, findUserProfileRspVO);
 
-//        // 异步同步到 Redis 中
-//        syncUserProfile2Redis(userProfileRedisKey, findUserProfileRspVO);
-//        // 异步同步到本地缓存
-//        syncUserProfile2LocalCache(userId, findUserProfileRspVO);
+        // 异步同步到 Redis 中
+        syncUserProfile2Redis(userProfileRedisKey, findUserProfileRspVO);
+        // 异步同步到本地缓存
+        syncUserProfile2LocalCache(userId, findUserProfileRspVO);
 
         return Response.success(findUserProfileRspVO);
     }

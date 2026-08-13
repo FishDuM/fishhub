@@ -42,6 +42,8 @@ public interface CommentService {
      */
     Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO);
 
+    Response<java.util.List<Long>> findLikedCommentIds(FindLikedCommentIdsReqVO reqVO);
+
     /**
      * 删除评论
      * @param deleteCommentReqVO

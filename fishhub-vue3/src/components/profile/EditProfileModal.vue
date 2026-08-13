@@ -7,28 +7,22 @@
     @confirm="handleConfirm"
   >
     <div class="p-6">
-      <!-- 头像 -->
+
       <div class="flex items-center gap-4 mb-6">
-        <img
-          v-if="form.avatar" 
-          :src="form.avatar" 
+        <UserAvatar
+          :src="form.avatar"
+          :alt="`${form.nickname || '当前用户'}的头像`"
           class="w-20 h-20 rounded-full object-cover border-1 border-gray-100"
         />
-        <span v-else class="w-20 h-20 bg-gray-100 rounded-full object-cover border-1 border-gray-100 flex items-center justify-center">
-            <svg class="w-10 h-10 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke-width="2" stroke-linecap="round"/>
-              <circle cx="12" cy="7" r="4" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-        </span>
         <div>
-          <input 
-            type="file" 
+          <input
+            type="file"
             ref="avatarInput"
             accept="image/*"
             class="hidden"
             @change="handleAvatarChange"
           />
-          <button 
+          <button
             class="text-sm px-4 h-9 border border-gray-200 rounded-full text-gray-600 hover:bg-gray-50"
             @click="$refs.avatarInput.click()"
           >
@@ -37,16 +31,16 @@
         </div>
       </div>
 
-      <!-- 表单 -->
+
       <div class="space-y-6">
-        <!-- 昵称 -->
+
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">昵称</label>
           <div class="relative">
             <input
               v-model="form.nickname"
               type="text"
-              class="w-full h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#ff2442]"
+              class="w-full h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[var(--color-primary)]"
               placeholder="请输入昵称"
               maxlength="24"
               @input="updateNicknameCount"
@@ -60,14 +54,14 @@
           </p>
         </div>
 
-        <!-- 飞鱼社区号 -->
+
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">飞鱼社区号</label>
           <div class="relative">
             <input
               v-model="form.fishhubId"
               type="text"
-              class="w-full h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#ff2442]"
+              class="w-full h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[var(--color-primary)]"
               placeholder="请输入飞鱼社区号"
               maxlength="15"
               @input="updateFishhubIdCount"
@@ -81,51 +75,51 @@
           </p>
         </div>
 
-        <!-- 生日 -->
+
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">生日</label>
           <div class="flex gap-3 text-sm">
-            <select 
+            <select
               v-model="form.birthYear"
-              class="h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#ff2442] bg-white"
+              class="h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[var(--color-primary)] bg-white"
             >
-              <option 
-                v-for="year in birthYears" 
-                :key="year" 
+              <option
+                v-for="year in birthYears"
+                :key="year"
                 :value="year"
               >{{ year }}</option>
             </select>
-            <select 
+            <select
               v-model="form.birthMonth"
-              class="h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#ff2442] bg-white"
+              class="h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[var(--color-primary)] bg-white"
             >
-              <option 
-                v-for="month in months" 
-                :key="month.value" 
+              <option
+                v-for="month in months"
+                :key="month.value"
                 :value="month.value"
               >{{ month.label }}</option>
             </select>
-            <select 
+            <select
               v-model="form.birthDay"
-              class="h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#ff2442] bg-white"
+              class="h-10 px-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[var(--color-primary)] bg-white"
             >
-              <option 
-                v-for="day in getDaysInMonth(form.birthYear, form.birthMonth)" 
-                :key="day" 
+              <option
+                v-for="day in getDaysInMonth(form.birthYear, form.birthMonth)"
+                :key="day"
                 :value="day.toString().padStart(2, '0')"
               >{{ day }}日</option>
             </select>
           </div>
         </div>
 
-        <!-- 简介 -->
+
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">简介</label>
           <div class="relative">
             <textarea
               v-model="form.introduction"
               rows="3"
-              class="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[#ff2442] resize-vertical min-h-[80px] max-h-[200px] pr-16"
+              class="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:border-[var(--color-primary)] resize-vertical min-h-[80px] max-h-[200px] pr-16"
               placeholder="介绍一下自己吧"
               maxlength="100"
               @input="updateIntroductionCount"
@@ -136,7 +130,7 @@
           </div>
         </div>
 
-        <!-- 性别 -->
+
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">性别</label>
           <div class="flex gap-4">
@@ -145,7 +139,7 @@
                 v-model="form.sex"
                 type="radio"
                 :value="0"
-                class="w-4 h-4 text-[#ff2442]"
+                class="w-4 h-4 text-[var(--color-primary)]"
               />
               <span class="ml-2">女</span>
             </label>
@@ -154,7 +148,7 @@
                 v-model="form.sex"
                 type="radio"
                 :value="1"
-                class="w-4 h-4 text-[#ff2442]"
+                class="w-4 h-4 text-[var(--color-primary)]"
               />
               <span class="ml-2">男</span>
             </label>
@@ -168,6 +162,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useUserStore } from '@/stores/user'
 import { message } from '@/utils/message'
 import { updateUserProfile, getUserProfile } from '@/api/user'
@@ -183,7 +178,6 @@ const emit = defineEmits(['update:visible', 'update-success'])
 
 const userStore = useUserStore()
 
-// 表单数据
 const form = ref({
   avatar: '',
   avatarFile: null,
@@ -196,53 +190,42 @@ const form = ref({
   sex: 0
 })
 
-// 昵称字数计数
 const nicknameCount = ref(0)
-// 飞鱼社区号字数计数
 const fishhubIdCount = ref(0)
-// 简介字数计数
 const introductionCount = ref(0)
 
-// 更新昵称字数计数
 const updateNicknameCount = () => {
   nicknameCount.value = form.value.nickname.length
 }
 
-// 更新飞鱼社区号字数计数
 const updateFishhubIdCount = () => {
   fishhubIdCount.value = form.value.fishhubId.length
 }
 
-// 更新简介字数计数
 const updateIntroductionCount = () => {
   introductionCount.value = form.value.introduction.length
 }
 
-// 监听 visible 变化，当打开模态框时初始化表单数据
 watch(() => props.visible, (newValue) => {
   if (newValue) {
     initFormData()
   }
 })
 
-// 在组件挂载时初始化表单数据
 onMounted(() => {
   if (props.visible) {
     initFormData()
   }
 })
 
-// 初始化表单数据
 const initFormData = () => {
   if (userStore.profile) {
-    // 从 userStore 获取数据并填充表单
     const profile = userStore.profile
-    
-    // 处理生日格式 (从 "YYYY-MM-DD" 格式拆分为年、月、日)
+
     let birthYear = ''
     let birthMonth = ''
     let birthDay = ''
-    
+
     if (profile.birthday) {
       const birthdayParts = profile.birthday.split('-')
       if (birthdayParts.length === 3) {
@@ -251,16 +234,7 @@ const initFormData = () => {
         birthDay = birthdayParts[2]
       }
     }
-    
-    // 如果没有有效的生日数据，设置默认值
-    if (!birthYear) {
-      const defaultDate = new Date()
-      defaultDate.setFullYear(defaultDate.getFullYear() - 25)
-      birthYear = defaultDate.getFullYear().toString()
-      birthMonth = (defaultDate.getMonth() + 1).toString().padStart(2, '0')
-      birthDay = defaultDate.getDate().toString().padStart(2, '0')
-    }
-    
+
     form.value = {
       avatar: profile.avatar || '',
       avatarFile: null,
@@ -272,34 +246,27 @@ const initFormData = () => {
       introduction: profile.introduction || '',
       sex: profile.sex !== null ? profile.sex : 0
     }
-    
-    // 初始化昵称字数计数
+
     nicknameCount.value = form.value.nickname.length
-    // 初始化飞鱼社区号字数计数
     fishhubIdCount.value = form.value.fishhubId.length
-    // 初始化简介字数计数
     introductionCount.value = form.value.introduction.length
   }
 }
 
-// 生成年份选项（从当前年份开始，往前推算100年）
 const birthYears = computed(() => {
   const currentYear = new Date().getFullYear()
   const years = []
-  // 从当前年份开始，往前推算100年
   for (let i = currentYear; i >= currentYear - 100; i--) {
     years.push(i.toString())
   }
   return years
 })
 
-// 获取指定年月的天数
 const getDaysInMonth = (year, month) => {
   if (!year || !month) return 31
   return new Date(year, month, 0).getDate()
 }
 
-// 月份选项
 const months = [
   { value: '01', label: '1月' },
   { value: '02', label: '2月' },
@@ -315,42 +282,35 @@ const months = [
   { value: '12', label: '12月' }
 ]
 
-// 表单验证和提交
-const handleConfirm = () => {
-  // 验证表单
+const handleConfirm = async () => {
   if (!form.value.nickname.trim()) {
     message.show('请输入昵称')
     return
   }
-  
-  // 昵称长度验证
+
   const nickname = form.value.nickname.trim()
   if (nickname.length < 2 || nickname.length > 24) {
     message.show('昵称长度应为 2-24 个字符')
     return
   }
-  
-  // 昵称特殊字符验证
+
   const invalidCharsRegex = /[@<>/\\:*?"'|]/
   if (invalidCharsRegex.test(nickname)) {
     message.show('昵称不能包含 @<>/ 等特殊字符')
     return
   }
 
-  // 飞鱼社区号验证
   if (!form.value.fishhubId.trim()) {
     message.show('请输入飞鱼社区号')
     return
   }
-  
-  // 飞鱼社区号长度验证
+
   const fishhubId = form.value.fishhubId.trim()
   if (fishhubId.length < 6 || fishhubId.length > 15) {
     message.show('飞鱼社区号长度应为 6-15 个字符')
     return
   }
 
-  // 飞鱼社区号格式验证：必须包含英文字母，且只能包含英文、数字和下划线
   const hasLetter = /[a-zA-Z]/.test(fishhubId)
   const validFormat = /^[a-zA-Z0-9_]+$/.test(fishhubId)
 
@@ -364,76 +324,66 @@ const handleConfirm = () => {
     return
   }
 
-  // 生日验证
-  if (!form.value.birthYear || !form.value.birthMonth || !form.value.birthDay) {
+  const birthdayParts = [form.value.birthYear, form.value.birthMonth, form.value.birthDay]
+  const selectedBirthdayParts = birthdayParts.filter(Boolean).length
+  // 生日可以整体留空，但部分日期无法组成合法值。
+  if (selectedBirthdayParts > 0 && selectedBirthdayParts < 3) {
     message.show('请选择完整的生日信息')
     return
   }
 
-  // 组合生日为 YYYY-MM-DD 格式
-  const birthday = `${form.value.birthYear}-${form.value.birthMonth}-${form.value.birthDay}`
-  
+  const birthday = selectedBirthdayParts === 3
+    ? `${form.value.birthYear}-${form.value.birthMonth}-${form.value.birthDay}`
+    : null
+
   try {
-    // 准备提交的数据
     const profileData = {
-      avatar: form.value.avatarFile, // 如果有新上传的头像文件
+      avatar: form.value.avatarFile,
       nickname: form.value.nickname,
-      fishhubId: form.value.fishhubId,
+      fishhubId,
       birthday,
       introduction: form.value.introduction,
       sex: form.value.sex
     }
-    
-    // 调用 API 更新用户资料
-    updateUserProfile(profileData).then(res => {
-      if (!res.success) {
-        message.show(res.message || '更新失败，请重试')
-        return
-      }
-      
-      message.show('更新成功')
-      
-      // 获取用户基本信息
-      getUserProfile().then(res => {
-        if (res.success) {
-          userStore.setProfile(res.data)
-        }
-      })
-      
-      // 触发更新成功事件，通知父组件
-      emit('update-success', profileData)
-      
-      // 关闭模态框
-      emit('update:visible', false)
-    })
-    
+
+    const res = await updateUserProfile(profileData)
+    if (!res.success) {
+      message.show(res.message || '更新失败，请重试')
+      return
+    }
+
+    message.show('更新成功')
+
+    const profileRes = await getUserProfile()
+    if (profileRes.success) {
+      userStore.setProfile(profileRes.data)
+    }
+
+    emit('update-success', profileData)
+    emit('update:visible', false)
+
   } catch (error) {
     console.error('更新资料出错:', error)
     message.show('更新失败，请重试')
   }
 }
 
-// 处理头像上传
 const handleAvatarChange = (event) => {
   const file = event.target.files[0]
   if (!file) return
-  
-  // 验证文件类型
+
   if (!file.type.startsWith('image/')) {
     message.show('请上传图片文件')
     return
   }
-  
-  // 验证文件大小（限制为 5MB）
+
   if (file.size > 5 * 1024 * 1024) {
     message.show('图片大小不能超过 5MB')
     return
   }
-  
-  // 存储文件对象
+
   form.value.avatarFile = file
-  
-  // 创建临时 URL 用于预览
+
   const reader = new FileReader()
   reader.onload = (e) => {
     form.value.avatar = e.target.result
@@ -443,7 +393,6 @@ const handleAvatarChange = (event) => {
 </script>
 
 <style scoped>
-/* 自定义下拉框样式 */
 select {
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
@@ -459,9 +408,8 @@ select:focus {
   border-color: var(--color-primary);
 }
 
-/* 禁用状态下的输入框样式 */
 input:disabled {
-  background-color: #f5f5f5;
+  background-color: var(--color-surface-muted);
   cursor: not-allowed;
 }
 
@@ -471,4 +419,4 @@ input:disabled {
   .space-y-6 { row-gap: 20px; }
   .flex.gap-3 { gap: 8px; }
 }
-</style> 
+</style>

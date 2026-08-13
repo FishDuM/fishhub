@@ -268,7 +268,8 @@
       `type` = #{type,jdbcType=TINYINT},
       img_uris = #{imgUris,jdbcType=VARCHAR},
       video_uri = #{videoUri,jdbcType=VARCHAR},
-      update_time = #{updateTime,jdbcType=TIMESTAMP}
+      update_time = #{updateTime,jdbcType=TIMESTAMP},
+      content_uuid = #{contentUuid,jdbcType=VARCHAR}
     where id = #{id,jdbcType=BIGINT}
   </update>
 

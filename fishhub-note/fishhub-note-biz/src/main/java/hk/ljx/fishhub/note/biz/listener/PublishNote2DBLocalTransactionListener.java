@@ -2,24 +2,22 @@ package hk.ljx.fishhub.note.biz.listener;
 
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
-import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.convert.NoteConvert;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.NoteOperateEnum;
 import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.PublishNoteDTO;
+import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
+import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
+import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQTransactionListener;
 import org.apache.rocketmq.spring.core.RocketMQLocalTransactionListener;
 import org.apache.rocketmq.spring.core.RocketMQLocalTransactionState;
-import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.Message;
-import org.springframework.messaging.support.MessageBuilder;
 
 
 @RocketMQTransactionListener
@@ -27,11 +25,13 @@ import org.springframework.messaging.support.MessageBuilder;
 public class PublishNote2DBLocalTransactionListener implements RocketMQLocalTransactionListener {
 
     @Resource
-    private RedisTemplate<String, String> redisTemplate;
-    @Resource
     private NoteDOMapper noteDOMapper;
     @Resource
-    private RocketMQTemplate rocketMQTemplate;
+    private ReliableMqOutbox reliableMqOutbox;
+    @Resource
+    private NotePersistenceService notePersistenceService;
+    @Resource
+    private KeyValueRpcService keyValueRpcService;
 
     /**
      * 执行本地事务
@@ -51,77 +51,54 @@ public class PublishNote2DBLocalTransactionListener implements RocketMQLocalTran
         Long noteId = publishNoteDTO.getId();
         Long creatorId = publishNoteDTO.getCreatorId();
 
-        // 删除个人主页 - 已发布笔记列表缓存
-        // TODO: 应采取灵活的策略，如果是大V, 应该直接更新缓存，而不是直接删除；普通用户则可直接删除
-        String publishedNoteListRedisKey = RedisKeyConstants.buildPublishedNoteListKey(creatorId);
-        redisTemplate.delete(publishedNoteListRedisKey);
+        boolean contentSaveAttempted = false;
 
-        // 2. 执行本地事务（如数据库操作）
+        // 2. 保存正文并写入笔记元数据。KV 不参与 MySQL 事务，因此元数据写入失败时需要补偿删除正文。
         try {
+            if (StringUtils.isNotBlank(publishNoteDTO.getContent())) {
+                contentSaveAttempted = true;
+                boolean contentSaved = keyValueRpcService.saveNoteContent(
+                        publishNoteDTO.getContentUuid(), publishNoteDTO.getContent());
+                if (!contentSaved) {
+                    log.error("## 笔记正文存储失败, noteId={}", noteId);
+                    compensateContentDelete(noteId, publishNoteDTO.getContentUuid());
+                    return RocketMQLocalTransactionState.ROLLBACK;
+                }
+            }
+
             // DTO 转 DO
             NoteDO noteDO = NoteConvert.INSTANCE.convertDTO2DO(publishNoteDTO);
 
-            // 笔记元数据写库
-            noteDOMapper.insert(noteDO);
+            NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
+                    .creatorId(creatorId)
+                    .noteId(noteId)
+                    .type(NoteOperateEnum.PUBLISH.getCode())
+                    .build();
+            String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_PUBLISH;
+            String eventBody = JsonUtils.toJsonString(noteOperateMqDTO);
+
+            // 笔记元数据与发布事件在同一个 MySQL 事务中提交。
+            notePersistenceService.savePublishedNote(noteDO, destination, eventBody);
+
+            // 事务已经提交；即时投递失败时由 outbox 定时补发。
+            reliableMqOutbox.sendNow(MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE, eventBody);
+            reliableMqOutbox.sendNow(destination, eventBody);
         } catch (Exception e) {
             log.error("## 笔记元数据存储失败: ", e);
+            if (contentSaveAttempted) {
+                compensateContentDelete(noteId, publishNoteDTO.getContentUuid());
+            }
             return RocketMQLocalTransactionState.ROLLBACK; // 回滚事务消息
         }
-
-        // 延迟双删：发送延迟消息
-        sendDelayDeleteRedisPublishedNoteListCacheMQ(creatorId);
-
-        // 发送 MQ
-        // 构建消息体 DTO
-        NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
-                .creatorId(creatorId)
-                .noteId(noteId)
-                .type(NoteOperateEnum.PUBLISH.getCode()) // 发布笔记
-                .build();
-
-        // 构建消息对象，并将 DTO 转成 Json 字符串设置到消息体中
-        Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(noteOperateMqDTO))
-                .build();
-
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
-        String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_PUBLISH;
-
-        // 异步发送 MQ 消息，提升接口响应速度
-        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-                log.info("==> 【笔记发布】MQ 发送成功，SendResult: {}", sendResult);
-            }
-
-            @Override
-            public void onException(Throwable throwable) {
-                log.error("==> 【笔记发布】MQ 发送异常: ", throwable);
-            }
-        });
 
         // 3. 提交事务状态，“half 消息” 转换为正式消息
         return RocketMQLocalTransactionState.COMMIT;
     }
 
-    private void sendDelayDeleteRedisPublishedNoteListCacheMQ(Long userId) {
-        Message<String> message = MessageBuilder.withPayload(String.valueOf(userId))
-                .build();
-
-        rocketMQTemplate.asyncSend(MQConstants.TOPIC_DELAY_DELETE_PUBLISHED_NOTE_LIST_REDIS_CACHE, message,
-                new SendCallback() {
-                    @Override
-                    public void onSuccess(SendResult sendResult) {
-                        log.info("## 延时删除 Redis 已发布笔记列表缓存消息发送成功...");
-                    }
-
-                    @Override
-                    public void onException(Throwable e) {
-                        log.error("## 延时删除 Redis 已发布笔记列表缓存消息发送失败...", e);
-                    }
-                },
-                3000, // 超时时间
-                1 // 延迟级别，1 表示延时 1s
-        );
+    private void compensateContentDelete(Long noteId, String contentUuid) {
+        if (!keyValueRpcService.deleteNoteContent(contentUuid)) {
+            log.error("## 笔记正文回滚补偿失败, noteId={}, contentUuid={}", noteId, contentUuid);
+        }
     }
 
     /**

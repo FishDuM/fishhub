@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="hk.ljx.fishhub.comment.biz.domain.mapper.MqSendFailureMapper">
+
+    <resultMap id="BaseResultMap" type="hk.ljx.fishhub.comment.biz.domain.dataobject.MqSendFailureDO">
+        <id column="id" property="id"/>
+        <result column="message_key" property="messageKey"/>
+        <result column="topic" property="topic"/>
+        <result column="body" property="body"/>
+        <result column="retry_count" property="retryCount"/>
+        <result column="next_retry_time" property="nextRetryTime"/>
+        <result column="status" property="status"/>
+        <result column="locked_at" property="lockedAt"/>
+        <result column="last_error" property="lastError"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <insert id="insertPending" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.MqSendFailureDO">
+        insert into t_mq_send_failure
+            (message_key, topic, body, retry_count, next_retry_time, status, last_error, create_time, update_time)
+        values
+            (#{messageKey}, #{topic}, #{body}, 0, #{nextRetryTime}, 0, '', now(), now())
+        on duplicate key update
+            topic = values(topic),
+            body = values(body),
+            next_retry_time = least(next_retry_time, values(next_retry_time)),
+            status = 0,
+            locked_at = null,
+            update_time = now()
+    </insert>
+
+    <insert id="insertOrRefresh" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.MqSendFailureDO">
+        insert into t_mq_send_failure
+            (message_key, topic, body, retry_count, next_retry_time, status, last_error, create_time, update_time)
+        values
+            (#{messageKey}, #{topic}, #{body}, 0, #{nextRetryTime}, 0, #{lastError}, now(), now())
+        on duplicate key update
+            topic = values(topic),
+            body = values(body),
+            next_retry_time = least(next_retry_time, values(next_retry_time)),
+            status = 0,
+            locked_at = null,
+            last_error = values(last_error),
+            update_time = now()
+    </insert>
+
+    <select id="selectRetryable" resultMap="BaseResultMap">
+        select id, message_key, topic, body, retry_count, next_retry_time, status,
+               locked_at, last_error, create_time, update_time
+        from t_mq_send_failure
+        where (status = 0 and next_retry_time &lt;= #{now})
+           or (status = 1 and locked_at &lt;= #{lockExpiredAt})
+        order by id
+        limit #{limit}
+    </select>
+
+    <update id="claim">
+        update t_mq_send_failure
+        set status = 1, locked_at = #{now}, update_time = #{now}
+        where id = #{id}
+          and ((status = 0 and next_retry_time &lt;= #{now})
+            or (status = 1 and locked_at &lt;= #{lockExpiredAt}))
+    </update>
+
+    <delete id="deleteById">
+        delete from t_mq_send_failure where id = #{id}
+    </delete>
+
+    <delete id="deleteByMessageKey">
+        delete from t_mq_send_failure where message_key = #{messageKey}
+    </delete>
+
+    <update id="releaseForRetry">
+        update t_mq_send_failure
+        set retry_count = #{retryCount},
+            next_retry_time = #{nextRetryTime},
+            status = 0,
+            locked_at = null,
+            last_error = #{lastError},
+            update_time = now()
+        where id = #{id}
+    </update>
+</mapper>

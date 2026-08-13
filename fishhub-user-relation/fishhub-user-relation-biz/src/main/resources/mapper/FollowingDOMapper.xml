@@ -63,6 +63,10 @@
     values (#{id,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{followingUserId,jdbcType=BIGINT}, 
       #{createTime,jdbcType=TIMESTAMP})
   </insert>
+  <insert id="insertIgnore" parameterType="hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO">
+    insert ignore into t_following (user_id, following_user_id, create_time)
+    values (#{userId,jdbcType=BIGINT}, #{followingUserId,jdbcType=BIGINT}, #{createTime,jdbcType=TIMESTAMP})
+  </insert>
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO">
     insert into t_following
     <trim prefix="(" suffix=")" suffixOverrides=",">

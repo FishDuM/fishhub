@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 
 @RestController
 @RequestMapping("/relation")
@@ -32,6 +34,19 @@ public class RelationController {
     @ApiOperationLog(description = "取关用户")
     public Response<?> unfollow(@Validated @RequestBody UnfollowUserReqVO unfollowUserReqVO) {
         return relationService.unfollow(unfollowUserReqVO);
+    }
+
+    @PostMapping("/is-following")
+    @ApiOperationLog(description = "查询当前用户是否关注目标用户")
+    public Response<Boolean> isFollowing(@Validated @RequestBody CheckFollowingReqVO checkFollowingReqVO) {
+        return relationService.isFollowing(checkFollowingReqVO);
+    }
+
+    @PostMapping("/is-following/batch")
+    @ApiOperationLog(description = "批量查询当前用户已关注的用户")
+    public Response<List<Long>> findFollowingIds(
+            @Validated @RequestBody CheckFollowingBatchReqVO checkFollowingBatchReqVO) {
+        return relationService.findFollowingIds(checkFollowingBatchReqVO);
     }
 
     @PostMapping("/following/list")

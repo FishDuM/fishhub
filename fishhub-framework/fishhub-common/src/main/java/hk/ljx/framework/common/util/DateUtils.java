@@ -75,20 +75,4 @@ public class DateUtils {
         return period.getYears();
     }
 
-    public static void main(String[] args) {
-        // 测试示例
-        LocalDateTime dateTime1 = LocalDateTime.now().minusMinutes(10); // 10分钟前
-        LocalDateTime dateTime2 = LocalDateTime.now().minusHours(3); // 3小时前
-        LocalDateTime dateTime3 = LocalDateTime.now().minusDays(1).minusHours(5); // 昨天 20:12
-        LocalDateTime dateTime4 = LocalDateTime.now().minusDays(2); // 2天前
-        LocalDateTime dateTime5 = LocalDateTime.now().minusDays(10); // 11-06
-        LocalDateTime dateTime6 = LocalDateTime.of(2023, 12, 1, 12, 30, 0); // 2023-12-01
-
-        System.out.println(formatRelativeTime(dateTime1)); // 输出 "10分钟前"
-        System.out.println(formatRelativeTime(dateTime2)); // 输出 "3小时前"
-        System.out.println(formatRelativeTime(dateTime3)); // 输出 "昨天 20:12"
-        System.out.println(formatRelativeTime(dateTime4)); // 输出 "2天前"
-        System.out.println(formatRelativeTime(dateTime5)); // 输出 "11-06"
-        System.out.println(formatRelativeTime(dateTime6)); // 输出 "2023-12-01"
-    }
 }

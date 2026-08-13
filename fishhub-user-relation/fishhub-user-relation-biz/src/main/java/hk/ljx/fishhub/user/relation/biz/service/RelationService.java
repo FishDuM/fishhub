@@ -4,6 +4,8 @@ import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.relation.biz.model.vo.*;
 
+import java.util.List;
+
 
 
 public interface RelationService {
@@ -21,6 +23,10 @@ public interface RelationService {
      * @return
      */
     Response<?> unfollow(UnfollowUserReqVO unfollowUserReqVO);
+
+    Response<Boolean> isFollowing(CheckFollowingReqVO checkFollowingReqVO);
+
+    Response<List<Long>> findFollowingIds(CheckFollowingBatchReqVO checkFollowingBatchReqVO);
 
     /**
      * 查询关注列表

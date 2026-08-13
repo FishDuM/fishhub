@@ -30,6 +30,10 @@
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-user-api</artifactId>
         </dependency>
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-note-api</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>hk.ljx</groupId>
@@ -115,12 +119,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
-        </dependency>
-
-        <!-- 快手 Buffer Trigger -->
-        <dependency>
-            <groupId>com.github.phantomthief</groupId>
-            <artifactId>buffer-trigger</artifactId>
         </dependency>
 
         <!-- Redis -->

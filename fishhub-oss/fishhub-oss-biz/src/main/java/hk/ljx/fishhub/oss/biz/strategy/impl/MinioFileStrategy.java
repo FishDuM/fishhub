@@ -4,12 +4,14 @@ import hk.ljx.fishhub.oss.biz.config.MinioProperties;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
+import java.net.URI;
 
 
 @Slf4j
@@ -48,16 +50,34 @@ public class MinioFileStrategy implements FileStrategy  {
         log.info("==> 开始上传文件至 Minio, ObjectName: {}", objectName);
 
         // 上传文件至 Minio
-        minioClient.putObject(PutObjectArgs.builder()
-                .bucket(bucketName)
-                .object(objectName)
-                .stream(file.getInputStream(), file.getSize(), -1)
-                .contentType(contentType)
-                .build());
+        try (java.io.InputStream inputStream = file.getInputStream()) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectName)
+                    .stream(inputStream, file.getSize(), -1)
+                    .contentType(contentType)
+                    .build());
+        }
 
         // 返回文件的访问链接
         String url = String.format("%s/%s/%s", minioProperties.getEndpoint(), bucketName, objectName);
         log.info("==> 上传文件至 Minio 成功，访问路径: {}", url);
         return url;
+    }
+
+    @Override
+    @SneakyThrows
+    public void deleteFile(String fileUrl, String bucketName) {
+        String path = URI.create(fileUrl).getPath();
+        String bucketPrefix = "/" + bucketName + "/";
+        if (path == null || !path.startsWith(bucketPrefix) || path.length() == bucketPrefix.length()) {
+            throw new IllegalArgumentException("文件地址不属于当前 MinIO Bucket");
+        }
+        String objectName = path.substring(bucketPrefix.length());
+        minioClient.removeObject(RemoveObjectArgs.builder()
+                .bucket(bucketName)
+                .object(objectName)
+                .build());
+        log.info("==> MinIO 文件删除成功, ObjectName: {}", objectName);
     }
 }

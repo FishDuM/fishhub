@@ -34,13 +34,22 @@ public class AliyunSmsHelper {
         RuntimeOptions runtime = new RuntimeOptions();
 
         try {
-            log.info("==> 开始短信发送, phone: {}, signName: {}, templateCode: {}, templateParam: {}", phone, signName, templateCode, templateParam);
+            log.info("==> 开始短信发送, phoneSuffix: {}, signName: {}, templateCode: {}",
+                    phone.substring(Math.max(0, phone.length() - 4)), signName, templateCode);
 
             // 发送短信
             SendSmsResponse response = client.sendSmsWithOptions(sendSmsRequest, runtime);
 
-            log.info("==> 短信发送成功, response: {}", JsonUtils.toJsonString(response));
-            return true;
+            boolean success = response != null && response.getBody() != null
+                    && "OK".equalsIgnoreCase(response.getBody().getCode());
+            if (success) {
+                log.info("==> 短信发送成功, response: {}", JsonUtils.toJsonString(response));
+            } else {
+                log.warn("==> 短信平台返回失败, code: {}, message: {}",
+                        response == null || response.getBody() == null ? null : response.getBody().getCode(),
+                        response == null || response.getBody() == null ? null : response.getBody().getMessage());
+            }
+            return success;
         } catch (Exception error) {
             log.error("==> 短信发送错误: ", error);
             return false;

@@ -18,10 +18,8 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
 
@@ -32,8 +30,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
-    @Resource(name = "taskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
     private PasswordEncoder passwordEncoder;
     @Resource
@@ -76,6 +72,9 @@ public class AuthServiceImpl implements AuthService {
                 if (!StringUtils.equals(verificationCode, sentCode)) {
                     throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
                 }
+
+                // 校验通过，删除验证码，防止重放攻击
+                redisTemplate.delete(key);
 
                 // RPC: 调用用户服务，注册用户
                 Long userIdTmp = userRpcService.registerUser(phone);
@@ -148,6 +147,31 @@ public class AuthServiceImpl implements AuthService {
      */
     @Override
     public Response<?> updatePassword(UpdatePasswordReqVO updatePasswordReqVO) {
+        String phone = updatePasswordReqVO.getPhone();
+        String verificationCode = updatePasswordReqVO.getCode();
+
+        // 校验入参验证码是否为空
+        Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
+
+        // 构建验证码 Redis Key
+        String key = RedisKeyConstants.buildVerificationCodeKey(phone);
+        // 查询存储在 Redis 中该用户的登录验证码
+        String sentCode = (String) redisTemplate.opsForValue().get(key);
+
+        // 判断用户提交的验证码，与 Redis 中的验证码是否一致
+        if (!StringUtils.equals(verificationCode, sentCode)) {
+            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
+        }
+
+        // 校验通过，删除验证码，防止重放攻击
+        redisTemplate.delete(key);
+
+        // 获取该手机号所属用户信息，并确认是否为当前登录用户
+        FindUserByPhoneRspDTO user = userRpcService.findUserByPhone(phone);
+        if (user == null || !Objects.equals(user.getId(), LoginUserContextHolder.getUserId())) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+        }
+
         // 新密码
         String newPassword = updatePasswordReqVO.getNewPassword();
         // 密码加密
@@ -155,6 +179,9 @@ public class AuthServiceImpl implements AuthService {
 
         // RPC: 调用用户服务：更新密码
         userRpcService.updatePassword(encodePassword);
+
+        // 注销当前用户的登录状态
+        StpUtil.logout(LoginUserContextHolder.getUserId());
 
         return Response.success();
     }

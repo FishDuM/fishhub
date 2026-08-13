@@ -48,6 +48,10 @@
     values (#{id,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{fansUserId,jdbcType=BIGINT}, 
       #{createTime,jdbcType=TIMESTAMP})
   </insert>
+  <insert id="insertIgnore" parameterType="hk.ljx.fishhub.user.relation.biz.domain.dataobject.FansDO">
+    insert ignore into t_fans (user_id, fans_user_id, create_time)
+    values (#{userId,jdbcType=BIGINT}, #{fansUserId,jdbcType=BIGINT}, #{createTime,jdbcType=TIMESTAMP})
+  </insert>
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.user.relation.biz.domain.dataobject.FansDO">
     insert into t_fans
     <trim prefix="(" suffix=")" suffixOverrides=",">

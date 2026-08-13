@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Collections;
 import java.util.stream.Collectors;
 
 
@@ -27,7 +28,7 @@ public class UserRpcService {
      */
     public List<FindUserByIdRspDTO> findByIds(List<Long> userIds) {
         if (CollUtil.isEmpty(userIds)) {
-            return null;
+            return Collections.emptyList();
         }
 
         FindUsersByIdsReqDTO findUsersByIdsReqDTO = new FindUsersByIdsReqDTO();
@@ -37,7 +38,7 @@ public class UserRpcService {
         Response<List<FindUserByIdRspDTO>> response = userFeignApi.findByIds(findUsersByIdsReqDTO);
 
         if (!response.isSuccess() || Objects.isNull(response.getData()) || CollUtil.isEmpty(response.getData())) {
-            return null;
+            return Collections.emptyList();
         }
 
         return response.getData();

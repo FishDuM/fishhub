@@ -166,8 +166,10 @@ public class NoteCountServiceImpl implements NoteCountService {
                                 Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : 0);
                     }
 
-                    // 批量添加 Hash 的计数 Field
-                    operations.opsForHash().putAll(noteCountHashKey, countMap);
+                    // 批量添加 Hash 的计数 Field，使用 putIfAbsent 防止覆盖并发产生的增量数据
+                    for (Map.Entry<String, Long> entry : countMap.entrySet()) {
+                        operations.opsForHash().putIfAbsent(noteCountHashKey, entry.getKey(), entry.getValue());
+                    }
 
                     // 设置随机过期时间 (1小时以内)
                     long expireTime = 60*30 + RandomUtil.randomInt(60 * 30);

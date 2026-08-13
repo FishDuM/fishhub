@@ -24,13 +24,13 @@
 
     <select id="selectUserLikeCountFromNoteLikeTableByUserId" parameterType="map" resultType="int">
         select count(*) from t_note_like where status = 1 and note_id in (
-            select note_id from t_note where creator_id = #{userId}
+            select note_id from t_note where creator_id = #{userId} and status = 1
         )
     </select>
 
     <select id="selectUserCollectCountFromNoteCollectionTableByUserId" parameterType="map" resultType="int">
         select count(*) from t_note_collection where status = 1 and note_id in (
-            select note_id from t_note where creator_id = #{userId}
+            select note_id from t_note where creator_id = #{userId} and status = 1
             )
     </select>
 
@@ -69,6 +69,10 @@
 
     <select id="selectCountFromNoteCollectionTableByUserId" parameterType="map" resultType="int">
         select count(*) from t_note_collection where note_id = #{noteId} and status = 1
+    </select>
+
+    <select id="selectTempTableExists" parameterType="map" resultType="int">
+        select count(*) from information_schema.tables where table_schema = database() and table_name = #{tableName}
     </select>
 
 </mapper>
