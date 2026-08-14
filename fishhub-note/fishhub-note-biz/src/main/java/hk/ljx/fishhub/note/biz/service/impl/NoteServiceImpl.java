@@ -311,7 +311,6 @@ public class NoteServiceImpl implements NoteService {
         String findNoteDetailRspVOStrLocalCache = LOCAL_CACHE.getIfPresent(noteId);
         if (StringUtils.isNotBlank(findNoteDetailRspVOStrLocalCache)) {
             if ("null".equals(findNoteDetailRspVOStrLocalCache)) {
-                requireAccessibleNote(noteId, userId);
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
@@ -329,7 +328,6 @@ public class NoteServiceImpl implements NoteService {
         // 若缓存中有该笔记的数据，则直接返回
         if (StringUtils.isNotBlank(noteDetailJson)) {
             if ("null".equals(noteDetailJson)) {
-                requireAccessibleNote(noteId, userId);
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(noteDetailJson, FindNoteDetailRspVO.class);
@@ -1231,13 +1229,13 @@ public class NoteServiceImpl implements NoteService {
     }
 
     @Override
-    public Response<FindPublishedNoteListRspVO> findCollectedNoteList(FindPublishedNoteListReqVO request) {
+    public Response<FindNoteActionListRspVO> findCollectedNoteList(FindNoteActionListReqVO request) {
         checkCurrentUserOwnsList(request.getUserId());
         return userNoteListService.findCollectedNotes(request);
     }
 
     @Override
-    public Response<FindPublishedNoteListRspVO> findLikedNoteList(FindPublishedNoteListReqVO request) {
+    public Response<FindNoteActionListRspVO> findLikedNoteList(FindNoteActionListReqVO request) {
         checkCurrentUserOwnsList(request.getUserId());
         return userNoteListService.findLikedNotes(request);
     }

@@ -7,8 +7,8 @@ import hk.ljx.framework.common.util.NumberUtils;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
-import hk.ljx.fishhub.note.biz.model.vo.FindPublishedNoteListReqVO;
-import hk.ljx.fishhub.note.biz.model.vo.FindPublishedNoteListRspVO;
+import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.NoteItemRspVO;
 import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -33,17 +32,19 @@ public class UserNoteListService {
     private final CountRpcService countRpcService;
     private final NoteInteractionCacheService noteInteractionCacheService;
 
-    public Response<FindPublishedNoteListRspVO> findCollectedNotes(FindPublishedNoteListReqVO request) {
-        return toResponse(noteDOMapper.selectCollectedNoteListByUserIdAndCursor(request.getUserId(), request.getCursor()));
+    public Response<FindNoteActionListRspVO> findCollectedNotes(FindNoteActionListReqVO request) {
+        return toResponse(noteDOMapper.selectCollectedNoteListByUserIdAndCursor(
+                request.getUserId(), request.getCursorTime(), request.getCursorId()));
     }
 
-    public Response<FindPublishedNoteListRspVO> findLikedNotes(FindPublishedNoteListReqVO request) {
-        return toResponse(noteDOMapper.selectLikedNoteListByUserIdAndCursor(request.getUserId(), request.getCursor()));
+    public Response<FindNoteActionListRspVO> findLikedNotes(FindNoteActionListReqVO request) {
+        return toResponse(noteDOMapper.selectLikedNoteListByUserIdAndCursor(
+                request.getUserId(), request.getCursorTime(), request.getCursorId()));
     }
 
-    private Response<FindPublishedNoteListRspVO> toResponse(List<NoteDO> noteDOS) {
+    private Response<FindNoteActionListRspVO> toResponse(List<NoteDO> noteDOS) {
         if (CollUtil.isEmpty(noteDOS)) {
-            return Response.success(FindPublishedNoteListRspVO.builder().notes(Collections.emptyList()).nextCursor(null).build());
+            return Response.success(FindNoteActionListRspVO.builder().notes(Collections.emptyList()).build());
         }
 
         List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
@@ -57,8 +58,8 @@ public class UserNoteListService {
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
-        Map<Long, FindUserByIdRspDTO> users = noteDOS.stream().map(NoteDO::getCreatorId).distinct()
-                .map(userRpcService::findById).filter(Objects::nonNull)
+        Map<Long, FindUserByIdRspDTO> users = userRpcService.findByIds(noteDOS.stream()
+                .map(NoteDO::getCreatorId).distinct().toList()).stream()
                 .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
         notes.forEach(note -> {
             FindUserByIdRspDTO user = users.get(note.getCreatorId());
@@ -70,8 +71,12 @@ public class UserNoteListService {
 
         applyLikeTotals(notes, countRpcService.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
         applyLikeState(notes);
-        Long nextCursor = noteDOS.stream().map(NoteDO::getId).min(Long::compareTo).orElse(null);
-        return Response.success(FindPublishedNoteListRspVO.builder().notes(notes).nextCursor(nextCursor).build());
+        NoteDO lastNote = noteDOS.get(noteDOS.size() - 1);
+        return Response.success(FindNoteActionListRspVO.builder()
+                .notes(notes)
+                .nextCursorTime(lastNote.getActionTime())
+                .nextCursorId(lastNote.getActionId())
+                .build());
     }
 
     private void applyLikeState(List<NoteItemRspVO> notes) {

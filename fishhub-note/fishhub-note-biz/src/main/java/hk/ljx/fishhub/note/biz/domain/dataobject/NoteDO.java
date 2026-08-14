@@ -45,6 +45,16 @@ public class NoteDO {
     private String contentUuid;
 
     /**
+     * 收藏或点赞关系记录 ID，仅用于互动列表的复合游标。
+     */
+    private Long actionId;
+
+    /**
+     * 最近一次收藏或点赞时间，仅用于互动列表排序与分页。
+     */
+    private LocalDateTime actionTime;
+
+    /**
      * 笔记聚合版本，用于编辑乐观锁与缓存版本校验。
      */
     private Long revision;

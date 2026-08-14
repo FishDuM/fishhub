@@ -225,7 +225,8 @@ CREATE TABLE `t_note_collection`  (
   `status` tinyint NOT NULL DEFAULT 0 COMMENT '收藏状态(0：取消收藏 1：收藏)',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_user_id_note_id`(`user_id` ASC, `note_id` ASC) USING BTREE,
-  INDEX `idx_note_id`(`note_id` ASC) USING BTREE
+  INDEX `idx_note_id`(`note_id` ASC) USING BTREE,
+  INDEX `idx_user_status_create_id`(`user_id` ASC, `status` ASC, `create_time` ASC, `id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记收藏表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -259,7 +260,8 @@ CREATE TABLE `t_note_like`  (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `status` tinyint NOT NULL DEFAULT 0 COMMENT '点赞状态(0：取消点赞 1：点赞)',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_user_id_note_id`(`user_id` ASC, `note_id` ASC) USING BTREE
+  UNIQUE INDEX `uk_user_id_note_id`(`user_id` ASC, `note_id` ASC) USING BTREE,
+  INDEX `idx_user_status_create_id`(`user_id` ASC, `status` ASC, `create_time` ASC, `id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 38 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记点赞表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------

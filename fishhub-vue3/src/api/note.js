@@ -43,10 +43,18 @@ export function getPublishedNoteList(userId, cursor) {
 }
 
 export function getCollectedNoteList(userId, cursor) {
-  return axios.post(`${API_PREFIX}/note/collected/list`, { userId, cursor })
+  return axios.post(`${API_PREFIX}/note/collected/list`, {
+    userId,
+    cursorTime: cursor?.time,
+    cursorId: cursor?.id,
+  })
 }
 
 export function getLikedNoteList(userId, cursor) {
-  return axios.post(`${API_PREFIX}/note/liked/list`, { userId, cursor })
+  return axios.post(`${API_PREFIX}/note/liked/list`, {
+    userId,
+    cursorTime: cursor?.time,
+    cursorId: cursor?.id,
+  })
 }
 

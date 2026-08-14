@@ -392,7 +392,11 @@ const loadNotes = async (isFirstPage = true) => {
     const existingIds = new Set(isFirstPage ? [] : notes.value.map(note => note.id))
     const uniqueNotes = newNotes.filter(note => !existingIds.has(note.id))
     notes.value = isFirstPage ? uniqueNotes : [...notes.value, ...uniqueNotes]
-    nextCursor.value = res.data?.nextCursor ?? null
+    nextCursor.value = requestTab === 'notes'
+      ? res.data?.nextCursor ?? null
+      : res.data?.nextCursorTime && res.data?.nextCursorId
+        ? { time: res.data.nextCursorTime, id: res.data.nextCursorId }
+        : null
     hasMore.value = Boolean(nextCursor.value && newNotes.length)
   } finally {
     if (isCurrentNoteRequest(requestId)) isLoading.value = false

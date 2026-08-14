@@ -3,6 +3,7 @@ package hk.ljx.fishhub.note.biz.domain.mapper;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface NoteDOMapper {
@@ -44,10 +45,12 @@ public interface NoteDOMapper {
                                                           @Param("includePrivate") boolean includePrivate);
 
     List<NoteDO> selectCollectedNoteListByUserIdAndCursor(@Param("userId") Long userId,
-                                                          @Param("cursor") Long cursor);
+                                                          @Param("cursorTime") LocalDateTime cursorTime,
+                                                          @Param("cursorId") Long cursorId);
 
     List<NoteDO> selectLikedNoteListByUserIdAndCursor(@Param("userId") Long userId,
-                                                      @Param("cursor") Long cursor);
+                                                      @Param("cursorTime") LocalDateTime cursorTime,
+                                                      @Param("cursorId") Long cursorId);
 
     long selectDiscoverTotalCount(@Param("channelId") Long channelId);
 

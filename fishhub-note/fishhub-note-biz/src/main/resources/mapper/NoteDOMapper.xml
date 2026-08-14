@@ -18,6 +18,8 @@
     <result column="update_time" jdbcType="TIMESTAMP" property="updateTime" />
     <result column="status" jdbcType="TINYINT" property="status" />
     <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
+    <result column="action_id" jdbcType="BIGINT" property="actionId" />
+    <result column="action_time" jdbcType="TIMESTAMP" property="actionTime" />
     <result column="revision" jdbcType="BIGINT" property="revision" />
   </resultMap>
   <sql id="Base_Column_List">
@@ -69,24 +71,28 @@
   </select>
 
   <select id="selectCollectedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
-    select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri
+    select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri,
+           c.id as action_id, c.create_time as action_time
     from t_note_collection c join t_note n on n.id = c.note_id
     where c.user_id = #{userId} and c.status = 1 and n.visible = 0 and n.status = 1
-    <if test="cursor != null">
-      <![CDATA[ and n.id < #{cursor} ]]>
+    <if test="cursorTime != null and cursorId != null">
+      <![CDATA[ and (c.create_time < #{cursorTime}
+          or (c.create_time = #{cursorTime} and c.id < #{cursorId})) ]]>
     </if>
-    order by n.id desc
+    order by c.create_time desc, c.id desc
     limit 20
   </select>
 
   <select id="selectLikedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
-    select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri
+    select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri,
+           l.id as action_id, l.create_time as action_time
     from t_note_like l join t_note n on n.id = l.note_id
     where l.user_id = #{userId} and l.status = 1 and n.visible = 0 and n.status = 1
-    <if test="cursor != null">
-      <![CDATA[ and n.id < #{cursor} ]]>
+    <if test="cursorTime != null and cursorId != null">
+      <![CDATA[ and (l.create_time < #{cursorTime}
+          or (l.create_time = #{cursorTime} and l.id < #{cursorId})) ]]>
     </if>
-    order by n.id desc
+    order by l.create_time desc, l.id desc
     limit 20
   </select>
 
