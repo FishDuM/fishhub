@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
 import hk.ljx.fishhub.gateway.constant.RedisKeyConstants;
 import jakarta.annotation.Resource;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -34,7 +33,6 @@ public class StpInterfaceImpl implements StpInterface {
      * @param loginType
      * @return
      */
-    @SneakyThrows
     @Override
     public List<String> getPermissionList(Object loginId, String loginType) {
         log.info("## 获取用户权限列表, loginId: {}", loginId);
@@ -45,12 +43,7 @@ public class StpInterfaceImpl implements StpInterface {
         // 根据用户 ID ，从 Redis 中获取该用户的角色集合
         String useRolesValue = redisTemplate.opsForValue().get(userRolesKey);
 
-        if (StringUtils.isBlank(useRolesValue)) {
-            return null;
-        }
-
-        // 将 JSON 字符串转换为 List<String> 角色集合
-        List<String> userRoleKeys = objectMapper.readValue(useRolesValue, new TypeReference<>() {});
+        List<String> userRoleKeys = parseStringList(useRolesValue, userRolesKey);
 
         if (CollUtil.isNotEmpty(userRoleKeys)) {
             // 查询这些角色对应的权限
@@ -67,20 +60,14 @@ public class StpInterfaceImpl implements StpInterface {
 
                 // 遍历所有角色的权限集合，统一添加到 permissions 集合中
                 rolePermissionsValues.forEach(jsonValue -> {
-                    try {
-                        // 将 JSON 字符串转换为 List<String> 权限集合
-                        List<String> rolePermissions = objectMapper.readValue(jsonValue, new TypeReference<>() {});
-                        permissions.addAll(rolePermissions);
-                    } catch (JsonProcessingException e) {
-                        log.error("==> JSON 解析错误: ", e);
-                    }
+                    permissions.addAll(parseStringList(jsonValue, "role-permissions"));
                 });
 
                 // 返回此用户所拥有的权限
                 return permissions;
             }
         }
-        return null;
+        return Collections.emptyList();
     }
 
     /**
@@ -90,7 +77,6 @@ public class StpInterfaceImpl implements StpInterface {
      * @param loginType
      * @return
      */
-    @SneakyThrows
     @Override
     public List<String> getRoleList(Object loginId, String loginType) {
         log.info("## 获取用户角色列表, loginId: {}", loginId);
@@ -101,12 +87,20 @@ public class StpInterfaceImpl implements StpInterface {
         // 根据用户 ID ，从 Redis 中获取该用户的角色集合
         String useRolesValue = redisTemplate.opsForValue().get(userRolesKey);
 
-        if (StringUtils.isBlank(useRolesValue)) {
-            return null;
-        }
+        return parseStringList(useRolesValue, userRolesKey);
+    }
 
-        // 将 JSON 字符串转换为 List<String> 集合
-        return objectMapper.readValue(useRolesValue, new TypeReference<>() {});
+    private List<String> parseStringList(String jsonValue, String key) {
+        if (StringUtils.isBlank(jsonValue)) {
+            return Collections.emptyList();
+        }
+        try {
+            List<String> values = objectMapper.readValue(jsonValue, new TypeReference<>() {});
+            return values == null ? Collections.emptyList() : values;
+        } catch (JsonProcessingException e) {
+            log.error("==> Redis 权限数据解析失败, key: {}", key, e);
+            return Collections.emptyList();
+        }
     }
 
 }

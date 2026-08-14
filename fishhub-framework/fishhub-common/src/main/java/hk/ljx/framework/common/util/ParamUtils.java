@@ -22,6 +22,9 @@ public final class ParamUtils {
      * @return
      */
     public static boolean checkNickname(String nickname) {
+        if (nickname == null) {
+            return false;
+        }
         // 检查长度
         if (nickname.length() < NICK_NAME_MIN_LENGTH || nickname.length() > NICK_NAME_MAX_LENGTH) {
             return false;

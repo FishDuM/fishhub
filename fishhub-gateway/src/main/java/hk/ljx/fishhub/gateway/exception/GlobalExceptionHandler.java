@@ -2,7 +2,6 @@ package hk.ljx.fishhub.gateway.exception;
 
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.NotPermissionException;
-import cn.dev33.satoken.exception.SaTokenException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.gateway.enums.ResponseCodeEnum;
@@ -10,16 +9,20 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
 import org.springframework.core.io.buffer.DataBufferFactory;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
 
 @Component
 @Slf4j
+@Order(-2)
 public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
 
     @Resource
@@ -45,7 +48,14 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
             response.setStatusCode(HttpStatus.FORBIDDEN);
             // 构建响应结果
             result = Response.fail(ResponseCodeEnum.FORBIDDEN);
+        } else if (ex instanceof ResponseStatusException responseStatusException) {
+            HttpStatusCode statusCode = responseStatusException.getStatusCode();
+            response.setStatusCode(statusCode);
+            String message = responseStatusException.getReason();
+            result = Response.fail(String.valueOf(statusCode.value()),
+                    message == null ? ResponseCodeEnum.SYSTEM_ERROR.getErrorMessage() : message);
         } else { // 其他异常，则统一提示 “系统繁忙” 错误
+            response.setStatusCode(HttpStatus.INTERNAL_SERVER_ERROR);
             result = Response.fail(ResponseCodeEnum.SYSTEM_ERROR);
         }
 

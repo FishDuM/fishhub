@@ -344,7 +344,7 @@ public class CommentServiceImpl implements CommentService {
 
         // 若子评论总数为 0，直接返参
         if (count == 0) {
-            return PageResponse.success(null, pageNo, 0);
+            return PageResponse.success(Collections.emptyList(), pageNo, 0, pageSize);
         }
 
         // 分页返参 VO

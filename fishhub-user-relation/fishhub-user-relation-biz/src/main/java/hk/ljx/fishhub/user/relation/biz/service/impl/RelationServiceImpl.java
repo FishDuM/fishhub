@@ -319,7 +319,7 @@ public class RelationServiceImpl implements RelationService {
             long totalPage = PageResponse.getTotalPage(count, limit);
 
             // 请求的页码超出了总页数
-            if (pageNo > totalPage) return PageResponse.success(null, pageNo, count);
+            if (pageNo > totalPage) return PageResponse.success(Collections.emptyList(), pageNo, count, limit);
 
             // 偏移量
             long offset = PageResponse.getOffset(pageNo, limit);

@@ -32,6 +32,14 @@
     select id, password from t_user where phone = #{phone}
   </select>
 
+  <select id="selectActiveByPhone" resultMap="BaseResultMap">
+    select id, password
+    from t_user
+    where phone = #{phone}
+      and status = 0
+      and is_deleted = 0
+  </select>
+
   <select id="selectByIds" resultMap="BaseResultMap">
     select id, nickname, avatar, introduction from t_user
     where status = 0 and is_deleted = 0

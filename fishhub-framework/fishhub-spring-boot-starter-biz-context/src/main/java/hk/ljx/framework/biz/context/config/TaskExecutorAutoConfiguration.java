@@ -1,5 +1,6 @@
 package hk.ljx.framework.biz.context.config;
 
+import com.alibaba.ttl.TtlRunnable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -21,6 +22,7 @@ public class TaskExecutorAutoConfiguration {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(60);
+        executor.setTaskDecorator(TtlRunnable::get);
         executor.initialize();
         return executor;
     }

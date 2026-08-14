@@ -13,24 +13,28 @@ end
 
 for i = 1, batchSize do
     local member = ARGV[(i - 1) * 2 + 1] -- 获取当前评论 ID
-    local score = ARGV[(i - 1) * 2 + 2]  -- 获取当前评论的热度
+    local score = tonumber(ARGV[(i - 1) * 2 + 2]) -- 获取当前评论的热度
 
-    -- 获取 ZSet 的大小
-    local currentSize = redis.call("ZCARD", zsetKey)
-
-    if currentSize < maxSize then
-        -- 如果 ZSet 的大小小于 maxSize，直接添加
+    -- 已在榜单中的评论只更新分值，不能为了更新它而淘汰另一条评论。
+    if redis.call("ZSCORE", zsetKey, member) then
         redis.call("ZADD", zsetKey, score, member)
-    else -- 若已缓存 500 条热点评论
-        -- 获取当前 ZSet 中热度值最小的评论
-        local minEntry = redis.call("ZRANGE", zsetKey, 0, 0, "WITHSCORES")
-        -- 热度最小评论的值
-        local minScore = minEntry[2]
+    else
+        -- 获取 ZSet 的大小
+        local currentSize = redis.call("ZCARD", zsetKey)
 
-        if score > minScore then
-            -- 如果当前评论的热度大于最小热度，替换掉最小的；否则无视
-            redis.call("ZREM", zsetKey, minEntry[1])
+        if currentSize < maxSize then
+            -- 如果 ZSet 的大小小于 maxSize，直接添加
             redis.call("ZADD", zsetKey, score, member)
+        else -- 若已缓存 500 条热点评论
+            -- 获取当前 ZSet 中热度值最小的评论
+            local minEntry = redis.call("ZRANGE", zsetKey, 0, 0, "WITHSCORES")
+            local minScore = tonumber(minEntry[2])
+
+            if score > minScore then
+                -- 如果当前评论的热度大于最小热度，替换掉最小的；否则无视
+                redis.call("ZREM", zsetKey, minEntry[1])
+                redis.call("ZADD", zsetKey, score, member)
+            end
         end
     end
 end

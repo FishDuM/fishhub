@@ -119,7 +119,7 @@ CREATE TABLE `t_comment`  (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
   `child_comment_total` bigint NULL DEFAULT 0 COMMENT '二级评论总数（只有一级评论才需要统计）',
-  `heat` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '评论热度',
+  `heat` decimal(10, 2) NOT NULL DEFAULT 0.00 COMMENT '评论热度',
   `first_reply_comment_id` bigint UNSIGNED NULL DEFAULT 0 COMMENT '最早回复的评论ID (只有一级评论需要)',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_note_id`(`note_id` ASC) USING BTREE,

@@ -87,7 +87,8 @@ public class AuthServiceImpl implements AuthService {
 
                 String encodePassword = findUserByPhoneRspDTO.getPassword();
 
-                boolean isPasswordCorrect = passwordEncoder.matches(password, encodePassword);
+                boolean isPasswordCorrect = StringUtils.isNotBlank(encodePassword)
+                        && passwordEncoder.matches(password, encodePassword);
 
                 if (!isPasswordCorrect) {
                     throw new BizException(ResponseCodeEnum.PHONE_OR_PASSWORD_ERROR);

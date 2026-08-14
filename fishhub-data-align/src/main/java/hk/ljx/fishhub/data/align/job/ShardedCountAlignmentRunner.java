@@ -63,11 +63,10 @@ public class ShardedCountAlignmentRunner {
 
                 for (Long id : ids) {
                     long total = loadAuthoritativeTotal.applyAsLong(id);
-                    if (updateTotal.apply(id, total) > 0) {
-                        String cacheKey = cacheKeyBuilder.apply(id);
-                        if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
-                            redisTemplate.opsForHash().put(cacheKey, cacheField, total);
-                        }
+                    updateTotal.apply(id, total);
+                    String cacheKey = cacheKeyBuilder.apply(id);
+                    if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+                        redisTemplate.opsForHash().put(cacheKey, cacheField, total);
                     }
                     rebuildSearchDocument.accept(id);
                 }

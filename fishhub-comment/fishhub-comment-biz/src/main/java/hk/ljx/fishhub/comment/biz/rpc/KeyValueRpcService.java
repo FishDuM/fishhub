@@ -12,8 +12,8 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 
 @Component
@@ -50,7 +50,7 @@ public class KeyValueRpcService {
         Response<?> response = keyValueFeignApi.batchAddCommentContent(batchAddCommentContentReqDTO);
 
         // 若返参中 success 为 false, 则主动抛出异常，以便调用层回滚事务
-        if (!response.isSuccess()) {
+        if (response == null || !response.isSuccess()) {
             throw new RuntimeException("批量保存评论内容失败");
         }
 
@@ -71,8 +71,8 @@ public class KeyValueRpcService {
 
         Response<List<FindCommentContentRspDTO>> response = keyValueFeignApi.batchFindCommentContent(bathFindCommentContentReqDTO);
 
-        if (!response.isSuccess() || Objects.isNull(response.getData()) || CollUtil.isEmpty(response.getData())) {
-            return null;
+        if (response == null || !response.isSuccess() || CollUtil.isEmpty(response.getData())) {
+            return Collections.emptyList();
         }
 
         return response.getData();
@@ -95,7 +95,7 @@ public class KeyValueRpcService {
         // 调用 KV 存储服务
         Response<?> response = keyValueFeignApi.deleteCommentContent(deleteCommentContentReqDTO);
 
-        if (!response.isSuccess()) {
+        if (response == null || !response.isSuccess()) {
             throw new RuntimeException("删除评论内容失败");
         }
 

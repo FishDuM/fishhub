@@ -52,7 +52,7 @@
           </button>
         </div>
         
-                  <div v-if="users.length > 0" class="bottom-line">
+                  <div v-if="users.length > 0 && !hasMore" class="bottom-line">
                     <div class="line"></div>
                     <div class="text">fish 也是有底线的</div>
                     <div class="line"></div>

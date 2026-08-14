@@ -405,8 +405,8 @@ public class NoteServiceImpl implements NoteService {
                             .topicId(noteDO.getTopicId())
                             .topicName(noteDO.getTopicName())
                             .creatorId(noteDO.getCreatorId())
-                            .creatorName(findUserByIdRspDTO.getNickName())
-                            .avatar(findUserByIdRspDTO.getAvatar())
+                            .creatorName(findUserByIdRspDTO == null ? null : findUserByIdRspDTO.getNickName())
+                            .avatar(findUserByIdRspDTO == null ? null : findUserByIdRspDTO.getAvatar())
                             .videoUri(noteDO.getVideoUri())
                             .updateTime(noteDO.getUpdateTime())
                             .visible(noteDO.getVisible())
@@ -1186,9 +1186,6 @@ public class NoteServiceImpl implements NoteService {
                         List<Long> noteIds = noteDOS.stream().map(NoteDO::getId).toList();
                         return countRpcService.findByNoteIds(noteIds);
                     }, threadPoolTaskExecutor);
-
-            // 等待所有任务完成，并合并结果
-            CompletableFuture.allOf(userFuture, noteCountFuture).join();
 
             try {
                 FindUserByIdRspDTO findUserByIdRspDTO = userFuture.get();

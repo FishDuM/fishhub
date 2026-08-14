@@ -30,7 +30,7 @@ public class UserRpcService {
 
         Response<Long> response = userFeignApi.registerUser(registerUserReqDTO);
 
-        if (!response.isSuccess()) {
+        if (response == null || !response.isSuccess()) {
             return null;
         }
 
@@ -49,7 +49,7 @@ public class UserRpcService {
 
         Response<FindUserByPhoneRspDTO> response = userFeignApi.findByPhone(findUserByPhoneReqDTO);
 
-        if (!response.isSuccess()) {
+        if (response == null || !response.isSuccess()) {
             return null;
         }
 

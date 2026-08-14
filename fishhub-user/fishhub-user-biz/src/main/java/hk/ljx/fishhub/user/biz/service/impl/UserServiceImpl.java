@@ -321,7 +321,7 @@ public class UserServiceImpl implements UserService {
         String phone = findUserByPhoneReqDTO.getPhone();
 
         // 根据手机号查询用户信息
-        UserDO userDO = userDOMapper.selectByPhone(phone);
+        UserDO userDO = userDOMapper.selectActiveByPhone(phone);
 
         // 判空
         if (Objects.isNull(userDO)) {

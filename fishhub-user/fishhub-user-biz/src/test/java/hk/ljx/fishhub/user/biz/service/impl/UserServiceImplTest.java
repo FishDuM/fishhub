@@ -5,7 +5,9 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -69,5 +71,20 @@ class UserServiceImplTest {
                 .map(FindUserByIdRspDTO::getId)
                 .toList());
         verify(userDOMapper).selectByIds(List.of(3L));
+    }
+
+    @Test
+    void findByPhoneShouldOnlyReturnActiveUser() {
+        UserDO user = UserDO.builder().id(1L).password("encoded-password").build();
+        FindUserByPhoneReqDTO request = new FindUserByPhoneReqDTO();
+        request.setPhone("13800138000");
+        when(userDOMapper.selectActiveByPhone("13800138000")).thenReturn(user);
+
+        Response<FindUserByPhoneRspDTO> response = userService.findByPhone(request);
+
+        assertTrue(response.isSuccess());
+        assertEquals(1L, response.getData().getId());
+        assertEquals("encoded-password", response.getData().getPassword());
+        verify(userDOMapper).selectActiveByPhone("13800138000");
     }
 }

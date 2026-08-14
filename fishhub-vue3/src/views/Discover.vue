@@ -95,17 +95,17 @@ const getColumnNotes = (colIndex) => {
 
 const loadingRef = ref(null)
 
-const activeChannelId = ref(0)
+const activeChannelId = ref('0')
 
 const showModal = ref(false)
 const selectedNote = ref(null)
 
 const getChannelIdFromRoute = () => {
   const channelId = route.query.channelId
-  return channelId ? parseInt(channelId) : 0
+  return channelId ? String(channelId) : '0'
 }
 
-const loadNotes = async (channelId = 0, isFirstPage = true) => {
+const loadNotes = async (channelId = '0', isFirstPage = true) => {
   if (!isFirstPage && isLoading.value) return
 
   const requestId = isFirstPage ? beginRequest() : beginRequest()
@@ -167,7 +167,7 @@ const handleChannelChange = (channelId) => {
 }
 
 const updateRouteQuery = (channelId) => {
-  const query = channelId === 0 ? {} : { channelId }
+  const query = channelId === '0' ? {} : { channelId }
 
   // 频道切换属于同页筛选，不应为每次点击新增浏览器历史记录。
   router.replace({
@@ -218,7 +218,7 @@ onBeforeUnmount(() => {
 })
 
 watch(() => route.query.channelId, (newChannelId) => {
-  const channelId = newChannelId ? parseInt(newChannelId) : 0
+  const channelId = newChannelId ? String(newChannelId) : '0'
   if (activeChannelId.value !== channelId) {
     activeChannelId.value = channelId
     loadNotes(channelId, true)
