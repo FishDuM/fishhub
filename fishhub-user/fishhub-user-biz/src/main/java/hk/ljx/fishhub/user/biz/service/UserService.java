@@ -7,6 +7,7 @@ import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 
 import java.util.List;
 
@@ -23,12 +24,12 @@ public interface UserService {
     Response<?> updateUserInfo(UpdateUserInfoReqVO updateUserInfoReqVO);
 
     /**
-     * 用户注册
+     * 查询手机号对应的可登录账号；不存在时创建默认账号。
      *
-     * @param registerUserReqDTO
+     * @param request
      * @return
      */
-    Response<Long> register(RegisterUserReqDTO registerUserReqDTO);
+    Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(ResolveLoginableUserReqDTO request);
 
     /**
      * 根据手机号查询用户信息

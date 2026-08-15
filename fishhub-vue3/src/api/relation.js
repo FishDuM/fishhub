@@ -18,12 +18,11 @@ export function checkFollowingBatch(targetUserIds) {
   return axios.post(`${API_PREFIX}/is-following/batch`, { targetUserIds })
 }
 
-export function getFollowingList(userId, pageNo) {
-  return axios.post(`${API_PREFIX}/following/list`, { userId, pageNo })
+export function getFollowingList(userId, cursor) {
+  return axios.post(`${API_PREFIX}/following/list`, { userId, cursor })
 }
 
-export function getFansList(userId, pageNo) {
-  return axios.post(`${API_PREFIX}/fans/list`, { userId, pageNo })
+export function getFansList(userId, cursor) {
+  return axios.post(`${API_PREFIX}/fans/list`, { userId, cursor })
 }
-
 

@@ -1,7 +1,6 @@
 package hk.ljx.fishhub.user.relation.biz.controller;
 
 import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
-import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.relation.biz.model.vo.*;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
@@ -51,13 +50,13 @@ public class RelationController {
 
     @PostMapping("/following/list")
     @ApiOperationLog(description = "查询用户关注列表")
-    public PageResponse<FindFollowingUserRspVO> findFollowingList(@Validated @RequestBody FindFollowingListReqVO findFollowingListReqVO) {
+    public RelationCursorPageResponse<FindFollowingUserRspVO> findFollowingList(@Validated @RequestBody FindFollowingListReqVO findFollowingListReqVO) {
         return relationService.findFollowingList(findFollowingListReqVO);
     }
 
     @PostMapping("/fans/list")
     @ApiOperationLog(description = "查询用户粉丝列表")
-    public PageResponse<FindFansUserRspVO> findFansList(@Validated @RequestBody FindFansListReqVO findFansListReqVO) {
+    public RelationCursorPageResponse<FindFansUserRspVO> findFansList(@Validated @RequestBody FindFansListReqVO findFansListReqVO) {
         return relationService.findFansList(findFansListReqVO);
     }
 

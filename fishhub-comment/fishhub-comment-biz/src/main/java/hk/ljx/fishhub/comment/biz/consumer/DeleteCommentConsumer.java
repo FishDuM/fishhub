@@ -3,17 +3,16 @@ package hk.ljx.fishhub.comment.biz.consumer;
 import cn.hutool.crypto.digest.DigestUtil;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
-import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
-import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.MqConsumeRecordMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
-import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.model.dto.DeleteCommentContentMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.InvalidateCommentCacheMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.InvalidateChildCommentListCacheMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.InvalidateOneLevelCommentCacheMqDTO;
 import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import jakarta.annotation.Resource;
@@ -21,7 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -52,10 +50,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     private MqConsumeRecordMapper mqConsumeRecordMapper;
     @Resource
     private SendMqRetryHelper sendMqRetryHelper;
-    @Resource
-    private RedisTemplate<String, Object> redisTemplate;
-    @Resource
-    private CommentDetailCache commentDetailCache;
     @Resource
     private TransactionTemplate transactionTemplate;
 
@@ -103,6 +97,18 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                         .eventId(java.util.UUID.randomUUID().toString())
                         .noteId(root.getNoteId())
                         .build()) : null;
+        Long childListParentCommentId = Objects.equals(root.getLevel(), CommentLevelEnum.ONE.getCode())
+                ? root.getId() : root.getParentId();
+        String childListInvalidationBody = JsonUtils.toJsonString(InvalidateChildCommentListCacheMqDTO.builder()
+                .eventId(java.util.UUID.randomUUID().toString())
+                .parentCommentId(childListParentCommentId)
+                .build());
+        String commentCacheInvalidationBody = JsonUtils.toJsonString(InvalidateCommentCacheMqDTO.builder()
+                .eventId(java.util.UUID.randomUUID().toString())
+                .deletedCommentIds(targetIds)
+                .parentCommentId(Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())
+                        ? root.getParentId() : null)
+                .build());
 
         boolean deleted = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             // 消费幂等：并发重投时只允许一个消费者执行扣减
@@ -129,6 +135,10 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                 sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE,
                         oneLevelCacheInvalidationBody);
             }
+            sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE,
+                    childListInvalidationBody);
+            sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_COMMENT_CACHE,
+                    commentCacheInvalidationBody);
 
             commentLikeDOMapper.deleteByCommentIds(targetIds);
             commentDOMapper.deleteByIds(targetIds);
@@ -148,7 +158,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             return;
         }
 
-        invalidateRedis(root, targetIds);
         contentDeletionBodies.forEach(bodyItem ->
                 sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
         if (heatUpdateBody != null) {
@@ -160,6 +169,10 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE,
                     oneLevelCacheInvalidationBody);
         }
+        sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE,
+                childListInvalidationBody);
+        sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_COMMENT_CACHE,
+                commentCacheInvalidationBody);
     }
 
     private List<CommentDO> collectDeleteTargets(CommentDO root) {
@@ -183,28 +196,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             }
         }
         return targets;
-    }
-
-    private void invalidateRedis(CommentDO root, List<Long> targetIds) {
-        if (Objects.equals(root.getLevel(), CommentLevelEnum.ONE.getCode())) {
-            redisTemplate.delete(RedisKeyConstants.buildChildCommentListKey(root.getId()));
-        } else {
-            redisTemplate.opsForZSet().remove(
-                    RedisKeyConstants.buildChildCommentListKey(root.getParentId()), targetIds.toArray());
-            redisTemplate.delete(RedisKeyConstants.buildCountCommentKey(root.getParentId()));
-            redisTemplate.delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(root.getParentId()));
-        }
-        List<String> keys = new ArrayList<>();
-        List<String> detailKeys = new ArrayList<>();
-        if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
-            detailKeys.add(RedisKeyConstants.buildCommentDetailKey(root.getParentId()));
-        }
-        targetIds.forEach(id -> {
-            detailKeys.add(RedisKeyConstants.buildCommentDetailKey(id));
-            keys.add(RedisKeyConstants.buildCountCommentKey(id));
-        });
-        redisTemplate.delete(keys);
-        commentDetailCache.delete(detailKeys);
     }
 
 }

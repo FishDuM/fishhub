@@ -37,6 +37,7 @@ import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -46,6 +47,7 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -74,6 +76,8 @@ public class UserServiceImpl implements UserService {
     private OssRpcService ossRpcService;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
     @Resource(name = "fishhubTaskExecutor")
@@ -248,24 +252,23 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 用户注册
+     * 查询手机号对应的可登录账号；不存在时创建默认账号。
      *
-     * @param registerUserReqDTO
+     * @param request
      * @return
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Response<Long> register(RegisterUserReqDTO registerUserReqDTO) {
-        String phone = registerUserReqDTO.getPhone();
+    public Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(ResolveLoginableUserReqDTO request) {
+        String phone = request.getPhone();
 
-        // 先判断该手机号是否已被注册
-        UserDO userDO1 = userDOMapper.selectByPhone(phone);
+        // 唯一索引上的行锁/间隙锁使同一手机号的“查询或注册”串行，避免并发重复创建。
+        UserDO userDO1 = userDOMapper.selectByPhoneForUpdate(phone);
 
         log.info("手机号查询完成，found={}", userDO1 != null);
 
-        // 若已注册，则直接返回用户 ID
         if (Objects.nonNull(userDO1)) {
-            return Response.success(userDO1.getId());
+            return resolvedLoginableUserResponse(userDO1);
         }
 
         // 否则注册新用户
@@ -286,7 +289,13 @@ public class UserServiceImpl implements UserService {
                 .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
                 .build();
 
-        userDOMapper.insert(userDO);
+        if (userDOMapper.insertIfAbsent(userDO) == 0) {
+            UserDO existingUser = userDOMapper.selectByPhoneForUpdate(phone);
+            if (existingUser == null) {
+                throw new IllegalStateException("手机号账号创建后未找到");
+            }
+            return resolvedLoginableUserResponse(existingUser);
+        }
 
         // 给该用户分配一个默认角色
         UserRoleDO userRoleDO = UserRoleDO.builder()
@@ -305,9 +314,18 @@ public class UserServiceImpl implements UserService {
         roles.add(roleDO.getRoleKey());
 
         String userRolesKey = RedisKeyConstants.buildUserRoleKey(userId);
-        redisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
+        stringRedisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
 
-        return Response.success(userId);
+        return resolvedLoginableUserResponse(userDO);
+    }
+
+    private Response<ResolveLoginableUserRspDTO> resolvedLoginableUserResponse(UserDO user) {
+        boolean loginable = Objects.equals(user.getStatus(), StatusEnum.ENABLE.getValue())
+                && Objects.equals(user.getIsDeleted(), DeletedEnum.NO.getValue());
+        return Response.success(ResolveLoginableUserRspDTO.builder()
+                .userId(loginable ? user.getId() : null)
+                .loginable(loginable)
+                .build());
     }
 
     /**
@@ -475,7 +493,7 @@ public class UserServiceImpl implements UserService {
 
         // 如果被查询的用户信息，都在 Redis 缓存中, 则直接返回
         if (CollUtil.size(userIds) == CollUtil.size(findUserByIdRspDTOS)) {
-            return Response.success(findUserByIdRspDTOS);
+            return Response.success(orderUsersByRequestIds(userIds, findUserByIdRspDTOS));
         }
 
         // 还有另外两种情况：一种是缓存里没有用户信息数据，还有一种是缓存里数据不全，需要从数据库中补充
@@ -552,7 +570,17 @@ public class UserServiceImpl implements UserService {
             findUserByIdRspDTOS.addAll(findUserByIdRspDTOS2);
         }
 
-        return Response.success(findUserByIdRspDTOS);
+        return Response.success(orderUsersByRequestIds(userIds, findUserByIdRspDTOS));
+    }
+
+    /**
+     * RPC 的顺序契约：返回顺序与请求 ID 顺序一致；不可见用户自然被省略。
+     */
+    private List<FindUserByIdRspDTO> orderUsersByRequestIds(List<Long> userIds,
+                                                            List<FindUserByIdRspDTO> users) {
+        Map<Long, FindUserByIdRspDTO> usersById = users.stream()
+                .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
+        return userIds.stream().map(usersById::get).filter(Objects::nonNull).toList();
     }
 
     /**

@@ -3,10 +3,10 @@ package hk.ljx.fishhub.count.biz.consumer;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
-import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
+import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -14,7 +14,6 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
-import org.springframework.data.redis.core.RedisTemplate;
 
 import java.util.Objects;
 
@@ -32,7 +31,7 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
     @Resource
     private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private UserCountCacheVersionService userCountCacheVersionService;
 
     // 每秒创建 5000 个令牌
     private RateLimiter rateLimiter = RateLimiter.create(5000);
@@ -65,7 +64,7 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
         // 判断数据库中，若原用户的记录不存在，则插入；若记录已存在，则直接更新
         boolean applied = mqIdempotentExecutor.execute("count-following-2db", body,
                 () -> userCountDOMapper.insertOrUpdateFollowingTotalByUserId(count, userId));
-        redisTemplate.delete(RedisKeyConstants.buildCountUserKey(userId));
+        userCountCacheVersionService.advanceVersion(userId);
         if (!applied) {
             log.info("关注计数消息已处理，忽略重复投递");
         }

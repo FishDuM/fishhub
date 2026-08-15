@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.data.align.job;
 
 import com.xxl.job.core.context.XxlJobHelper;
+import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.constant.TableConstants;
 import hk.ljx.fishhub.data.align.domain.mapper.SelectMapper;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -23,6 +25,7 @@ import java.util.function.ToLongFunction;
 public class ShardedCountAlignmentRunner {
 
     private static final int BATCH_SIZE = 1_000;
+    private static final long USER_COUNT_CACHE_VERSION_EXPIRE_SECONDS = 3 * 60 * 60L;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final SelectMapper selectMapper;
@@ -39,6 +42,27 @@ public class ShardedCountAlignmentRunner {
                     Function<Long, String> cacheKeyBuilder,
                     String cacheField,
                     BiConsumer<String, List<Long>> deleteBatch) {
+        run(description, temporaryTablePrefix, loadBatch, loadAuthoritativeTotal, updateTotal,
+                (id, total) -> updateExistingHashCache(cacheKeyBuilder.apply(id), cacheField, total), deleteBatch);
+    }
+
+    public void runUserCount(String description,
+                             String temporaryTablePrefix,
+                             Function<String, List<Long>> loadBatch,
+                             ToLongFunction<Long> loadAuthoritativeTotal,
+                             BiFunction<Long, Long, Integer> updateTotal,
+                             BiConsumer<String, List<Long>> deleteBatch) {
+        run(description, temporaryTablePrefix, loadBatch, loadAuthoritativeTotal, updateTotal,
+                (id, total) -> advanceUserCountCacheVersion(id), deleteBatch);
+    }
+
+    private void run(String description,
+                     String temporaryTablePrefix,
+                     Function<String, List<Long>> loadBatch,
+                     ToLongFunction<Long> loadAuthoritativeTotal,
+                     BiFunction<Long, Long, Integer> updateTotal,
+                     BiConsumer<Long, Long> afterDatabaseUpdate,
+                     BiConsumer<String, List<Long>> deleteBatch) {
         int shardIndex = XxlJobHelper.getShardIndex();
         int shardTotal = XxlJobHelper.getShardTotal();
         int[] shardRange = TableConstants.computeShardRange(shardIndex, shardTotal, tableShards);
@@ -62,10 +86,7 @@ public class ShardedCountAlignmentRunner {
                 for (Long id : ids) {
                     long total = loadAuthoritativeTotal.applyAsLong(id);
                     updateTotal.apply(id, total);
-                    String cacheKey = cacheKeyBuilder.apply(id);
-                    if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
-                        redisTemplate.opsForHash().put(cacheKey, cacheField, total);
-                    }
+                    afterDatabaseUpdate.accept(id, total);
                 }
                 deleteBatch.accept(tableNameSuffix, ids);
                 processedTotal += ids.size();
@@ -77,5 +98,17 @@ public class ShardedCountAlignmentRunner {
 
     public int batchSize() {
         return BATCH_SIZE;
+    }
+
+    private void updateExistingHashCache(String cacheKey, String cacheField, long total) {
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+            redisTemplate.opsForHash().put(cacheKey, cacheField, total);
+        }
+    }
+
+    private void advanceUserCountCacheVersion(Long userId) {
+        String versionKey = RedisKeyConstants.buildCountUserCacheVersionKey(userId);
+        redisTemplate.opsForValue().increment(versionKey);
+        redisTemplate.expire(versionKey, USER_COUNT_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
     }
 }

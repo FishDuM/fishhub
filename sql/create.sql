@@ -162,7 +162,8 @@ CREATE TABLE `t_fans`  (
   `fans_user_id` bigint UNSIGNED NOT NULL COMMENT '粉丝用户ID',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_user_id_fans_user_id`(`user_id` ASC, `fans_user_id` ASC) USING BTREE
+  UNIQUE INDEX `uk_user_id_fans_user_id`(`user_id` ASC, `fans_user_id` ASC) USING BTREE,
+  INDEX `idx_fans_user_id_id`(`user_id` ASC, `id` DESC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 50310 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户粉丝列表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -178,7 +179,8 @@ CREATE TABLE `t_following`  (
   `following_user_id` bigint UNSIGNED NOT NULL COMMENT '关注用户ID',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_user_id_following_user_id`(`user_id` ASC, `following_user_id` ASC) USING BTREE
+  UNIQUE INDEX `uk_user_id_following_user_id`(`user_id` ASC, `following_user_id` ASC) USING BTREE,
+  INDEX `idx_following_user_id_id`(`user_id` ASC, `id` DESC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 91309 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户关注列表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------

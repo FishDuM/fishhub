@@ -5,9 +5,10 @@ import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
-import hk.ljx.fishhub.user.dto.req.RegisterUserReqDTO;
+import hk.ljx.fishhub.user.dto.req.ResolveLoginableUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -19,16 +20,16 @@ public class UserRpcService {
     private UserFeignApi userFeignApi;
 
     /**
-     * 用户注册
+     * 查询手机号对应的可登录账号；不存在时创建默认账号。
      *
      * @param phone
      * @return
      */
-    public Long registerUser(String phone) {
-        RegisterUserReqDTO registerUserReqDTO = new RegisterUserReqDTO();
-        registerUserReqDTO.setPhone(phone);
+    public ResolveLoginableUserRspDTO resolveOrRegisterLoginableUser(String phone) {
+        ResolveLoginableUserReqDTO request = new ResolveLoginableUserReqDTO();
+        request.setPhone(phone);
 
-        Response<Long> response = userFeignApi.registerUser(registerUserReqDTO);
+        Response<ResolveLoginableUserRspDTO> response = userFeignApi.resolveOrRegisterLoginableUser(request);
 
         if (response == null || !response.isSuccess()) {
             return null;

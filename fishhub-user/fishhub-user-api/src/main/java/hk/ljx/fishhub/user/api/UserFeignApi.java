@@ -5,6 +5,7 @@ import hk.ljx.fishhub.user.constant.ApiConstants;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,13 +19,14 @@ public interface UserFeignApi {
     String PREFIX = "/user";
 
     /**
-     * 用户注册
+     * 查询手机号对应的可登录账号；不存在时创建默认账号。
      *
-     * @param registerUserReqDTO
+     * @param request
      * @return
      */
-    @PostMapping(value = PREFIX + "/register")
-    Response<Long> registerUser(@RequestBody RegisterUserReqDTO registerUserReqDTO);
+    @PostMapping(value = PREFIX + "/resolve-loginable")
+    Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(
+            @RequestBody ResolveLoginableUserReqDTO request);
 
     /**
      * 根据手机号查询用户信息

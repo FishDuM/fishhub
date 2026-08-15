@@ -10,6 +10,7 @@ import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.service.UserCountService;
+import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
@@ -37,6 +38,8 @@ public class UserCountServiceImpl implements UserCountService {
     private RedisTemplate<String, Object> redisTemplate;
     @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    @Resource
+    private UserCountCacheVersionService userCountCacheVersionService;
 
     /**
      * 查询用户相关计数
@@ -55,7 +58,8 @@ public class UserCountServiceImpl implements UserCountService {
                 .build();
 
         // 先从 Redis 中查询
-        String userCountHashKey = RedisKeyConstants.buildCountUserKey(userId);
+        long cacheVersion = userCountCacheVersionService.currentVersion(userId);
+        String userCountHashKey = RedisKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
 
         List<Object> counts = redisTemplate.opsForHash()
                 .multiGet(userCountHashKey, List.of(
@@ -121,7 +125,11 @@ public class UserCountServiceImpl implements UserCountService {
         userIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
 
         // 1. 查询 Redis
-        List<String> hashKeys = userIds.stream().map(RedisKeyConstants::buildCountUserKey).toList();
+        List<Long> cacheVersions = userCountCacheVersionService.currentVersions(userIds);
+        List<String> hashKeys = new java.util.ArrayList<>(userIds.size());
+        for (int i = 0; i < userIds.size(); i++) {
+            hashKeys.add(RedisKeyConstants.buildCountUserSnapshotKey(userIds.get(i), cacheVersions.get(i)));
+        }
 
         List<Object> countHashes = redisTemplate.executePipelined(new SessionCallback<>() {
             @Override
@@ -199,7 +207,8 @@ public class UserCountServiceImpl implements UserCountService {
             }
 
             if (userIdsNeedQuery.contains(userId)) {
-                syncHashCount2Redis(RedisKeyConstants.buildCountUserKey(userId), userCountDO,
+                int userIndex = userIds.indexOf(userId);
+                syncHashCount2Redis(RedisKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(userIndex)), userCountDO,
                         null, null, null, null, null);
             }
         }

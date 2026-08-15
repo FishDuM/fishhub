@@ -3,14 +3,11 @@ package hk.ljx.fishhub.data.align.constant;
 public final class RedisKeyConstants {
 
     private static final String DAILY_CHANGE_DEDUP_PREFIX = "dedup:dataAlign:";
-    private static final String COUNT_USER_KEY_PREFIX = "count:user:";
+    private static final String COUNT_USER_VERSION_KEY_PREFIX = "version:count:user:";
     private static final String COUNT_NOTE_KEY_PREFIX = "count:note:";
 
-    public static final String FIELD_FOLLOWING_TOTAL = "followingTotal";
     public static final String FIELD_LIKE_TOTAL = "likeTotal";
     public static final String FIELD_COLLECT_TOTAL = "collectTotal";
-    public static final String FIELD_FANS_TOTAL = "fansTotal";
-    public static final String FIELD_NOTE_TOTAL = "noteTotal";
 
     private RedisKeyConstants() {
     }
@@ -19,8 +16,8 @@ public final class RedisKeyConstants {
         return COUNT_NOTE_KEY_PREFIX + noteId;
     }
 
-    public static String buildCountUserKey(Long userId) {
-        return COUNT_USER_KEY_PREFIX + userId;
+    public static String buildCountUserCacheVersionKey(Long userId) {
+        return COUNT_USER_VERSION_KEY_PREFIX + userId;
     }
 
     public static String buildDailyNoteLikeNoteIdsDedupKey(String date) {

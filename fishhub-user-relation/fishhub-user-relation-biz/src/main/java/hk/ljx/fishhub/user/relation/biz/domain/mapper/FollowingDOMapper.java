@@ -21,31 +21,9 @@ public interface FollowingDOMapper {
 
     List<FollowingDO> selectByUserId(Long userId);
 
-    /**
-     * 查询记录总数
-     *
-     * @param userId
-     * @return
-     */
-    long selectCountByUserId(Long userId);
-
-    /**
-     * 分页查询
-     * @param userId
-     * @param offset
-     * @param limit
-     * @return
-     */
-    List<FollowingDO> selectPageListByUserId(@Param("userId") Long userId,
-                                             @Param("offset") long offset,
-                                             @Param("limit") long limit);
-
-    /**
-     * 查询关注用户列表
-     * @param userId
-     * @return
-     */
-    List<FollowingDO> selectAllByUserId(Long userId);
+    List<FollowingDO> selectCursorPageByUserId(@Param("userId") Long userId,
+                                               @Param("cursor") Long cursor,
+                                               @Param("limit") long limit);
 
     List<Long> selectFollowingUserIds(@Param("userId") Long userId,
                                       @Param("followingUserIds") List<Long> followingUserIds);

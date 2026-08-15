@@ -11,6 +11,7 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.comment.biz.model.dto.CountPublishCommentMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.InvalidateChildCommentListCacheMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.InvalidateOneLevelCommentCacheMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.SyncCommentContentMqDTO;
@@ -280,8 +281,20 @@ public class Comment2DBConsumer {
                     cacheInvalidationBodies.forEach(body -> sendMqRetryHelper.enqueue(
                             MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE, body));
 
+                    List<String> childListInvalidationBodies = inserted.stream()
+                            .filter(comment -> Objects.equals(comment.getLevel(), CommentLevelEnum.TWO.getCode()))
+                            .map(CommentBO::getParentId)
+                            .distinct()
+                            .map(parentCommentId -> JsonUtils.toJsonString(InvalidateChildCommentListCacheMqDTO.builder()
+                                    .eventId(UUID.randomUUID().toString())
+                                    .parentCommentId(parentCommentId)
+                                    .build()))
+                            .toList();
+                    childListInvalidationBodies.forEach(body -> sendMqRetryHelper.enqueue(
+                            MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE, body));
+
                     return new PersistedComments(inserted, countEventBody, contentTaskBodies,
-                            cacheInvalidationBodies);
+                            cacheInvalidationBodies, childListInvalidationBodies);
                 } catch (Exception ex) {
                     status.setRollbackOnly(); // 标记事务为回滚
                     log.error("", ex);
@@ -301,6 +314,8 @@ public class Comment2DBConsumer {
                         persistedComments.countEventBody());
                 persistedComments.cacheInvalidationBodies().forEach(body -> sendMqRetryHelper.sendNow(
                         MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE, body));
+                persistedComments.childListInvalidationBodies().forEach(body -> sendMqRetryHelper.sendNow(
+                        MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE, body));
 
             }
 
@@ -324,7 +339,8 @@ public class Comment2DBConsumer {
     }
 
     private record PersistedComments(List<CommentBO> comments, String countEventBody,
-                                     List<String> contentTaskBodies, List<String> cacheInvalidationBodies) {
+                                     List<String> contentTaskBodies, List<String> cacheInvalidationBodies,
+                                     List<String> childListInvalidationBodies) {
     }
 
     @PreDestroy

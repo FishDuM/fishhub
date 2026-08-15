@@ -8,6 +8,7 @@ import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.model.dto.AggregationCountCollectUnCollectNoteMqDTO;
+import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -33,6 +34,8 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
     private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
+    @Resource
+    private UserCountCacheVersionService userCountCacheVersionService;
 
     // 每秒创建 5000 个令牌
     private RateLimiter rateLimiter = RateLimiter.create(5000);
@@ -66,11 +69,11 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
             });
         });
         redisTemplate.delete(countList.stream()
-                .flatMap(item -> java.util.stream.Stream.of(
-                        RedisKeyConstants.buildCountNoteKey(item.getNoteId()),
-                        RedisKeyConstants.buildCountUserKey(item.getCreatorId())))
+                .map(item -> RedisKeyConstants.buildCountNoteKey(item.getNoteId()))
                 .distinct()
                 .toList());
+        countList.stream().map(AggregationCountCollectUnCollectNoteMqDTO::getCreatorId).distinct()
+                .forEach(userCountCacheVersionService::advanceVersion);
         if (!applied) {
             log.info("笔记收藏计数消息已处理，忽略重复投递");
         }

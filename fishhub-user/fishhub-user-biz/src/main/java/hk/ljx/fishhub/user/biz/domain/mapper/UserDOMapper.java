@@ -10,6 +10,11 @@ public interface UserDOMapper {
 
     int insert(UserDO record);
 
+    /**
+     * 仅当手机号尚未注册时插入。唯一键冲突时返回 0，不覆盖已有账号。
+     */
+    int insertIfAbsent(UserDO record);
+
     int insertSelective(UserDO record);
 
     UserDO selectByPrimaryKey(Long id);
@@ -20,6 +25,11 @@ public interface UserDOMapper {
      * @return
      */
     UserDO selectByPhone(String phone);
+
+    /**
+     * 锁定手机号对应的记录（或唯一索引间隙），用于“查询或注册”流程的并发互斥。
+     */
+    UserDO selectByPhoneForUpdate(String phone);
 
     /**
      * 查询可用于认证的账户。注册查重仍使用 selectByPhone，不能把已注销手机号误判为可重新注册。

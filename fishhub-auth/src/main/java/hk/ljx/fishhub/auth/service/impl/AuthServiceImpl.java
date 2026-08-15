@@ -14,6 +14,7 @@ import hk.ljx.fishhub.auth.model.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.auth.rpc.UserRpcService;
 import hk.ljx.fishhub.auth.service.AuthService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -68,13 +69,16 @@ public class AuthServiceImpl implements AuthService {
 
                 verifyAndConsumeVerificationCode(phone, verificationCode);
 
-                Long userIdTmp = userRpcService.registerUser(phone);
+                ResolveLoginableUserRspDTO resolvedUser = userRpcService.resolveOrRegisterLoginableUser(phone);
 
-                if (Objects.isNull(userIdTmp)) {
+                if (Objects.isNull(resolvedUser)) {
                     throw new BizException(ResponseCodeEnum.LOGIN_FAIL);
                 }
+                if (!resolvedUser.isLoginable()) {
+                    throw new BizException(ResponseCodeEnum.ACCOUNT_NOT_LOGINABLE);
+                }
 
-                userId = userIdTmp;
+                userId = resolvedUser.getUserId();
                 break;
             case PASSWORD: // 密码登录
                 String password = userLoginReqVO.getPassword();

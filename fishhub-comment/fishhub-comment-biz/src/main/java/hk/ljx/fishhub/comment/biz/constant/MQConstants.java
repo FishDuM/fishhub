@@ -54,6 +54,16 @@ public interface MQConstants {
     String TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE = "InvalidateOneLevelCommentCacheTopic";
 
     /**
+     * 二级评论发生增删后的列表缓存失效。事件与评论事实一并写入 outbox。
+     */
+    String TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE = "InvalidateChildCommentListCacheTopic";
+
+    /**
+     * 评论删除后的详情、计数和首回复标识缓存失效。
+     */
+    String TOPIC_INVALIDATE_COMMENT_CACHE = "InvalidateCommentCacheTopic";
+
+    /**
      * Tag 标签：点赞
      */
     String TAG_LIKE = "Like";

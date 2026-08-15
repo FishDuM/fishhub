@@ -7,12 +7,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class RegisterUserReqDTO {
+public class ResolveLoginableUserReqDTO {
 
     /**
      * 手机号
@@ -20,5 +19,4 @@ public class RegisterUserReqDTO {
     @NotBlank(message = "手机号不能为空")
     @PhoneNumber
     private String phone;
-
 }

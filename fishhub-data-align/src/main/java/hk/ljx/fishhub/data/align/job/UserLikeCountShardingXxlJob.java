@@ -1,7 +1,6 @@
 package hk.ljx.fishhub.data.align.job;
 
 import com.xxl.job.core.handler.annotation.XxlJob;
-import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.domain.mapper.DeleteMapper;
 import hk.ljx.fishhub.data.align.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.data.align.domain.mapper.UpdateMapper;
@@ -19,12 +18,10 @@ public class UserLikeCountShardingXxlJob {
 
     @XxlJob("userLikeCountShardingJobHandler")
     public void alignUserLikeCount() {
-        alignmentRunner.run("用户获赞数", "t_data_align_user_like_count_temp_",
+        alignmentRunner.runUserCount("用户获赞数", "t_data_align_user_like_count_temp_",
                 suffix -> selectMapper.selectBatchFromDataAlignUserLikeCountTempTable(suffix, alignmentRunner.batchSize()),
                 selectMapper::selectUserLikeCountFromNoteLikeTableByUserId,
                 updateMapper::updateUserLikeTotalByUserId,
-                RedisKeyConstants::buildCountUserKey,
-                RedisKeyConstants.FIELD_LIKE_TOTAL,
                 deleteMapper::batchDeleteDataAlignUserLikeCountTempTable);
     }
 }

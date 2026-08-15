@@ -22,6 +22,7 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     LOGIN_FAIL("AUTH-20005", "登录失败"),
     VERIFICATION_CODE_SEND_FAIL("AUTH-20006", "验证码发送失败，请稍后重试"),
     PASSWORD_UPDATE_FAIL("AUTH-20007", "密码更新失败，请稍后重试"),
+    ACCOUNT_NOT_LOGINABLE("AUTH-20008", "该账号已被禁用或注销"),
     ;
 
     // 异常码

@@ -2,15 +2,14 @@ package hk.ljx.fishhub.count.biz.consumer;
 
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
-import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.model.dto.NoteOperateMqDTO;
+import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
@@ -24,11 +23,11 @@ import java.util.Objects;
 public class CountNotePublishConsumer implements RocketMQListener<Message> {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
-    @Resource
     private UserCountDOMapper userCountDOMapper;
     @Resource
     private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
+    @Resource
+    private UserCountCacheVersionService userCountCacheVersionService;
 
     @Override
     public void onMessage(Message message) {
@@ -62,10 +61,9 @@ public class CountNotePublishConsumer implements RocketMQListener<Message> {
         // 笔记发布者 ID
         Long creatorId = noteOperateMqDTO.getCreatorId();
 
-        String countUserRedisKey = RedisKeyConstants.buildCountUserKey(creatorId);
         mqIdempotentExecutor.execute("count-note-publish", tagsIdentity(count, bodyJsonStr),
                 () -> userCountDOMapper.insertOrUpdateNoteTotalByUserId(count, creatorId));
-        redisTemplate.delete(countUserRedisKey);
+        userCountCacheVersionService.advanceVersion(creatorId);
     }
 
     private String tagsIdentity(long count, String body) {

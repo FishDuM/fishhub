@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.user.relation.biz.model.vo;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Min;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,6 @@ public class FindFollowingListReqVO {
     @NotNull(message = "查询用户 ID 不能为空")
     private Long userId;
 
-    @NotNull(message = "页码不能为空")
-    private Integer pageNo = 1; // 默认值为第一页
+    @Min(value = 0, message = "游标不能小于 0")
+    private Long cursor = 0L;
 }

@@ -10,11 +10,15 @@ import hk.ljx.fishhub.count.biz.model.dto.AggregationCountLikeUnlikeCommentMqDTO
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 
 @Component
@@ -30,6 +34,8 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
     private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
+    @Resource
+    private RocketMQTemplate rocketMQTemplate;
 
     // 每秒创建 5000 个令牌
     private RateLimiter rateLimiter = RateLimiter.create(5000);
@@ -64,6 +70,14 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
                 .map(item -> RedisKeyConstants.buildCountCommentKey(item.getCommentId()))
                 .distinct()
                 .toList());
+
+        // 无论本次是否为重复投递，都重算热度。这样数据库提交后、发送热度事件前进程崩溃时，
+        // 上游消息重投仍会补齐热度；热度消费者按当前数据库值重算，重复投递安全。
+        Set<Long> commentIds = countList.stream()
+                .map(AggregationCountLikeUnlikeCommentMqDTO::getCommentId)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        rocketMQTemplate.syncSend(MQConstants.TOPIC_COMMENT_HEAT_UPDATE,
+                MessageBuilder.withPayload(JsonUtils.toJsonString(commentIds)).build());
         if (!applied) {
             log.info("评论点赞计数消息已处理，忽略重复投递");
         }

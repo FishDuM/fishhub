@@ -19,31 +19,9 @@ public interface FansDOMapper {
 
     FansDO selectByPrimaryKey(Long id);
 
-    /**
-     * 查询记录总数
-     *
-     * @param userId
-     * @return
-     */
-    long selectCountByUserId(Long userId);
-
-    /**
-     * 分页查询
-     * @param userId
-     * @param offset
-     * @param limit
-     * @return
-     */
-    List<FansDO> selectPageListByUserId(@Param("userId") Long userId,
-                                        @Param("offset") long offset,
-                                        @Param("limit") long limit);
-
-    /**
-     * 查询最新关注的 5000 位粉丝
-     * @param userId
-     * @return
-     */
-    List<FansDO> select5000FansByUserId(Long userId);
+    List<FansDO> selectCursorPageByUserId(@Param("userId") Long userId,
+                                          @Param("cursor") Long cursor,
+                                          @Param("limit") long limit);
 
     int updateByPrimaryKeySelective(FansDO record);
 

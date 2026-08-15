@@ -9,6 +9,7 @@ import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -51,10 +52,11 @@ public class UserController {
     }
 
     // ===================================== 对其他服务提供的接口 =====================================
-    @PostMapping("/register")
-    @ApiOperationLog(description = "用户注册")
-    public Response<Long> register(@Validated @RequestBody RegisterUserReqDTO registerUserReqDTO) {
-        return userService.register(registerUserReqDTO);
+    @PostMapping("/resolve-loginable")
+    @ApiOperationLog(description = "解析或注册可登录账号")
+    public Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(
+            @Validated @RequestBody ResolveLoginableUserReqDTO request) {
+        return userService.resolveOrRegisterLoginableUser(request);
     }
 
     @PostMapping("/findByPhone")

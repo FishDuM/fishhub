@@ -32,7 +32,7 @@
     <div class="container mx-auto py-4">
       <LoadingSpinner :active="loading && !loadingMore" />
       
-      <div v-if="!loading && users.length === 0" class="text-center py-10 text-gray-500 flex flex-col items-center ">
+      <div v-if="shouldShowEmptyState()" class="text-center py-10 text-gray-500 flex flex-col items-center ">
           <EmptyStateIllustration variant="relation" class="mt-10" />
         <div class="empty-text">{{ activeTab === 'following' ? '暂未关注其他用户' : '暂无粉丝' }}</div>
       </div>
@@ -72,6 +72,7 @@ import EmptyStateIllustration from '@/components/common/EmptyStateIllustration.v
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { useUserStore } from '@/stores/user'
 import { useLatestRequest } from '@/composables/useLatestRequest'
+import { shouldShowEmptyRelationState } from '@/utils/relation'
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -81,19 +82,25 @@ const activeTab = ref(route.query.tab || 'following')
 const users = ref([])
 const loading = ref(true)
 const loadingMore = ref(false)
-const hasMore = ref(true)
-const pageNo = ref(1)
+const hasMore = ref(false)
+const nextCursor = ref(0)
 const isLoading = ref(false)
 const { begin: beginRequest, isCurrent: isCurrentRequest } = useLatestRequest()
 
 const listType = () => activeTab.value === 'following' ? 'following' : 'fans'
+
+const shouldShowEmptyState = () => shouldShowEmptyRelationState({
+  loading: loading.value,
+  userCount: users.value.length,
+  hasMore: hasMore.value
+})
 
 const loadRelationList = async (isLoadMore = false) => {
   if (isLoadMore && isLoading.value) return
   const requestId = beginRequest()
   const requestUserId = userId.value
   const requestTab = activeTab.value
-  const requestPageNo = isLoadMore ? pageNo.value : 1
+  const requestCursor = isLoadMore ? nextCursor.value : 0
   isLoading.value = true
   
   if (isLoadMore) {
@@ -101,12 +108,13 @@ const loadRelationList = async (isLoadMore = false) => {
   } else {
     loading.value = true
     users.value = []
-    pageNo.value = requestPageNo
+    nextCursor.value = requestCursor
+    hasMore.value = false
   }
   
   try {
     const request = requestTab === 'following' ? getFollowingList : getFansList
-    const res = await request(requestUserId, requestPageNo)
+    const res = await request(requestUserId, requestCursor)
     if (!isCurrentRequest(requestId)) return
     if (res.success) {
       const newUsers = (res.data || []).map(user => ({
@@ -120,8 +128,8 @@ const loadRelationList = async (isLoadMore = false) => {
         users.value = newUsers
       }
       
-      hasMore.value = res.pageNo < res.totalPage
-      pageNo.value = res.pageNo + 1
+      nextCursor.value = res.nextCursor
+      hasMore.value = res.nextCursor !== null && res.nextCursor !== undefined
     }
   } catch {
     if (isCurrentRequest(requestId)) message.show('列表加载失败，请稍后重试')

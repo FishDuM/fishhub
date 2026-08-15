@@ -50,7 +50,7 @@ public class SaTokenConfigure {
                             r -> StpUtil.checkPermission("app:comment:publish"));
 
                     // 以下接口仅供服务间 Feign 直连调用，不允许经 Gateway 对外访问。
-                    SaRouter.match("/user/user/register", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/user/user/resolve-loginable", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/user/user/findByPhone", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/user/user/password/update", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/user/user/findById", r -> StpUtil.checkPermission("internal:service"));
