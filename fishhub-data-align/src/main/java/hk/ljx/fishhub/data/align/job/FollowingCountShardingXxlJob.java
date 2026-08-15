@@ -25,7 +25,6 @@ public class FollowingCountShardingXxlJob {
                 updateMapper::updateUserFollowingTotalByUserId,
                 RedisKeyConstants::buildCountUserKey,
                 RedisKeyConstants.FIELD_FOLLOWING_TOTAL,
-                ignored -> { },
                 deleteMapper::batchDeleteDataAlignFollowingCountTempTable);
     }
 }

@@ -25,7 +25,6 @@ public class FansCountShardingXxlJob {
                 updateMapper::updateUserFansTotalByUserId,
                 RedisKeyConstants::buildCountUserKey,
                 RedisKeyConstants.FIELD_FANS_TOTAL,
-                ignored -> { },
                 deleteMapper::batchDeleteDataAlignFansCountTempTable);
     }
 }

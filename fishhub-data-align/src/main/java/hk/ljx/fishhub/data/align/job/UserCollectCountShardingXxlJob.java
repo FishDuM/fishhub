@@ -25,7 +25,6 @@ public class UserCollectCountShardingXxlJob {
                 updateMapper::updateUserCollectTotalByUserId,
                 RedisKeyConstants::buildCountUserKey,
                 RedisKeyConstants.FIELD_COLLECT_TOTAL,
-                ignored -> { },
                 deleteMapper::batchDeleteDataAlignUserCollectCountTempTable);
     }
 }

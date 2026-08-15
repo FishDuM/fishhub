@@ -7,8 +7,6 @@ import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.NumberUtils;
-import hk.ljx.fishhub.search.dto.req.RebuildNoteDocumentReqDTO;
-import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.enums.NotePublishTimeRangeEnum;
 import hk.ljx.fishhub.search.biz.enums.NoteSortTypeEnum;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
@@ -18,8 +16,6 @@ import hk.ljx.fishhub.search.biz.service.NoteService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.IndicesOptions;
@@ -29,8 +25,6 @@ import org.elasticsearch.common.lucene.search.function.CombineFunction;
 import org.elasticsearch.common.lucene.search.function.FieldValueFactorFunction;
 import org.elasticsearch.common.lucene.search.function.FunctionScoreQuery;
 import org.elasticsearch.index.query.BoolQueryBuilder;
-import org.elasticsearch.ElasticsearchStatusException;
-import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.index.query.functionscore.FieldValueFactorFunctionBuilder;
 import org.elasticsearch.index.query.functionscore.FunctionScoreQueryBuilder;
@@ -55,8 +49,6 @@ public class NoteServiceImpl implements NoteService {
 
     @Resource
     private RestHighLevelClient restHighLevelClient;
-    @Resource
-    private SelectMapper selectMapper;
 
     /**
      * 搜索笔记
@@ -231,41 +223,4 @@ public class NoteServiceImpl implements NoteService {
         return PageResponse.success(searchNoteRspVOS, pageNo, total);
     }
 
-    /**
-     * 重建笔记文档
-     *
-     * @param rebuildNoteDocumentReqDTO
-     * @return
-     */
-    @Override
-    public Response<Long> rebuildDocument(RebuildNoteDocumentReqDTO rebuildNoteDocumentReqDTO) {
-        Long noteId = rebuildNoteDocumentReqDTO.getId();
-
-        List<Map<String, Object>> result = selectMapper.selectEsNoteIndexData(noteId, null);
-
-        if (CollUtil.isEmpty(result)) {
-            try {
-                restHighLevelClient.delete(new DeleteRequest(NoteIndex.NAME, String.valueOf(noteId)), RequestOptions.DEFAULT);
-            } catch (ElasticsearchStatusException e) {
-                if (e.status() != RestStatus.NOT_FOUND) {
-                    throw e;
-                }
-            } catch (IOException e) {
-                throw new IllegalStateException("删除失效笔记文档失败, noteId=" + noteId, e);
-            }
-            return Response.success();
-        }
-
-        for (Map<String, Object> recordMap : result) {
-            IndexRequest indexRequest = new IndexRequest(NoteIndex.NAME);
-            indexRequest.id((String.valueOf(recordMap.get(NoteIndex.FIELD_NOTE_ID))));
-            indexRequest.source(recordMap);
-            try {
-                restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT);
-            } catch (IOException e) {
-                throw new IllegalStateException("重建笔记文档失败, noteId=" + noteId, e);
-            }
-        }
-        return Response.success();
-    }
 }

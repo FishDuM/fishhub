@@ -5,7 +5,6 @@ import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.domain.mapper.DeleteMapper;
 import hk.ljx.fishhub.data.align.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.data.align.domain.mapper.UpdateMapper;
-import hk.ljx.fishhub.data.align.rpc.SearchRpcService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +16,6 @@ public class NoteLikeCountShardingXxlJob {
     private final SelectMapper selectMapper;
     private final UpdateMapper updateMapper;
     private final DeleteMapper deleteMapper;
-    private final SearchRpcService searchRpcService;
 
     @XxlJob("noteLikeCountShardingJobHandler")
     public void alignNoteLikeCount() {
@@ -27,7 +25,6 @@ public class NoteLikeCountShardingXxlJob {
                 updateMapper::updateNoteLikeTotalByUserId,
                 RedisKeyConstants::buildCountNoteKey,
                 RedisKeyConstants.FIELD_LIKE_TOTAL,
-                searchRpcService::rebuildNoteDocument,
                 deleteMapper::batchDeleteDataAlignNoteLikeCountTempTable);
     }
 }

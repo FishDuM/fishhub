@@ -22,7 +22,7 @@ FishHub 是一个基于 Spring Boot 3、Spring Cloud Alibaba 和 Vue 3 的社区
 mysql -h 192.168.0.100 -u root -p < sql/create.sql
 ```
 
-清空 MySQL 后应同时清理 Redis 和 Elasticsearch 中的旧业务数据。`note`、`user` 索引不存在时搜索接口会返回空结果；后续文档写入会自动创建索引，Canal 和数据对齐任务负责持续同步。
+清空 MySQL 后应同时清理 Redis 和 Elasticsearch 中的旧业务数据。Search 服务不会在启动时创建、重建或全量写入 Elasticsearch；启动前须由外部中间件手动创建 `note`、`user` 索引并完成全量同步。服务启动后仅由 Canal 消费 `t_note`、`t_user`、`t_note_count`、`t_user_count` 的增量变更写入 Elasticsearch。
 
 ## 服务端口
 

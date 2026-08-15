@@ -25,7 +25,6 @@ public class UserLikeCountShardingXxlJob {
                 updateMapper::updateUserLikeTotalByUserId,
                 RedisKeyConstants::buildCountUserKey,
                 RedisKeyConstants.FIELD_LIKE_TOTAL,
-                ignored -> { },
                 deleteMapper::batchDeleteDataAlignUserLikeCountTempTable);
     }
 }

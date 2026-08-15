@@ -22,11 +22,6 @@
             <artifactId>fishhub-common</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-search-api</artifactId>
-        </dependency>
-
         <!-- Jackson 组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>

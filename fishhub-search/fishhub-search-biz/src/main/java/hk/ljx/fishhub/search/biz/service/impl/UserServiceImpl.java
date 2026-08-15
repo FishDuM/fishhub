@@ -3,26 +3,19 @@ package hk.ljx.fishhub.search.biz.service.impl;
 import cn.hutool.core.collection.CollUtil;
 import com.google.common.collect.Lists;
 import hk.ljx.framework.common.response.PageResponse;
-import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.NumberUtils;
-import hk.ljx.fishhub.search.dto.req.RebuildUserDocumentReqDTO;
-import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
 import hk.ljx.fishhub.search.biz.model.vo.SearchUserReqVO;
 import hk.ljx.fishhub.search.biz.model.vo.SearchUserRspVO;
 import hk.ljx.fishhub.search.biz.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.IndicesOptions;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.ElasticsearchStatusException;
-import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -43,8 +36,6 @@ public class UserServiceImpl implements UserService {
 
     @Resource
     private RestHighLevelClient restHighLevelClient;
-    @Resource
-    private SelectMapper selectMapper;
 
     /**
      * 搜索用户
@@ -151,47 +142,4 @@ public class UserServiceImpl implements UserService {
         return PageResponse.success(searchUserRspVOS, pageNo, total);
     }
 
-    /**
-     * 重建用户文档
-     *
-     * @param rebuildUserDocumentReqDTO
-     * @return
-     */
-    @Override
-    public Response<Long> rebuildDocument(RebuildUserDocumentReqDTO rebuildUserDocumentReqDTO) {
-        Long userId = rebuildUserDocumentReqDTO.getId();
-
-        // 从数据库查询 Elasticsearch 索引数据
-        List<Map<String, Object>> result = selectMapper.selectEsUserIndexData(userId);
-
-        if (CollUtil.isEmpty(result)) {
-            try {
-                restHighLevelClient.delete(new DeleteRequest(UserIndex.NAME, String.valueOf(userId)), RequestOptions.DEFAULT);
-            } catch (ElasticsearchStatusException e) {
-                if (e.status() != RestStatus.NOT_FOUND) {
-                    throw e;
-                }
-            } catch (IOException e) {
-                throw new IllegalStateException("删除失效用户文档失败, userId=" + userId, e);
-            }
-            return Response.success();
-        }
-
-        // 遍历查询结果，将每条记录同步到 Elasticsearch
-        for (Map<String, Object> recordMap : result) {
-            // 创建索引请求对象，指定索引名称
-            IndexRequest indexRequest = new IndexRequest(UserIndex.NAME);
-            // 设置文档的 ID，使用记录中的主键 “id” 字段值
-            indexRequest.id((String.valueOf(recordMap.get(UserIndex.FIELD_USER_ID))));
-            // 设置文档的内容，使用查询结果的记录数据
-            indexRequest.source(recordMap);
-            // 将数据写入 Elasticsearch 索引
-            try {
-                restHighLevelClient.index(indexRequest, RequestOptions.DEFAULT);
-            } catch (IOException e) {
-                throw new IllegalStateException("重建用户文档失败, userId=" + userId, e);
-            }
-        }
-        return Response.success();
-    }
 }

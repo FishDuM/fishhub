@@ -35,7 +35,7 @@ public class CanalProperties {
     /**
      * 订阅规则
      */
-    private String subscribe;
+    private String subscribe = "fishhub\\.t_(note|user|note_count|user_count)";
 
     /**
      * 一批次拉取数据

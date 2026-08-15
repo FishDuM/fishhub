@@ -14,7 +14,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.ToLongFunction;
 
@@ -39,7 +38,6 @@ public class ShardedCountAlignmentRunner {
                     BiFunction<Long, Long, Integer> updateTotal,
                     Function<Long, String> cacheKeyBuilder,
                     String cacheField,
-                    Consumer<Long> rebuildSearchDocument,
                     BiConsumer<String, List<Long>> deleteBatch) {
         int shardIndex = XxlJobHelper.getShardIndex();
         int shardTotal = XxlJobHelper.getShardTotal();
@@ -68,7 +66,6 @@ public class ShardedCountAlignmentRunner {
                     if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
                         redisTemplate.opsForHash().put(cacheKey, cacheField, total);
                     }
-                    rebuildSearchDocument.accept(id);
                 }
                 deleteBatch.accept(tableNameSuffix, ids);
                 processedTotal += ids.size();

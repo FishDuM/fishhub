@@ -2,8 +2,6 @@ package hk.ljx.fishhub.search.biz.controller;
 
 import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.framework.common.response.PageResponse;
-import hk.ljx.framework.common.response.Response;
-import hk.ljx.fishhub.search.dto.req.RebuildNoteDocumentReqDTO;
 import hk.ljx.fishhub.search.biz.model.vo.SearchNoteReqVO;
 import hk.ljx.fishhub.search.biz.model.vo.SearchNoteRspVO;
 import hk.ljx.fishhub.search.biz.service.NoteService;
@@ -29,13 +27,6 @@ public class NoteController {
     @ApiOperationLog(description = "搜索笔记")
     public PageResponse<SearchNoteRspVO> searchNote(@RequestBody @Validated SearchNoteReqVO searchNoteReqVO) {
         return noteService.searchNote(searchNoteReqVO);
-    }
-
-    // ===================================== 对其他服务提供的接口 =====================================
-    @PostMapping("/note/document/rebuild")
-    @ApiOperationLog(description = "用户文档重建")
-    public Response<Long> rebuildDocument(@Validated @RequestBody RebuildNoteDocumentReqDTO rebuildNoteDocumentReqDTO) {
-        return noteService.rebuildDocument(rebuildNoteDocumentReqDTO);
     }
 
 }
