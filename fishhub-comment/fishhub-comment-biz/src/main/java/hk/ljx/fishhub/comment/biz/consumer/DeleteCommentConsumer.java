@@ -14,6 +14,7 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.model.dto.DeleteCommentContentMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.InvalidateOneLevelCommentCacheMqDTO;
 import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -68,7 +69,7 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             throw new IllegalArgumentException("评论删除消息格式错误");
         }
 
-        // 主评论已不存在说明上一次已整体提交，直接 ACK，避免重复扣减计数。
+        // 主评论已不存在说明上一次已整体提交，缓存失效事件已由 outbox 保证投递，直接 ACK。
         CommentDO root = commentDOMapper.selectByPrimaryKey(payload.getId());
         if (root == null) {
             return;
@@ -97,6 +98,11 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
             localCacheInvalidationBodies.add(String.valueOf(root.getParentId()));
         }
+        String oneLevelCacheInvalidationBody = Objects.equals(root.getLevel(), CommentLevelEnum.ONE.getCode())
+                ? JsonUtils.toJsonString(InvalidateOneLevelCommentCacheMqDTO.builder()
+                        .eventId(java.util.UUID.randomUUID().toString())
+                        .noteId(root.getNoteId())
+                        .build()) : null;
 
         boolean deleted = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
             // 消费幂等：并发重投时只允许一个消费者执行扣减
@@ -119,6 +125,10 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             }
             localCacheInvalidationBodies.forEach(bodyItem ->
                     sendMqRetryHelper.enqueue(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, bodyItem));
+            if (oneLevelCacheInvalidationBody != null) {
+                sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE,
+                        oneLevelCacheInvalidationBody);
+            }
 
             commentLikeDOMapper.deleteByCommentIds(targetIds);
             commentDOMapper.deleteByIds(targetIds);
@@ -146,6 +156,10 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         }
         localCacheInvalidationBodies.forEach(bodyItem ->
                 sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, bodyItem));
+        if (oneLevelCacheInvalidationBody != null) {
+            sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE,
+                    oneLevelCacheInvalidationBody);
+        }
     }
 
     private List<CommentDO> collectDeleteTargets(CommentDO root) {
@@ -173,8 +187,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
 
     private void invalidateRedis(CommentDO root, List<Long> targetIds) {
         if (Objects.equals(root.getLevel(), CommentLevelEnum.ONE.getCode())) {
-            redisTemplate.opsForZSet().remove(
-                    RedisKeyConstants.buildCommentListKey(root.getNoteId()), root.getId());
             redisTemplate.delete(RedisKeyConstants.buildChildCommentListKey(root.getId()));
         } else {
             redisTemplate.opsForZSet().remove(
@@ -183,7 +195,6 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             redisTemplate.delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(root.getParentId()));
         }
         List<String> keys = new ArrayList<>();
-        keys.add(RedisKeyConstants.buildNoteCommentTotalKey(root.getNoteId()));
         List<String> detailKeys = new ArrayList<>();
         if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
             detailKeys.add(RedisKeyConstants.buildCommentDetailKey(root.getParentId()));
@@ -195,4 +206,5 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         redisTemplate.delete(keys);
         commentDetailCache.delete(detailKeys);
     }
+
 }

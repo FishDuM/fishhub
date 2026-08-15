@@ -17,6 +17,8 @@ public interface TopicDOMapper {
 
     List<TopicDO> selectByLikeName(String keyword);
 
+    List<TopicDO> selectAllEnabled();
+
     int updateByPrimaryKeySelective(TopicDO record);
 
     int updateByPrimaryKey(TopicDO record);

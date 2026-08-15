@@ -86,8 +86,24 @@ public class NoteInteractionCacheService {
         redisTemplate.delete(RedisKeyConstants.buildUserNoteLikeSetKey(userId));
     }
 
+    /**
+     * 异步消费者拒绝乐观点赞时清空该用户的相关读缓存；下次刷新从 MySQL 重建真实状态。
+     */
+    public void evictLikeCaches(Long userId) {
+        evictLikeCache(userId);
+        redisTemplate.delete(RedisKeyConstants.buildUserNoteLikeZSetKey(userId));
+    }
+
     public void evictCollectCache(Long userId) {
         redisTemplate.delete(RedisKeyConstants.buildUserNoteCollectSetKey(userId));
+    }
+
+    /**
+     * 异步消费者拒绝乐观收藏时清空该用户的相关读缓存；下次刷新从 MySQL 重建真实状态。
+     */
+    public void evictCollectCaches(Long userId) {
+        evictCollectCache(userId);
+        redisTemplate.delete(RedisKeyConstants.buildUserNoteCollectZSetKey(userId));
     }
 
     private String ensureLikeCache(Long userId) {

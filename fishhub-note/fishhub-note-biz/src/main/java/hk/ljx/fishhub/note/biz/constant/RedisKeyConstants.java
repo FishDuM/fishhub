@@ -9,6 +9,19 @@ public class RedisKeyConstants {
     public static final String NOTE_DETAIL_KEY = "note:detail:";
 
     /**
+     * 笔记访问控制最小快照。详情、评论等高频读路径只需要这几个字段来做权限判断。
+     */
+    private static final String NOTE_ACCESS_KEY = "note:access:";
+
+    private static final String DISCOVER_FEED_VERSION_KEY = "feed:discover:version";
+
+    private static final String DISCOVER_FEED_CURSOR_KEY = "feed:discover:cursor:";
+
+    private static final String DISCOVER_FEED_CURSOR_LOCK_KEY = "lock:feed:discover:cursor:";
+
+    private static final String ACTIVE_TOPIC_SNAPSHOT_KEY = "topic:active:snapshot";
+
+    /**
      * 已发布笔记列表 KEY 前缀
      */
     private static final String PUBLISHED_NOTE_LIST_KEY = "note:published:list:";
@@ -49,6 +62,28 @@ public class RedisKeyConstants {
      */
     public static String buildNoteDetailKey(Long noteId) {
         return NOTE_DETAIL_KEY + noteId;
+    }
+
+    public static String buildNoteAccessKey(Long noteId) {
+        return NOTE_ACCESS_KEY + noteId;
+    }
+
+    public static String discoverFeedVersionKey() {
+        return DISCOVER_FEED_VERSION_KEY;
+    }
+
+    public static String buildDiscoverFeedCursorKey(String version, Long channelId, Long cursor) {
+        return DISCOVER_FEED_CURSOR_KEY + version + ":channel:" + (channelId == null ? 0 : channelId)
+                + ":cursor:" + (cursor == null ? "first" : cursor);
+    }
+
+    public static String buildDiscoverFeedCursorLockKey(String version, Long channelId, Long cursor) {
+        return DISCOVER_FEED_CURSOR_LOCK_KEY + version + ":channel:" + (channelId == null ? 0 : channelId)
+                + ":cursor:" + (cursor == null ? "first" : cursor);
+    }
+
+    public static String activeTopicSnapshotKey() {
+        return ACTIVE_TOPIC_SNAPSHOT_KEY;
     }
 
 

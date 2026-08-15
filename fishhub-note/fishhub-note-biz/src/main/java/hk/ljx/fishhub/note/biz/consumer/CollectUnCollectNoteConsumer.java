@@ -3,9 +3,13 @@ package hk.ljx.fishhub.note.biz.consumer;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
+import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
+import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
+import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
+import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +35,10 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
     private ReliableMqOutbox reliableMqOutbox;
     @Resource
     private NoteInteractionPersistenceService persistenceService;
+    @Resource
+    private NoteDOMapper noteDOMapper;
+    @Resource
+    private NoteInteractionCacheService noteInteractionCacheService;
 
     // 每秒创建 5000 个令牌
     private RateLimiter rateLimiter = RateLimiter.create(5000);
@@ -76,6 +84,18 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
         // 收藏时间
         LocalDateTime createTime = collectUnCollectNoteMqDTO.getCreateTime();
 
+        if (userId == null || noteId == null || type == null || createTime == null) {
+            log.error("丢弃无法恢复的收藏消息，必要字段缺失: {}", bodyJsonStr);
+            return;
+        }
+        NoteDO note = noteDOMapper.selectInteractionInfoByNoteId(noteId);
+        if (!isWritable(note, userId)) {
+            noteInteractionCacheService.evictCollectCaches(userId);
+            log.info("丢弃不可写笔记的收藏消息，noteId={}, userId={}", noteId, userId);
+            return;
+        }
+        collectUnCollectNoteMqDTO.setNoteCreatorId(note.getCreatorId());
+
         // 构建 DO 对象
         NoteCollectionDO noteCollectionDO = NoteCollectionDO.builder()
                 .userId(userId)
@@ -84,8 +104,9 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
                 .status(type)
                 .build();
 
-        if (persistenceService.saveCollect(noteCollectionDO, bodyJsonStr)) {
-            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_COLLECT, bodyJsonStr);
+        String resolvedBody = JsonUtils.toJsonString(collectUnCollectNoteMqDTO);
+        if (persistenceService.saveCollect(noteCollectionDO, resolvedBody)) {
+            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_COLLECT, resolvedBody);
         }
     }
 
@@ -108,6 +129,18 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
         // 收藏时间
         LocalDateTime createTime = unCollectNoteMqDTO.getCreateTime();
 
+        if (userId == null || noteId == null || type == null || createTime == null) {
+            log.error("丢弃无法恢复的取消收藏消息，必要字段缺失: {}", bodyJsonStr);
+            return;
+        }
+        NoteDO note = noteDOMapper.selectInteractionInfoByNoteId(noteId);
+        if (note == null) {
+            noteInteractionCacheService.evictCollectCaches(userId);
+            log.info("丢弃不存在笔记的取消收藏消息，noteId={}, userId={}", noteId, userId);
+            return;
+        }
+        unCollectNoteMqDTO.setNoteCreatorId(note.getCreatorId());
+
         // 构建 DO 对象
         NoteCollectionDO noteCollectionDO = NoteCollectionDO.builder()
                 .userId(userId)
@@ -116,9 +149,16 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
                 .status(type)
                 .build();
 
-        if (persistenceService.saveUncollect(noteCollectionDO, bodyJsonStr)) {
-            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_COLLECT, bodyJsonStr);
+        String resolvedBody = JsonUtils.toJsonString(unCollectNoteMqDTO);
+        if (persistenceService.saveUncollect(noteCollectionDO, resolvedBody)) {
+            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_COLLECT, resolvedBody);
         }
+    }
+
+    private boolean isWritable(NoteDO note, Long userId) {
+        return note != null && Objects.equals(note.getStatus(), 1)
+                && (Objects.equals(note.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
+                || Objects.equals(note.getCreatorId(), userId));
     }
 
 }

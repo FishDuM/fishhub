@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.note.biz.controller;
 
-import hk.ljx.framework.common.response.PageResponse;
+import hk.ljx.fishhub.note.biz.model.vo.DiscoverNotePageResponse;
 import hk.ljx.fishhub.note.biz.model.vo.FindDiscoverNoteListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.NoteItemRspVO;
 import hk.ljx.fishhub.note.biz.service.FeedService;
@@ -18,7 +18,7 @@ public class DiscoverController {
     private FeedService feedService;
 
     @PostMapping("/note/list")
-    public PageResponse<NoteItemRspVO> findDiscoverNoteList(@Valid @RequestBody FindDiscoverNoteListReqVO request) {
+    public DiscoverNotePageResponse<NoteItemRspVO> findDiscoverNoteList(@Valid @RequestBody FindDiscoverNoteListReqVO request) {
         return feedService.findDiscoverNoteList(request);
     }
 }

@@ -2,6 +2,7 @@ package hk.ljx.fishhub.comment.biz.rpc;
 
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.note.api.NoteFeignApi;
+import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -31,6 +32,17 @@ public class NoteRpcService {
         Response<List<Long>> response = noteFeignApi.findAccessibleNoteIds(noteIds);
         if (response == null || !response.isSuccess()) {
             throw new IllegalStateException("笔记批量访问鉴权服务调用失败");
+        }
+        return response.getData() == null ? Collections.emptyList() : response.getData();
+    }
+
+    /**
+     * 仅供 MQ 消费端调用，服务端直接以 MySQL 当前状态裁决写权限。
+     */
+    public List<NoteWriteAccessCheckReqDTO> findWritableNoteAccesses(List<NoteWriteAccessCheckReqDTO> requests) {
+        Response<List<NoteWriteAccessCheckReqDTO>> response = noteFeignApi.findWritableNoteAccesses(requests);
+        if (response == null || !response.isSuccess()) {
+            throw new IllegalStateException("笔记写权限鉴权服务调用失败");
         }
         return response.getData() == null ? Collections.emptyList() : response.getData();
     }

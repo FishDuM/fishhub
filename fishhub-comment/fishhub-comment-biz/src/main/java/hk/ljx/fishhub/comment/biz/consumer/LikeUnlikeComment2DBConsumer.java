@@ -5,9 +5,15 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
+import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
+import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
+import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
+import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
+import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -19,12 +25,15 @@ import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -40,6 +49,12 @@ public class LikeUnlikeComment2DBConsumer {
     private CommentLikePersistenceService persistenceService;
     @Resource
     private SendMqRetryHelper sendMqRetryHelper;
+    @Resource
+    private CommentDOMapper commentDOMapper;
+    @Resource
+    private NoteRpcService noteRpcService;
+    @Resource
+    private RedisTemplate<String, Object> redisTemplate;
 
     private DefaultMQPushConsumer consumer;
 
@@ -127,7 +142,45 @@ public class LikeUnlikeComment2DBConsumer {
                     finalLikeUnlikeCommentMqDTOS.addAll(userLastOp.values());
                 });
 
+                Map<Long, CommentDO> comments = commentDOMapper.selectNoteIdsByCommentIds(
+                                finalLikeUnlikeCommentMqDTOS.stream()
+                                        .map(LikeUnlikeCommentMqDTO::getCommentId)
+                                        .distinct()
+                                        .toList())
+                        .stream()
+                        .collect(Collectors.toMap(CommentDO::getId, Function.identity()));
+                List<NoteWriteAccessCheckReqDTO> writeChecks = finalLikeUnlikeCommentMqDTOS.stream()
+                        .filter(operation -> Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode()))
+                        .map(operation -> {
+                            CommentDO comment = comments.get(operation.getCommentId());
+                            return comment == null ? null : NoteWriteAccessCheckReqDTO.builder()
+                                    .noteId(comment.getNoteId())
+                                    .userId(operation.getUserId())
+                                    .build();
+                        })
+                        .filter(Objects::nonNull)
+                        .toList();
+                Set<NoteWriteAccessCheckReqDTO> writableAccesses = new HashSet<>(
+                        noteRpcService.findWritableNoteAccesses(writeChecks));
+
                 for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
+                    CommentDO comment = comments.get(operation.getCommentId());
+                    if (comment == null) {
+                        // 评论已删除时无需落关系；清空布隆缓存，使下次刷新以数据库状态为准。
+                        redisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
+                        continue;
+                    }
+                    if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())
+                            && !writableAccesses.contains(NoteWriteAccessCheckReqDTO.builder()
+                            .noteId(comment.getNoteId())
+                            .userId(operation.getUserId())
+                            .build())) {
+                        // 点赞请求已乐观写入布隆过滤器；拒绝时清空用户缓存，后续刷新自动恢复真实状态。
+                        redisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
+                        log.info("丢弃不可写笔记上的评论点赞，commentId={}, userId={}",
+                                operation.getCommentId(), operation.getUserId());
+                        continue;
+                    }
                     String eventBody = JsonUtils.toJsonString(operation);
                     if (persistenceService.apply(operation, eventBody)) {
                         sendMqRetryHelper.sendNow(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE, eventBody);

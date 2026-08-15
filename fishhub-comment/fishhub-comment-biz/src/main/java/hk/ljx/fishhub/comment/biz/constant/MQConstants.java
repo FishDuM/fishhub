@@ -49,6 +49,11 @@ public interface MQConstants {
     String TOPIC_SYNC_COMMENT_CONTENT = "SyncCommentContentTopic";
 
     /**
+     * 一级评论发生增删后的缓存失效。事件与评论事实一并写入 outbox，避免 Redis 短暂故障丢失失效动作。
+     */
+    String TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE = "InvalidateOneLevelCommentCacheTopic";
+
+    /**
      * Tag 标签：点赞
      */
     String TAG_LIKE = "Like";

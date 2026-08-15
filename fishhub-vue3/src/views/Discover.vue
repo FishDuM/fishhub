@@ -65,7 +65,7 @@ const route = useRoute()
 const router = useRouter()
 
 const notes = ref([])
-const currPageNo = ref(1)
+const nextCursor = ref(0)
 const hasMore = ref(true)
 const isLoading = ref(false)
 const hasLoaded = ref(false)
@@ -109,19 +109,19 @@ const loadNotes = async (channelId = '0', isFirstPage = true) => {
   if (!isFirstPage && isLoading.value) return
 
   const requestId = isFirstPage ? beginRequest() : beginRequest()
-  const pageNo = isFirstPage ? 1 : currPageNo.value
+  const cursor = isFirstPage ? 0 : nextCursor.value
 
   isLoading.value = true
 
   if (isFirstPage) {
     loadingRef.value?.show()
-    currPageNo.value = pageNo
+    nextCursor.value = 0
     notes.value = []
     loadError.value = false
   }
 
   try {
-    const res = await getDiscoverNotePageList(channelId, pageNo)
+    const res = await getDiscoverNotePageList(channelId, cursor)
     if (!isCurrentRequest(requestId)) return
     if (res.success) {
       const newNotes = (res.data || []).map(note => ({ ...note, id: note.noteId ?? note.id }))
@@ -132,11 +132,8 @@ const loadNotes = async (channelId = '0', isFirstPage = true) => {
         notes.value = [...notes.value, ...newNotes]
       }
 
-      hasMore.value = res.pageNo < res.totalPage
-
-      if (newNotes.length > 0) {
-        currPageNo.value++
-      }
+      nextCursor.value = res.nextCursor ?? null
+      hasMore.value = nextCursor.value !== null && newNotes.length > 0
     }
   } catch {
     if (!isCurrentRequest(requestId)) return

@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.note.biz.service;
 
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 
 import java.util.List;
@@ -13,6 +14,9 @@ public interface NoteService {
     Response<Boolean> isAccessible(Long noteId);
 
     Response<List<Long>> findAccessibleNoteIds(List<Long> noteIds);
+
+    Response<List<NoteWriteAccessCheckReqDTO>> findWritableNoteAccesses(
+            List<NoteWriteAccessCheckReqDTO> requests);
 
     /**
      * 笔记发布

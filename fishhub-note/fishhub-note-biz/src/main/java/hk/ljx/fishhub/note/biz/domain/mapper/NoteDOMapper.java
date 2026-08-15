@@ -32,6 +32,11 @@ public interface NoteDOMapper {
      */
     NoteDO selectAccessInfoByNoteId(Long noteId);
 
+    /**
+     * 异步互动消费时读取笔记状态和发布者；查询范围包含逻辑删除记录，便于取消操作清理旧关系。
+     */
+    NoteDO selectInteractionInfoByNoteId(Long noteId);
+
     List<NoteDO> selectAccessInfosByNoteIds(@Param("noteIds") List<Long> noteIds);
 
     /**
@@ -52,11 +57,9 @@ public interface NoteDOMapper {
                                                       @Param("cursorTime") LocalDateTime cursorTime,
                                                       @Param("cursorId") Long cursorId);
 
-    long selectDiscoverTotalCount(@Param("channelId") Long channelId);
-
-    List<NoteDO> selectDiscoverPageList(@Param("channelId") Long channelId,
-                                        @Param("offset") long offset,
-                                        @Param("limit") long limit);
+    List<NoteDO> selectDiscoverPageListByCursor(@Param("channelId") Long channelId,
+                                                  @Param("cursor") Long cursor,
+                                                  @Param("limit") long limit);
 
 
     int updateByPrimaryKeySelective(NoteDO record);

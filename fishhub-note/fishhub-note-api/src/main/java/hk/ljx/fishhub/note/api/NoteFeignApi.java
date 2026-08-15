@@ -19,4 +19,11 @@ public interface NoteFeignApi {
 
     @PostMapping("/note/accessible/batch")
     Response<List<Long>> findAccessibleNoteIds(@RequestBody List<Long> noteIds);
+
+    /**
+     * 供异步写入消费者批量校验笔记当前是否允许指定用户写入；该接口始终查询 MySQL。
+     */
+    @PostMapping("/note/writable/batch")
+    Response<List<NoteWriteAccessCheckReqDTO>> findWritableNoteAccesses(
+            @RequestBody List<NoteWriteAccessCheckReqDTO> requests);
 }

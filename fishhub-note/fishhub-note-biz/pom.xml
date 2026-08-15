@@ -23,6 +23,11 @@
 
         <dependency>
             <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-note-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
             <artifactId>fishhub-distributed-id-generator-api</artifactId>
         </dependency>
 

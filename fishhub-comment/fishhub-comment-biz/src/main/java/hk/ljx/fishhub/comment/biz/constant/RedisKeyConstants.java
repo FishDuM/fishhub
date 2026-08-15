@@ -4,6 +4,11 @@ package hk.ljx.fishhub.comment.biz.constant;
 public class RedisKeyConstants {
 
     /**
+     * 版本必须比总数缓存的最大 TTL（15 分钟）更长，避免版本先过期而旧版本数据仍可读取。
+     */
+    public static final long ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS = 20 * 60L;
+
+    /**
      * Key 前缀：一级评论的 first_reply_comment_id 字段值是否更新标识
      */
     private static final String HAVE_FIRST_REPLY_COMMENT_KEY_PREFIX = "comment:havaFirstReplyCommentId:";
@@ -14,9 +19,13 @@ public class RedisKeyConstants {
     private static final String BLOOM_COMMENT_LIKES_KEY_PREFIX = "bloom:comment:likes:";
 
     /**
-     * Key 前缀：笔记评论总数
+     * 一级评论分页总数缓存。不能复用 count:note:*，后者由计数服务作为 Hash 使用。
      */
-    private static final String COUNT_COMMENT_TOTAL_KEY_PREFIX = "count:note:";
+    private static final String ONE_LEVEL_COMMENT_TOTAL_CACHE_KEY_PREFIX = "cache:comment:one-level-total:";
+
+    private static final String ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_KEY_PREFIX = "version:comment:one-level-total:";
+
+    private static final String ONE_LEVEL_COMMENT_TOTAL_CACHE_LOCK_KEY_PREFIX = "lock:comment:one-level-total:";
 
     /**
      * 评论维度计数 Key 前缀
@@ -71,13 +80,16 @@ public class RedisKeyConstants {
         return BLOOM_COMMENT_LIKES_KEY_PREFIX + userId;
     }
 
-    /**
-     * 构建笔记评论总数完整 KEY
-     * @param noteId
-     * @return
-     */
-    public static String buildNoteCommentTotalKey(Long noteId) {
-        return COUNT_COMMENT_TOTAL_KEY_PREFIX + noteId;
+    public static String buildOneLevelCommentTotalCacheKey(Long noteId, String version) {
+        return ONE_LEVEL_COMMENT_TOTAL_CACHE_KEY_PREFIX + noteId + ":v:" + version;
+    }
+
+    public static String buildOneLevelCommentTotalCacheVersionKey(Long noteId) {
+        return ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_KEY_PREFIX + noteId;
+    }
+
+    public static String buildOneLevelCommentTotalCacheLockKey(Long noteId) {
+        return ONE_LEVEL_COMMENT_TOTAL_CACHE_LOCK_KEY_PREFIX + noteId;
     }
 
     /**

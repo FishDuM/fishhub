@@ -127,7 +127,10 @@ CREATE TABLE `t_comment`  (
   INDEX `idx_parent_id`(`parent_id` ASC) USING BTREE,
   INDEX `idx_create_time`(`create_time` ASC) USING BTREE,
   INDEX `idx_reply_comment_id`(`reply_comment_id` ASC) USING BTREE,
-  INDEX `idx_reply_user_id`(`reply_user_id` ASC) USING BTREE
+  INDEX `idx_reply_user_id`(`reply_user_id` ASC) USING BTREE,
+  INDEX `idx_comment_note_level_heat_id`(`note_id` ASC, `level` ASC, `heat` DESC, `id` DESC) USING BTREE,
+  INDEX `idx_comment_parent_level_id`(`parent_id` ASC, `level` ASC, `id` ASC) USING BTREE,
+  INDEX `idx_comment_parent_level_create_time_id`(`parent_id` ASC, `level` ASC, `create_time` ASC, `id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 38003 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '评论表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -207,7 +210,9 @@ CREATE TABLE `t_note`  (
   INDEX `idx_creator_id`(`creator_id` ASC) USING BTREE,
   INDEX `idx_topic_id`(`topic_id` ASC) USING BTREE,
   INDEX `idx_channel_id`(`channel_id` ASC) USING BTREE,
-  INDEX `idx_status`(`status` ASC) USING BTREE
+  INDEX `idx_status`(`status` ASC) USING BTREE,
+  INDEX `idx_discover_visible_status_id`(`visible` ASC, `status` ASC, `id` DESC) USING BTREE,
+  INDEX `idx_discover_channel_visible_status_id`(`channel_id` ASC, `visible` ASC, `status` ASC, `id` DESC) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------

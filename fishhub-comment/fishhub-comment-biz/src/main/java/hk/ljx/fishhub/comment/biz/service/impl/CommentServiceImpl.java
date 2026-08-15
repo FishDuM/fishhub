@@ -99,6 +99,16 @@ public class CommentServiceImpl implements CommentService {
             .expireAfterWrite(1, TimeUnit.HOURS) // 设置缓存条目在写入后 1 小时过期
             .build();
 
+    private static final int CACHE_REBUILD_RETRY_TIMES = 3;
+    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
+    private static final long ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS = 2L;
+    private static final String COMPARE_AND_DELETE_LOCK_SCRIPT = """
+            if redis.call('get', KEYS[1]) == ARGV[1] then
+                return redis.call('del', KEYS[1])
+            end
+            return 0
+            """;
+
     /**
      * 发布评论
      *
@@ -115,16 +125,7 @@ public class CommentServiceImpl implements CommentService {
                 "评论正文和图片不能同时为空");
 
         Long noteId = publishCommentReqVO.getNoteId();
-        if (!noteRpcService.isAccessible(noteId)) {
-            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
-        }
         Long replyCommentId = publishCommentReqVO.getReplyCommentId();
-        if (replyCommentId != null) {
-            CommentDO replyComment = commentDOMapper.selectByPrimaryKey(replyCommentId);
-            if (replyComment == null || !Objects.equals(replyComment.getNoteId(), noteId)) {
-                throw new BizException(ResponseCodeEnum.REPLY_COMMENT_INVALID);
-            }
-        }
 
         // 发布者 ID
         Long creatorId = LoginUserContextHolder.getUserId();
@@ -164,8 +165,8 @@ public class CommentServiceImpl implements CommentService {
         // 每页展示一级评论数
         long pageSize = 10;
 
-        // 该接口分页的是一级评论，不能拿包含回复数的笔记评论总数计算页数。
-        long count = Objects.requireNonNullElse(commentDOMapper.selectOneLevelCountByNoteId(noteId), 0L);
+        // 一级评论数单独缓存；不能拿包含回复数的笔记评论总数替代。
+        long count = getOneLevelCommentTotal(noteId);
 
         // 若评论总数为 0，则直接响应
         if (count == 0) {
@@ -441,8 +442,6 @@ public class CommentServiceImpl implements CommentService {
     public Response<?> likeComment(LikeCommentReqVO likeCommentReqVO) {
         Long commentId = likeCommentReqVO.getCommentId();
 
-        ensureCommentAccessible(commentId);
-
         Long userId = LoginUserContextHolder.getUserId();
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
 
@@ -525,8 +524,6 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO) {
         Long commentId = unLikeCommentReqVO.getCommentId();
-
-        ensureCommentAccessible(commentId);
 
         Long userId = LoginUserContextHolder.getUserId();
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
@@ -679,15 +676,6 @@ public class CommentServiceImpl implements CommentService {
         if (!noteRpcService.isAccessible(noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
-    }
-
-    private CommentDO ensureCommentAccessible(Long commentId) {
-        CommentDO comment = commentDOMapper.selectByPrimaryKey(commentId);
-        if (comment == null) {
-            throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
-        }
-        ensureNoteAccessible(comment.getNoteId());
-        return comment;
     }
 
     private void ensureCommentsAccessible(List<Long> commentIds) {
@@ -1004,6 +992,130 @@ public class CommentServiceImpl implements CommentService {
                 return null;
             }
         });
+    }
+
+    private long getOneLevelCommentTotal(Long noteId) {
+        String version;
+        try {
+            version = readOneLevelCommentTotalCacheVersion(noteId);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，一级评论总数跳过缓存并回源 MySQL，noteId={}", noteId, e);
+            return queryOneLevelCommentTotal(noteId);
+        }
+        String key = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId, version);
+        String lockKey = RedisKeyConstants.buildOneLevelCommentTotalCacheLockKey(noteId);
+        Long cached;
+        try {
+            cached = readOneLevelCommentTotalFromCache(key);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，一级评论总数缓存读取失败，回源 MySQL，noteId={}", noteId, e);
+            return queryOneLevelCommentTotal(noteId);
+        }
+        if (cached != null) {
+            return cached;
+        }
+
+        String lockToken;
+        try {
+            lockToken = tryAcquireRebuildLock(lockKey, ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，一级评论总数重建锁获取失败，回源 MySQL，noteId={}", noteId, e);
+            return queryOneLevelCommentTotal(noteId);
+        }
+        if (lockToken == null) {
+            try {
+                cached = waitForOneLevelCommentTotal(key);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，一级评论总数缓存重试失败，回源 MySQL，noteId={}", noteId, e);
+                return queryOneLevelCommentTotal(noteId);
+            }
+            return cached == null ? queryOneLevelCommentTotal(noteId) : cached;
+        }
+        try {
+            try {
+                cached = readOneLevelCommentTotalFromCache(key);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，一级评论总数二次缓存读取失败，回源 MySQL，noteId={}", noteId, e);
+                return queryOneLevelCommentTotal(noteId);
+            }
+            if (cached != null) {
+                return cached;
+            }
+            long total = queryOneLevelCommentTotal(noteId);
+            cacheOneLevelCommentTotal(key, total);
+            return total;
+        } finally {
+            releaseRebuildLock(lockKey, lockToken);
+        }
+    }
+
+    private String readOneLevelCommentTotalCacheVersion(Long noteId) {
+        String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
+        Object version = redisTemplate.opsForValue().get(versionKey);
+        if (version != null) {
+            // 每次读取版本均续期，确保版本存活时间始终覆盖对应数据缓存的最大 TTL。
+            redisTemplate.expire(versionKey,
+                    RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
+        }
+        return version == null ? "0" : String.valueOf(version);
+    }
+
+    private Long readOneLevelCommentTotalFromCache(String key) {
+        Object cached = redisTemplate.opsForValue().get(key);
+        if (cached instanceof Number number) {
+            return number.longValue();
+        }
+        if (cached != null && StringUtils.isNumeric(String.valueOf(cached))) {
+            return Long.parseLong(String.valueOf(cached));
+        }
+        return null;
+    }
+
+    private long queryOneLevelCommentTotal(Long noteId) {
+        return Objects.requireNonNullElse(commentDOMapper.selectOneLevelCountByNoteId(noteId), 0L);
+    }
+
+    private void cacheOneLevelCommentTotal(String key, long total) {
+        long expireSeconds = 60 * 10 + RandomUtil.randomInt(60 * 5);
+        try {
+            redisTemplate.opsForValue().set(key, total, expireSeconds, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，一级评论总数缓存写入失败，响应将继续返回，key={}", key, e);
+        }
+    }
+
+    private Long waitForOneLevelCommentTotal(String key) {
+        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
+            sleepBeforeCacheRetry();
+            Long cached = readOneLevelCommentTotalFromCache(key);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        return null;
+    }
+
+    private String tryAcquireRebuildLock(String lockKey, long expireSeconds) {
+        String token = UUID.randomUUID().toString();
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, token, expireSeconds, TimeUnit.SECONDS);
+        return Boolean.TRUE.equals(acquired) ? token : null;
+    }
+
+    private void releaseRebuildLock(String lockKey, String token) {
+        try {
+            DefaultRedisScript<Long> script = new DefaultRedisScript<>(COMPARE_AND_DELETE_LOCK_SCRIPT, Long.class);
+            redisTemplate.execute(script, Collections.singletonList(lockKey), token);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，一级评论总数重建锁释放失败，key={}", lockKey, e);
+        }
+    }
+
+    private void sleepBeforeCacheRetry() {
+        try {
+            Thread.sleep(CACHE_REBUILD_RETRY_INTERVAL_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
 

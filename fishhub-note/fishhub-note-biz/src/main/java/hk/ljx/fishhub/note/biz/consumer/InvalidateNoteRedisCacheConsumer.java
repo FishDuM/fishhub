@@ -29,6 +29,9 @@ public class InvalidateNoteRedisCacheConsumer implements RocketMQListener<String
         }
         redisTemplate.delete(List.of(
                 RedisKeyConstants.buildNoteDetailKey(event.getNoteId()),
-                RedisKeyConstants.buildPublishedNoteListKey(event.getCreatorId())));
+                RedisKeyConstants.buildNoteAccessKey(event.getNoteId()),
+                RedisKeyConstants.buildPublishedNoteListKey(event.getCreatorId()),
+                // 删除版本标记后，下一次发现页请求会生成新版本，旧页缓存自然失效。
+                RedisKeyConstants.discoverFeedVersionKey()));
     }
 }

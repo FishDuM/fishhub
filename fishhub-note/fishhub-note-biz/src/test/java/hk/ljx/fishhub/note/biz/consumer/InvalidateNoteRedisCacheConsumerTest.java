@@ -33,6 +33,8 @@ class InvalidateNoteRedisCacheConsumerTest {
 
         verify(redisTemplate).delete(List.of(
                 RedisKeyConstants.buildNoteDetailKey(10L),
-                RedisKeyConstants.buildPublishedNoteListKey(20L)));
+                RedisKeyConstants.buildNoteAccessKey(10L),
+                RedisKeyConstants.buildPublishedNoteListKey(20L),
+                RedisKeyConstants.discoverFeedVersionKey()));
     }
 }

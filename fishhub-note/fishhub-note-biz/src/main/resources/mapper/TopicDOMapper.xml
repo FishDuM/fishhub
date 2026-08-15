@@ -33,6 +33,13 @@
     limit 20
   </select>
 
+  <select id="selectAllEnabled" resultMap="BaseResultMap">
+    select <include refid="Base_Column_List" />
+    from t_topic
+    where is_deleted = 0
+    order by id desc
+  </select>
+
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from t_topic
     where id = #{id,jdbcType=BIGINT}

@@ -2,6 +2,7 @@ package hk.ljx.fishhub.note.biz.controller;
 
 import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import jakarta.annotation.Resource;
@@ -36,6 +37,12 @@ public class NoteController {
     @PostMapping(value = "/accessible/batch")
     public Response<List<Long>> findAccessibleNoteIds(@RequestBody List<Long> noteIds) {
         return noteService.findAccessibleNoteIds(noteIds);
+    }
+
+    @PostMapping(value = "/writable/batch")
+    public Response<List<NoteWriteAccessCheckReqDTO>> findWritableNoteAccesses(
+            @RequestBody List<NoteWriteAccessCheckReqDTO> requests) {
+        return noteService.findWritableNoteAccesses(requests);
     }
 
     @PostMapping(value = "/publish")

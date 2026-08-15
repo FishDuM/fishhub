@@ -47,6 +47,12 @@
     where id = #{noteId} and status = 1
   </select>
 
+  <select id="selectInteractionInfoByNoteId" resultMap="BaseResultMap">
+    select id, creator_id, visible, status
+    from t_note
+    where id = #{noteId}
+  </select>
+
   <select id="selectAccessInfosByNoteIds" resultMap="BaseResultMap">
     select id, creator_id, visible, revision
     from t_note
@@ -96,22 +102,17 @@
     limit 20
   </select>
 
-  <select id="selectDiscoverTotalCount" resultType="long">
-    select count(1) from t_note
-    where visible = 0 and status = 1
-    <if test="channelId != null and channelId &gt; 0">
-      and channel_id = #{channelId}
-    </if>
-  </select>
-
-  <select id="selectDiscoverPageList" resultMap="BaseResultMap">
+  <select id="selectDiscoverPageListByCursor" resultMap="BaseResultMap">
     select <include refid="Base_Column_List" /> from t_note
     where visible = 0 and status = 1
     <if test="channelId != null and channelId &gt; 0">
       and channel_id = #{channelId}
     </if>
+    <if test="cursor != null">
+      <![CDATA[ and id < #{cursor} ]]>
+    </if>
     order by id desc
-    limit #{limit} offset #{offset}
+    limit #{limit}
   </select>
 
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">

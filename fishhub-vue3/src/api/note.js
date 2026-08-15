@@ -6,8 +6,8 @@ export function publishNote(note) {
   return axios.post(`${API_PREFIX}/note/publish`, note)
 }
 
-export function getDiscoverNotePageList(channelId, pageNo) {
-  return axios.post(`${API_PREFIX}/discover/note/list`, { channelId, pageNo })
+export function getDiscoverNotePageList(channelId, cursor) {
+  return axios.post(`${API_PREFIX}/discover/note/list`, { channelId, cursor })
 }
 
 export function getNoteDetail(id) {
@@ -57,4 +57,3 @@ export function getLikedNoteList(userId, cursor) {
     cursorId: cursor?.id,
   })
 }
-

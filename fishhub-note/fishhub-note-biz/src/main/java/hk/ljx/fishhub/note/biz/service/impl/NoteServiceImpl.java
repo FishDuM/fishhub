@@ -12,6 +12,7 @@ import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.framework.common.util.NumberUtils;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
+import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
@@ -28,6 +29,7 @@ import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.NoteContentTaskMqDTO;
+import hk.ljx.fishhub.note.biz.model.bo.NoteAccessSnapshot;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
@@ -61,6 +63,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -112,13 +115,13 @@ public class NoteServiceImpl implements NoteService {
 
     @Override
     public Response<Boolean> isAccessible(Long noteId) {
-        NoteDO noteDO = noteDOMapper.selectAccessInfoByNoteId(noteId);
-        if (noteDO == null) {
+        NoteAccessSnapshot accessInfo = loadAccessSnapshot(noteId);
+        if (accessInfo == null) {
             return Response.success(Boolean.FALSE);
         }
         Long currentUserId = LoginUserContextHolder.getUserId();
-        boolean accessible = Objects.equals(noteDO.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
-                || Objects.equals(currentUserId, noteDO.getCreatorId());
+        boolean accessible = Objects.equals(accessInfo.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
+                || Objects.equals(currentUserId, accessInfo.getCreatorId());
         return Response.success(accessible);
     }
 
@@ -135,13 +138,48 @@ public class NoteServiceImpl implements NoteService {
             return Response.success(Collections.emptyList());
         }
         Long currentUserId = LoginUserContextHolder.getUserId();
-        List<Long> accessibleIds = noteDOMapper.selectAccessInfosByNoteIds(normalizedNoteIds)
-                .stream()
-                .filter(note -> Objects.equals(note.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
-                        || Objects.equals(note.getCreatorId(), currentUserId))
-                .map(NoteDO::getId)
+        Map<Long, NoteAccessSnapshot> accessSnapshots = loadAccessSnapshots(normalizedNoteIds);
+        List<Long> accessibleIds = normalizedNoteIds.stream()
+                .filter(noteId -> {
+                    NoteAccessSnapshot accessInfo = accessSnapshots.get(noteId);
+                    return accessInfo != null && (Objects.equals(accessInfo.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
+                            || Objects.equals(accessInfo.getCreatorId(), currentUserId));
+                })
                 .toList();
         return Response.success(accessibleIds);
+    }
+
+    /**
+     * 异步写入消费者的最终权限裁决。这里刻意不使用 Redis 快照，保证消费时以 MySQL 当前状态为准。
+     */
+    @Override
+    public Response<List<NoteWriteAccessCheckReqDTO>> findWritableNoteAccesses(
+            List<NoteWriteAccessCheckReqDTO> requests) {
+        if (CollUtil.isEmpty(requests)) {
+            return Response.success(Collections.emptyList());
+        }
+        List<NoteWriteAccessCheckReqDTO> normalizedRequests = requests.stream()
+                .filter(Objects::nonNull)
+                .filter(request -> request.getNoteId() != null && request.getUserId() != null)
+                .distinct()
+                .toList();
+        if (CollUtil.isEmpty(normalizedRequests)) {
+            return Response.success(Collections.emptyList());
+        }
+        Map<Long, NoteDO> notes = noteDOMapper.selectAccessInfosByNoteIds(normalizedRequests.stream()
+                        .map(NoteWriteAccessCheckReqDTO::getNoteId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(NoteDO::getId, Function.identity()));
+        List<NoteWriteAccessCheckReqDTO> writableRequests = normalizedRequests.stream()
+                .filter(request -> {
+                    NoteDO note = notes.get(request.getNoteId());
+                    return note != null && (Objects.equals(note.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
+                            || Objects.equals(note.getCreatorId(), request.getUserId()));
+                })
+                .toList();
+        return Response.success(writableRequests);
     }
 
     /**
@@ -814,9 +852,6 @@ public class NoteServiceImpl implements NoteService {
     public Response<?> likeNote(LikeNoteReqVO likeNoteReqVO) {
         Long noteId = likeNoteReqVO.getId();
 
-        // 校验笔记仍然存在，并获取发布者 ID 供计数消息使用
-        Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.addLike(userId, noteId)) {
@@ -865,7 +900,6 @@ public class NoteServiceImpl implements NoteService {
                 .noteId(noteId)
                 .type(LikeUnlikeNoteTypeEnum.LIKE.getCode()) // 点赞笔记
                 .createTime(now)
-                .noteCreatorId(creatorId) // 笔记发布者 ID
                 .build();
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeNoteMqDTO))
@@ -878,8 +912,7 @@ public class NoteServiceImpl implements NoteService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
-            noteInteractionCacheService.evictLikeCache(userId);
-            redisTemplate.delete(userNoteLikeZSetKey);
+            noteInteractionCacheService.evictLikeCaches(userId);
             throw new IllegalStateException("笔记点赞消息发送失败", e);
         }
 
@@ -896,8 +929,6 @@ public class NoteServiceImpl implements NoteService {
     public Response<?> unlikeNote(UnlikeNoteReqVO unlikeNoteReqVO) {
         Long noteId = unlikeNoteReqVO.getId();
 
-        Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeLike(userId, noteId)) {
@@ -913,7 +944,6 @@ public class NoteServiceImpl implements NoteService {
                 .noteId(noteId)
                 .type(LikeUnlikeNoteTypeEnum.UNLIKE.getCode()) // 取消点赞笔记
                 .createTime(LocalDateTime.now())
-                .noteCreatorId(creatorId) // 笔记发布者 ID
                 .build();
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(likeUnlikeNoteMqDTO))
@@ -926,8 +956,7 @@ public class NoteServiceImpl implements NoteService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
-            noteInteractionCacheService.evictLikeCache(userId);
-            redisTemplate.delete(userNoteLikeZSetKey);
+            noteInteractionCacheService.evictLikeCaches(userId);
             throw new IllegalStateException("笔记取消点赞消息发送失败", e);
         }
 
@@ -943,9 +972,6 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public Response<?> collectNote(CollectNoteReqVO collectNoteReqVO) {
         Long noteId = collectNoteReqVO.getId();
-
-        // 校验笔记仍然存在，并获取发布者 ID 供计数消息使用
-        Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
 
         Long userId = LoginUserContextHolder.getUserId();
 
@@ -995,7 +1021,6 @@ public class NoteServiceImpl implements NoteService {
                 .noteId(noteId)
                 .type(CollectUnCollectNoteTypeEnum.COLLECT.getCode()) // 收藏笔记
                 .createTime(now)
-                .noteCreatorId(creatorId) // 笔记发布者 ID
                 .build();
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(collectUnCollectNoteMqDTO))
@@ -1008,8 +1033,7 @@ public class NoteServiceImpl implements NoteService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
-            noteInteractionCacheService.evictCollectCache(userId);
-            redisTemplate.delete(userNoteCollectZSetKey);
+            noteInteractionCacheService.evictCollectCaches(userId);
             throw new IllegalStateException("笔记收藏消息发送失败", e);
         }
 
@@ -1026,9 +1050,6 @@ public class NoteServiceImpl implements NoteService {
     public Response<?> unCollectNote(UnCollectNoteReqVO unCollectNoteReqVO) {
         Long noteId = unCollectNoteReqVO.getId();
 
-        // 校验笔记仍然存在，并获取发布者 ID 供计数消息使用
-        Long creatorId = checkNoteIsExistAndGetCreatorId(noteId);
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeCollect(userId, noteId)) {
@@ -1044,7 +1065,6 @@ public class NoteServiceImpl implements NoteService {
                 .noteId(noteId)
                 .type(CollectUnCollectNoteTypeEnum.UN_COLLECT.getCode()) // 取消收藏笔记
                 .createTime(LocalDateTime.now())
-                .noteCreatorId(creatorId) // 笔记发布者 ID
                 .build();
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(unCollectNoteMqDTO))
@@ -1057,8 +1077,7 @@ public class NoteServiceImpl implements NoteService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
-            noteInteractionCacheService.evictCollectCache(userId);
-            redisTemplate.delete(userNoteCollectZSetKey);
+            noteInteractionCacheService.evictCollectCaches(userId);
             throw new IllegalStateException("笔记取消收藏消息发送失败", e);
         }
 
@@ -1376,14 +1395,13 @@ public class NoteServiceImpl implements NoteService {
      * @param noteId
      */
     private Long checkNoteIsExistAndGetCreatorId(Long noteId) {
-        // 可见性变更后的缓存失效通过 MQ 广播，读取缓存会留下短暂的越权窗口。
-        // 高频互动仅查询鉴权必需字段，以主库状态作为最终权限依据。
-        NoteDO noteDO = noteDOMapper.selectAccessInfoByNoteId(noteId);
-        if (noteDO == null) {
+        // 仅供互动状态读取使用；详情、评论等读取权限允许短暂最终一致。
+        NoteAccessSnapshot accessInfo = loadAccessSnapshot(noteId);
+        if (accessInfo == null) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
-        checkNoteVisible(noteDO.getVisible(), LoginUserContextHolder.getUserId(), noteDO.getCreatorId());
-        return noteDO.getCreatorId();
+        checkNoteVisible(accessInfo.getVisible(), LoginUserContextHolder.getUserId(), accessInfo.getCreatorId());
+        return accessInfo.getCreatorId();
     }
 
     private void checkCurrentUserOwnsList(Long requestedUserId) {
@@ -1421,8 +1439,8 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
-    private NoteDO requireAccessibleNote(Long noteId, Long userId) {
-        NoteDO accessInfo = noteDOMapper.selectAccessInfoByNoteId(noteId);
+    private NoteAccessSnapshot requireAccessibleNote(Long noteId, Long userId) {
+        NoteAccessSnapshot accessInfo = loadAccessSnapshot(noteId);
         if (accessInfo == null) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
@@ -1434,9 +1452,130 @@ public class NoteServiceImpl implements NoteService {
         if (snapshot == null || snapshot.getRevision() == null) {
             return false;
         }
-        NoteDO accessInfo = requireAccessibleNote(noteId, userId);
+        NoteAccessSnapshot accessInfo = requireAccessibleNote(noteId, userId);
         return Objects.equals(snapshot.getRevision(), accessInfo.getRevision());
     }
 
+    /**
+     * 访问控制允许短暂最终一致：笔记变更会由现有 MQ 立即删除该快照，未命中时回源 MySQL。
+     */
+    private NoteAccessSnapshot loadAccessSnapshot(Long noteId) {
+        String key = RedisKeyConstants.buildNoteAccessKey(noteId);
+        String cached = getAccessSnapshotCacheValue(key);
+        if (StringUtils.isNotBlank(cached)) {
+            if ("null".equals(cached)) {
+                return null;
+            }
+            try {
+                return JsonUtils.parseObject(cached, NoteAccessSnapshot.class);
+            } catch (Exception e) {
+                log.warn("笔记访问快照解析失败，跳过缓存并回源 MySQL，key={}", key, e);
+                deleteAccessSnapshotCache(key);
+            }
+        }
+        NoteDO note = noteDOMapper.selectAccessInfoByNoteId(noteId);
+        if (note == null) {
+            cacheAccessSnapshot(key, "null");
+            return null;
+        }
+        NoteAccessSnapshot snapshot = toAccessSnapshot(note);
+        cacheAccessSnapshot(key, JsonUtils.toJsonString(snapshot));
+        return snapshot;
+    }
+
+    /**
+     * 批量获取笔记访问控制快照。Redis 冷缓存时只进行一次 IN 查询，避免批量评论校验退化为 N 次主键查询。
+     */
+    private Map<Long, NoteAccessSnapshot> loadAccessSnapshots(List<Long> noteIds) {
+        List<String> keys = noteIds.stream()
+                .map(RedisKeyConstants::buildNoteAccessKey)
+                .toList();
+        List<String> cachedValues;
+        try {
+            cachedValues = redisTemplate.opsForValue().multiGet(keys);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，笔记访问快照批量读取失败，回源 MySQL，noteIds={}", noteIds, e);
+            return loadAccessSnapshotsFromMySql(noteIds);
+        }
+        Map<Long, NoteAccessSnapshot> snapshots = new HashMap<>(noteIds.size());
+        List<Long> missedNoteIds = new ArrayList<>();
+
+        for (int i = 0; i < noteIds.size(); i++) {
+            String cached = cachedValues == null || cachedValues.size() <= i ? null : cachedValues.get(i);
+            if (StringUtils.isBlank(cached)) {
+                missedNoteIds.add(noteIds.get(i));
+                continue;
+            }
+            if ("null".equals(cached)) {
+                continue;
+            }
+            try {
+                snapshots.put(noteIds.get(i), JsonUtils.parseObject(cached, NoteAccessSnapshot.class));
+            } catch (Exception e) {
+                // 损坏的快照不能阻断批量权限校验；删除后统一回源并回填。
+                deleteAccessSnapshotCache(keys.get(i));
+                missedNoteIds.add(noteIds.get(i));
+            }
+        }
+
+        if (CollUtil.isEmpty(missedNoteIds)) {
+            return snapshots;
+        }
+
+        snapshots.putAll(loadAccessSnapshotsFromMySql(missedNoteIds));
+        return snapshots;
+    }
+
+    private Map<Long, NoteAccessSnapshot> loadAccessSnapshotsFromMySql(List<Long> noteIds) {
+        List<NoteDO> notes = noteDOMapper.selectAccessInfosByNoteIds(noteIds);
+        Map<Long, NoteAccessSnapshot> databaseSnapshots = notes.stream()
+                .collect(Collectors.toMap(NoteDO::getId, this::toAccessSnapshot));
+        Map<Long, NoteAccessSnapshot> snapshots = new HashMap<>(databaseSnapshots.size());
+        for (Long noteId : noteIds) {
+            String key = RedisKeyConstants.buildNoteAccessKey(noteId);
+            NoteAccessSnapshot snapshot = databaseSnapshots.get(noteId);
+            if (snapshot == null) {
+                // status 非正常或不存在的笔记也做短期缓存，避免缓存穿透。
+                cacheAccessSnapshot(key, "null");
+                continue;
+            }
+            snapshots.put(noteId, snapshot);
+            cacheAccessSnapshot(key, JsonUtils.toJsonString(snapshot));
+        }
+        return snapshots;
+    }
+
+    private String getAccessSnapshotCacheValue(String key) {
+        try {
+            return redisTemplate.opsForValue().get(key);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，笔记访问快照读取失败，回源 MySQL，key={}", key, e);
+            return null;
+        }
+    }
+
+    private void cacheAccessSnapshot(String key, String value) {
+        try {
+            redisTemplate.opsForValue().set(key, value, 30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，笔记访问快照写入失败，响应将继续返回，key={}", key, e);
+        }
+    }
+
+    private void deleteAccessSnapshotCache(String key) {
+        try {
+            redisTemplate.delete(key);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，笔记访问快照删除失败，key={}", key, e);
+        }
+    }
+
+    private NoteAccessSnapshot toAccessSnapshot(NoteDO note) {
+        NoteAccessSnapshot snapshot = new NoteAccessSnapshot();
+        snapshot.setCreatorId(note.getCreatorId());
+        snapshot.setVisible(note.getVisible());
+        snapshot.setRevision(note.getRevision());
+        return snapshot;
+    }
 
 }
