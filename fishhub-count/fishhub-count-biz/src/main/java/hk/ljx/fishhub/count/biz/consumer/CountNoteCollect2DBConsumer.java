@@ -8,6 +8,7 @@ import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.model.dto.AggregationCountCollectUnCollectNoteMqDTO;
+import hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +32,7 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
     @Resource
     private UserCountDOMapper userCountDOMapper;
     @Resource
-    private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
+    private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
     @Resource

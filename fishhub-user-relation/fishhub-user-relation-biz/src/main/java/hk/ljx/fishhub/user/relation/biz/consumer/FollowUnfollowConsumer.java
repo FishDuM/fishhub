@@ -3,6 +3,8 @@ package hk.ljx.fishhub.user.relation.biz.consumer;
 import com.google.common.util.concurrent.RateLimiter;
 import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
+import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FansDO;
@@ -14,7 +16,6 @@ import hk.ljx.fishhub.user.relation.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.user.relation.biz.model.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.UnfollowUserMqDTO;
-import hk.ljx.fishhub.user.relation.biz.retry.ReliableMqOutbox;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.Message;
@@ -50,7 +51,9 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     @Resource
     private MqConsumeRecordMapper mqConsumeRecordMapper;
     @Resource
-    private ReliableMqOutbox reliableMqOutbox;
+    private TransactionalMqSender transactionalMqSender;
+    @Resource
+    private TxJournalStore txJournalStore;
 
     @Override
     public void onMessage(Message message) {
@@ -101,41 +104,37 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         String countEventBody = JsonUtils.toJsonString(countEvent);
         String messageKey = DigestUtil.sha256Hex("follow:" + bodyJsonStr);
 
-        // 消费记录、关系状态迁移和待发送计数事件在同一个 MySQL 事务中提交。
-        boolean isSuccess = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
-            if (mqConsumeRecordMapper.insert("follow-unfollow", messageKey) != 1) {
-                return false;
-            }
+        // 关系状态迁移与变更事件经由事务消息原子绑定；重复消费或状态未变化时不登记 journal，半消息回滚。
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_USER_RELATION_CHANGED, countEventBody, txId -> {
+            Boolean applied = transactionTemplate.execute(status -> {
+                if (mqConsumeRecordMapper.insert("follow-unfollow", messageKey) != 1) {
+                    return false;
+                }
 
-            int count = followingDOMapper.insertIgnore(FollowingDO.builder()
-                    .userId(userId)
-                    .followingUserId(followUserId)
-                    .createTime(createTime)
-                    .build());
-            fansDOMapper.insertIgnore(FansDO.builder()
-                    .userId(followUserId)
-                    .fansUserId(userId)
-                    .createTime(createTime)
-                    .build());
+                int count = followingDOMapper.insertIgnore(FollowingDO.builder()
+                        .userId(userId)
+                        .followingUserId(followUserId)
+                        .createTime(createTime)
+                        .build());
+                fansDOMapper.insertIgnore(FansDO.builder()
+                        .userId(followUserId)
+                        .fansUserId(userId)
+                        .createTime(createTime)
+                        .build());
 
-            // t_following 是关注状态的主记录；已经存在时不重复产生计数事件。
-            if (count != 1) {
-                return false;
-            }
-
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FOLLOWING, countEventBody,
-                    followingOrderingKey(userId));
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FANS, countEventBody,
-                    fansOrderingKey(followUserId));
-            return true;
-        }));
+                // t_following 是关注状态的主记录；已经存在时不重复产生计数事件。
+                if (count != 1) {
+                    return false;
+                }
+                txJournalStore.record(txId);
+                return true;
+            });
+            log.info("关注关系事务完成, userId={}, targetUserId={}, applied={}", userId, followUserId, applied);
+            return applied;
+        });
 
         // MySQL 是关系事实源。重复投递也执行缓存失效，确保 Redis 暂时不可用后仍能靠 MQ 重试恢复。
         redisTemplate.delete(RedisKeyConstants.buildUserFansKey(followUserId));
-
-        if (isSuccess) {
-            sendCountEvent(countEventBody, userId, followUserId);
-        }
     }
 
     /**
@@ -167,47 +166,25 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         String countEventBody = JsonUtils.toJsonString(countEvent);
         String messageKey = DigestUtil.sha256Hex("unfollow:" + bodyJsonStr);
 
-        boolean isSuccess = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
-            if (mqConsumeRecordMapper.insert("follow-unfollow", messageKey) != 1) {
-                return false;
-            }
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_USER_RELATION_CHANGED, countEventBody, txId -> {
+            Boolean applied = transactionTemplate.execute(status -> {
+                if (mqConsumeRecordMapper.insert("follow-unfollow", messageKey) != 1) {
+                    return false;
+                }
 
-            int count = followingDOMapper.deleteByUserIdAndFollowingUserId(userId, unfollowUserId);
-            fansDOMapper.deleteByUserIdAndFansUserId(unfollowUserId, userId);
-            if (count != 1) {
-                return false;
-            }
-
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FOLLOWING, countEventBody,
-                    followingOrderingKey(userId));
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_COUNT_FANS, countEventBody,
-                    fansOrderingKey(unfollowUserId));
-            return true;
-        }));
+                int count = followingDOMapper.deleteByUserIdAndFollowingUserId(userId, unfollowUserId);
+                fansDOMapper.deleteByUserIdAndFansUserId(unfollowUserId, userId);
+                if (count != 1) {
+                    return false;
+                }
+                txJournalStore.record(txId);
+                return true;
+            });
+            log.info("取关关系事务完成, userId={}, targetUserId={}, applied={}", userId, unfollowUserId, applied);
+            return applied;
+        });
 
         redisTemplate.delete(RedisKeyConstants.buildUserFansKey(unfollowUserId));
-
-        if (isSuccess) {
-            sendCountEvent(countEventBody, userId, unfollowUserId);
-        }
-    }
-
-    /**
-     * 发送 MQ 通知计数服务
-     *
-     */
-    private void sendCountEvent(String body, Long userId, Long targetUserId) {
-        // 事件已经在事务中进入 outbox；即时发送失败时由定时任务继续补发。
-        reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_FOLLOWING, body, followingOrderingKey(userId));
-        reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_FANS, body, fansOrderingKey(targetUserId));
-    }
-
-    private String followingOrderingKey(Long userId) {
-        return MQConstants.TOPIC_COUNT_FOLLOWING + ':' + userId;
-    }
-
-    private String fansOrderingKey(Long userId) {
-        return MQConstants.TOPIC_COUNT_FANS + ':' + userId;
     }
 
 }

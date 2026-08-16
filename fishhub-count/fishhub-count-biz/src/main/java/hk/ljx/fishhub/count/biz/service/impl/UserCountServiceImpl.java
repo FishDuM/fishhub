@@ -11,6 +11,7 @@ import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.service.UserCountService;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
+import hk.ljx.fishhub.count.biz.util.Counts;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
@@ -92,19 +93,19 @@ public class UserCountServiceImpl implements UserCountService {
 
             // 判断 Redis 中对应计数，若为空，则使用 DO 中的计数
             if (Objects.nonNull(userCountDO) && Objects.isNull(collectTotal)) {
-                findUserCountByIdRspDTO.setCollectTotal(userCountDO.getCollectTotal());
+                findUserCountByIdRspDTO.setCollectTotal(Counts.clamp0(userCountDO.getCollectTotal()));
             }
             if (Objects.nonNull(userCountDO) && Objects.isNull(fansTotal)) {
-                findUserCountByIdRspDTO.setFansTotal(userCountDO.getFansTotal());
+                findUserCountByIdRspDTO.setFansTotal(Counts.clamp0(userCountDO.getFansTotal()));
             }
             if (Objects.nonNull(userCountDO) && Objects.isNull(noteTotal)) {
-                findUserCountByIdRspDTO.setNoteTotal(userCountDO.getNoteTotal());
+                findUserCountByIdRspDTO.setNoteTotal(Counts.clamp0(userCountDO.getNoteTotal()));
             }
             if (Objects.nonNull(userCountDO) && Objects.isNull(followingTotal)) {
-                findUserCountByIdRspDTO.setFollowingTotal(userCountDO.getFollowingTotal());
+                findUserCountByIdRspDTO.setFollowingTotal(Counts.clamp0(userCountDO.getFollowingTotal()));
             }
             if (Objects.nonNull(userCountDO) && Objects.isNull(likeTotal)) {
-                findUserCountByIdRspDTO.setLikeTotal(userCountDO.getLikeTotal());
+                findUserCountByIdRspDTO.setLikeTotal(Counts.clamp0(userCountDO.getLikeTotal()));
             }
 
             // 异步同步到 Redis 缓存中, 以便下次查询能够命中缓存
@@ -191,19 +192,19 @@ public class UserCountServiceImpl implements UserCountService {
             UserCountDO userCountDO = countDOMap.get(userId);
 
             if (dto.getCollectTotal() == null) {
-                dto.setCollectTotal(userCountDO == null || userCountDO.getCollectTotal() == null ? 0L : userCountDO.getCollectTotal());
+                dto.setCollectTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getCollectTotal()));
             }
             if (dto.getFansTotal() == null) {
-                dto.setFansTotal(userCountDO == null || userCountDO.getFansTotal() == null ? 0L : userCountDO.getFansTotal());
+                dto.setFansTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getFansTotal()));
             }
             if (dto.getNoteTotal() == null) {
-                dto.setNoteTotal(userCountDO == null || userCountDO.getNoteTotal() == null ? 0L : userCountDO.getNoteTotal());
+                dto.setNoteTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getNoteTotal()));
             }
             if (dto.getFollowingTotal() == null) {
-                dto.setFollowingTotal(userCountDO == null || userCountDO.getFollowingTotal() == null ? 0L : userCountDO.getFollowingTotal());
+                dto.setFollowingTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getFollowingTotal()));
             }
             if (dto.getLikeTotal() == null) {
-                dto.setLikeTotal(userCountDO == null || userCountDO.getLikeTotal() == null ? 0L : userCountDO.getLikeTotal());
+                dto.setLikeTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getLikeTotal()));
             }
 
             if (userIdsNeedQuery.contains(userId)) {
@@ -248,19 +249,19 @@ public class UserCountServiceImpl implements UserCountService {
             // 存放计数
             Map<String, Long> userCountMap = Maps.newHashMap();
             if (Objects.isNull(collectTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, Objects.isNull(userCountDO) || Objects.isNull(userCountDO.getCollectTotal()) ? 0 : userCountDO.getCollectTotal());
+                userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal()));
 
             if (Objects.isNull(fansTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, Objects.isNull(userCountDO) || Objects.isNull(userCountDO.getFansTotal()) ? 0 : userCountDO.getFansTotal());
+                userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal()));
 
             if (Objects.isNull(noteTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, Objects.isNull(userCountDO) || Objects.isNull(userCountDO.getNoteTotal()) ? 0 : userCountDO.getNoteTotal());
+                userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal()));
 
             if (Objects.isNull(followingTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, Objects.isNull(userCountDO) || Objects.isNull(userCountDO.getFollowingTotal()) ? 0 : userCountDO.getFollowingTotal());
+                userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal()));
 
             if (Objects.isNull(likeTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, Objects.isNull(userCountDO) || Objects.isNull(userCountDO.getLikeTotal()) ? 0 : userCountDO.getLikeTotal());
+                userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal()));
 
             redisTemplate.executePipelined(new SessionCallback<>() {
                 @Override

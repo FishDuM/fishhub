@@ -9,14 +9,9 @@ public interface MQConstants {
     String TOPIC_PUBLISH_COMMENT = "PublishCommentTopic";
 
     /**
-     * Topic: 笔记评论总数计数
+     * Topic: 评论变更统一事件（发布、删除），由 count 模块与评论模块自身的多个 consumer group 订阅
      */
-    String TOPIC_COUNT_NOTE_COMMENT = "CountNoteCommentTopic";
-
-    /**
-     * Topic: 评论热度值更新
-     */
-    String TOPIC_COMMENT_HEAT_UPDATE = "CommentHeatUpdateTopic";
+    String TOPIC_COMMENT_CHANGED = "CommentChangedTopic";
 
     /**
      * Topic: 评论点赞、取消点赞共用一个 Topic
@@ -29,7 +24,7 @@ public interface MQConstants {
     String TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE = "AppliedCommentLikeUnlikeTopic";
 
     /**
-     * Topic: 删除本地缓存 —— 评论详情
+     * Topic: 删除本地缓存 —— 评论详情（模块内广播）
      */
     String TOPIC_DELETE_COMMENT_LOCAL_CACHE = "DeleteCommentDetailLocalCacheTopic";
 
@@ -39,29 +34,19 @@ public interface MQConstants {
     String TOPIC_DELETE_COMMENT = "DeleteCommentTopic";
 
     /**
-     * Topic: 删除评论正文
+     * Topic: 评论热度值更新（评论点赞聚合落库后触发重算）
      */
-    String TOPIC_DELETE_COMMENT_CONTENT = "DeleteCommentContentTopic";
+    String TOPIC_COMMENT_HEAT_UPDATE = "CommentHeatUpdateTopic";
 
     /**
-     * 评论正文写入任务；评论事实提交后再幂等同步至 KV。
+     * 评论变更类型：发布
      */
-    String TOPIC_SYNC_COMMENT_CONTENT = "SyncCommentContentTopic";
+    Integer COMMENT_CHANGE_TYPE_PUBLISH = 1;
 
     /**
-     * 一级评论发生增删后的缓存失效。事件与评论事实一并写入 outbox，避免 Redis 短暂故障丢失失效动作。
+     * 评论变更类型：删除
      */
-    String TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE = "InvalidateOneLevelCommentCacheTopic";
-
-    /**
-     * 二级评论发生增删后的列表缓存失效。事件与评论事实一并写入 outbox。
-     */
-    String TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE = "InvalidateChildCommentListCacheTopic";
-
-    /**
-     * 评论删除后的详情、计数和首回复标识缓存失效。
-     */
-    String TOPIC_INVALIDATE_COMMENT_CACHE = "InvalidateCommentCacheTopic";
+    Integer COMMENT_CHANGE_TYPE_DELETE = 0;
 
     /**
      * Tag 标签：点赞

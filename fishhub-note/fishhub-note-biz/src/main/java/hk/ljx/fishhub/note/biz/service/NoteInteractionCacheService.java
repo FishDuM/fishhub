@@ -8,7 +8,7 @@ import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import jakarta.annotation.Resource;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;
@@ -28,7 +28,7 @@ public class NoteInteractionCacheService {
     private static final long BASE_EXPIRE_SECONDS = 24 * 60 * 60L;
 
     @Resource
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private NoteLikeDOMapper noteLikeDOMapper;
     @Resource
@@ -36,35 +36,35 @@ public class NoteInteractionCacheService {
 
     public boolean isLiked(Long userId, Long noteId) {
         String key = ensureLikeCache(userId);
-        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key, String.valueOf(noteId)));
+        return Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(key, String.valueOf(noteId)));
     }
 
     public boolean addLike(Long userId, Long noteId) {
         String key = ensureLikeCache(userId);
-        Long added = redisTemplate.opsForSet().add(key, String.valueOf(noteId));
+        Long added = stringRedisTemplate.opsForSet().add(key, String.valueOf(noteId));
         return added != null && added > 0;
     }
 
     public boolean removeLike(Long userId, Long noteId) {
         String key = ensureLikeCache(userId);
-        Long removed = redisTemplate.opsForSet().remove(key, String.valueOf(noteId));
+        Long removed = stringRedisTemplate.opsForSet().remove(key, String.valueOf(noteId));
         return removed != null && removed > 0;
     }
 
     public boolean isCollected(Long userId, Long noteId) {
         String key = ensureCollectCache(userId);
-        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key, String.valueOf(noteId)));
+        return Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(key, String.valueOf(noteId)));
     }
 
     public boolean addCollect(Long userId, Long noteId) {
         String key = ensureCollectCache(userId);
-        Long added = redisTemplate.opsForSet().add(key, String.valueOf(noteId));
+        Long added = stringRedisTemplate.opsForSet().add(key, String.valueOf(noteId));
         return added != null && added > 0;
     }
 
     public boolean removeCollect(Long userId, Long noteId) {
         String key = ensureCollectCache(userId);
-        Long removed = redisTemplate.opsForSet().remove(key, String.valueOf(noteId));
+        Long removed = stringRedisTemplate.opsForSet().remove(key, String.valueOf(noteId));
         return removed != null && removed > 0;
     }
 
@@ -75,7 +75,7 @@ public class NoteInteractionCacheService {
         String key = ensureLikeCache(userId);
         Set<Long> likedNoteIds = new HashSet<>();
         for (Long noteId : noteIds) {
-            if (Boolean.TRUE.equals(redisTemplate.opsForSet().isMember(key, String.valueOf(noteId)))) {
+            if (Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(key, String.valueOf(noteId)))) {
                 likedNoteIds.add(noteId);
             }
         }
@@ -83,7 +83,7 @@ public class NoteInteractionCacheService {
     }
 
     public void evictLikeCache(Long userId) {
-        redisTemplate.delete(RedisKeyConstants.buildUserNoteLikeSetKey(userId));
+        stringRedisTemplate.delete(RedisKeyConstants.buildUserNoteLikeSetKey(userId));
     }
 
     /**
@@ -91,11 +91,11 @@ public class NoteInteractionCacheService {
      */
     public void evictLikeCaches(Long userId) {
         evictLikeCache(userId);
-        redisTemplate.delete(RedisKeyConstants.buildUserNoteLikeZSetKey(userId));
+        stringRedisTemplate.delete(RedisKeyConstants.buildUserNoteLikeZSetKey(userId));
     }
 
     public void evictCollectCache(Long userId) {
-        redisTemplate.delete(RedisKeyConstants.buildUserNoteCollectSetKey(userId));
+        stringRedisTemplate.delete(RedisKeyConstants.buildUserNoteCollectSetKey(userId));
     }
 
     /**
@@ -103,12 +103,12 @@ public class NoteInteractionCacheService {
      */
     public void evictCollectCaches(Long userId) {
         evictCollectCache(userId);
-        redisTemplate.delete(RedisKeyConstants.buildUserNoteCollectZSetKey(userId));
+        stringRedisTemplate.delete(RedisKeyConstants.buildUserNoteCollectZSetKey(userId));
     }
 
     private String ensureLikeCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteLikeSetKey(userId);
-        if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             List<NoteLikeDO> records = noteLikeDOMapper.selectByUserId(userId);
             initializeSet(key, records == null ? Collections.emptyList() : records.stream()
                     .map(NoteLikeDO::getNoteId)
@@ -119,7 +119,7 @@ public class NoteInteractionCacheService {
 
     private String ensureCollectCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteCollectSetKey(userId);
-        if (!Boolean.TRUE.equals(redisTemplate.hasKey(key))) {
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             List<NoteCollectionDO> records = noteCollectionDOMapper.selectByUserId(userId);
             initializeSet(key, records == null ? Collections.emptyList() : records.stream()
                     .map(NoteCollectionDO::getNoteId)
@@ -129,11 +129,11 @@ public class NoteInteractionCacheService {
     }
 
     private void initializeSet(String key, Collection<Long> noteIds) {
-        redisTemplate.opsForSet().add(key, INITIALIZED_MEMBER);
+        stringRedisTemplate.opsForSet().add(key, INITIALIZED_MEMBER);
         if (CollUtil.isNotEmpty(noteIds)) {
             String[] members = noteIds.stream().map(String::valueOf).toArray(String[]::new);
-            redisTemplate.opsForSet().add(key, members);
+            stringRedisTemplate.opsForSet().add(key, members);
         }
-        redisTemplate.expire(key, BASE_EXPIRE_SECONDS + RandomUtil.randomLong(BASE_EXPIRE_SECONDS), TimeUnit.SECONDS);
+        stringRedisTemplate.expire(key, BASE_EXPIRE_SECONDS + RandomUtil.randomLong(BASE_EXPIRE_SECONDS), TimeUnit.SECONDS);
     }
 }

@@ -27,7 +27,7 @@ import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
 import hk.ljx.fishhub.note.biz.enums.*;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
-import hk.ljx.fishhub.note.biz.model.dto.NoteOperateMqDTO;
+import hk.ljx.fishhub.note.biz.model.dto.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.biz.model.dto.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.model.bo.NoteAccessSnapshot;
 import hk.ljx.fishhub.note.biz.model.vo.*;
@@ -36,7 +36,7 @@ import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.note.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
-import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
@@ -48,7 +48,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
@@ -88,7 +88,7 @@ public class NoteServiceImpl implements NoteService {
     @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
     @Resource
@@ -98,7 +98,7 @@ public class NoteServiceImpl implements NoteService {
     @Resource
     private CountRpcService countRpcService;
     @Resource
-    private ReliableMqOutbox reliableMqOutbox;
+    private TransactionalMqSender transactionalMqSender;
     @Resource
     private NotePersistenceService notePersistenceService;
     @Resource
@@ -306,27 +306,43 @@ public class NoteServiceImpl implements NoteService {
      * @param noteDO
      */
     private void persistPublishedNote(Long creatorId, NoteDO noteDO, String content) {
-        NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
+        List<NoteContentTaskMqDTO> contentTasks = StringUtils.isBlank(content) ? List.of()
+                : List.of(buildContentTask(noteDO.getId(), noteDO.getContentUuid(), content, NoteContentTaskTypeEnum.UPSERT));
+
+        NoteChangedEventMqDTO event = NoteChangedEventMqDTO.builder()
                 .creatorId(creatorId)
                 .noteId(noteDO.getId())
-                .type(NoteOperateEnum.PUBLISH.getCode()) // 发布笔记
+                .changeType(NoteOperateEnum.PUBLISH.getCode())
+                .contentTasks(contentTasks)
                 .build();
 
-        String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_PUBLISH;
-        String eventBody = JsonUtils.toJsonString(noteOperateMqDTO);
+        // 笔记元数据、正文任务与发布事件经由事务消息原子提交。
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_NOTE_CHANGED, JsonUtils.toJsonString(event),
+                txId -> {
+                    notePersistenceService.savePublishedNote(noteDO, txId);
+                    return true;
+                });
 
-        String contentTaskBody = StringUtils.isBlank(content) ? null
-                : buildNoteContentTask(noteDO.getId(), noteDO.getContentUuid(), content, NoteContentTaskTypeEnum.UPSERT);
+        // Redis 为共享存储，提交后于本进程内直接失效，无需跨节点事件；
+        // 各节点本地缓存由读路径的最小事实校验兜底。
+        invalidateNoteRedisCaches(creatorId, noteDO.getId());
+    }
 
-        // 笔记元数据、正文任务与发布事件在同一个 MySQL 事务中提交。
-        notePersistenceService.savePublishedNote(noteDO, destination, eventBody, contentTaskBody);
-
-        // 事务提交后即时投递；失败时由 outbox 定时补发。
-        if (contentTaskBody != null) {
-            reliableMqOutbox.sendNow(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
+    /**
+     * 提交后失效笔记相关 Redis 缓存（详情快照、作者发布列表、发现页版本）。
+     * 尽力而为：失败仅记日志，缓存过期时间兜底。
+     */
+    private void invalidateNoteRedisCaches(Long creatorId, Long noteId) {
+        try {
+            stringRedisTemplate.delete(List.of(
+                    RedisKeyConstants.buildNoteDetailKey(noteId),
+                    RedisKeyConstants.buildNoteAccessKey(noteId),
+                    RedisKeyConstants.buildPublishedNoteListKey(creatorId),
+                    // 删除版本标记后，下一次发现页请求会生成新版本，旧页缓存自然失效。
+                    RedisKeyConstants.discoverFeedVersionKey()));
+        } catch (Exception e) {
+            log.warn("笔记缓存失效失败，等待缓存过期兜底, noteId={}", noteId, e);
         }
-        reliableMqOutbox.sendNow(MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE, eventBody);
-        reliableMqOutbox.sendNow(destination, eventBody);
     }
 
     /**
@@ -361,7 +377,7 @@ public class NoteServiceImpl implements NoteService {
 
         // 从 Redis 缓存中获取
         String noteDetailRedisKey = RedisKeyConstants.buildNoteDetailKey(noteId);
-        String noteDetailJson = redisTemplate.opsForValue().get(noteDetailRedisKey);
+        String noteDetailJson = stringRedisTemplate.opsForValue().get(noteDetailRedisKey);
 
         // 若缓存中有该笔记的数据，则直接返回
         if (StringUtils.isNotBlank(noteDetailJson)) {
@@ -370,7 +386,7 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(noteDetailJson, FindNoteDetailRspVO.class);
             if (!isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                redisTemplate.delete(noteDetailRedisKey);
+                stringRedisTemplate.delete(noteDetailRedisKey);
             } else {
             // 异步线程中将用户信息存入本地缓存
             threadPoolTaskExecutor.submit(() -> {
@@ -393,7 +409,7 @@ public class NoteServiceImpl implements NoteService {
                 // 防止缓存穿透，将空数据存入 Redis 缓存 (过期时间不宜设置过长)
                 // 保底1分钟 + 随机秒数
                 long expireSeconds = 60 + RandomUtil.randomInt(60);
-                redisTemplate.opsForValue().set(noteDetailRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
+                stringRedisTemplate.opsForValue().set(noteDetailRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
             });
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
@@ -460,7 +476,7 @@ public class NoteServiceImpl implements NoteService {
             String noteDetailJson1 = JsonUtils.toJsonString(findNoteDetailRspVO);
             // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
             long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-            redisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
+            stringRedisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
         });
 
         fillNoteCounts(findNoteDetailRspVO);
@@ -474,7 +490,6 @@ public class NoteServiceImpl implements NoteService {
      * @return
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Response<?> updateNote(UpdateNoteReqVO updateNoteReqVO) {
         Long noteId = updateNoteReqVO.getId();
         Integer type = updateNoteReqVO.getType();
@@ -521,28 +536,29 @@ public class NoteServiceImpl implements NoteService {
                 .revision(updateNoteReqVO.getExpectedRevision())
                 .build();
 
-        if (noteDOMapper.updateByPrimaryKeyAndRevision(noteDO) != 1) {
-            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
-        }
-
-        List<String> contentTaskBodies = new ArrayList<>();
+        List<NoteContentTaskMqDTO> contentTasks = new ArrayList<>();
         if (content.createdNewContent()) {
-            contentTaskBodies.add(buildNoteContentTask(noteId, newContentUuid, content.value(), NoteContentTaskTypeEnum.UPSERT));
+            contentTasks.add(buildContentTask(noteId, newContentUuid, content.value(), NoteContentTaskTypeEnum.UPSERT));
         }
         if (StringUtils.isNotBlank(oldContentUuid) && !Objects.equals(oldContentUuid, newContentUuid)) {
-            contentTaskBodies.add(buildNoteContentTask(noteId, oldContentUuid, null, NoteContentTaskTypeEnum.DELETE));
-        }
-        contentTaskBodies.forEach(body -> reliableMqOutbox.enqueue(MQConstants.TOPIC_SYNC_NOTE_CONTENT, body));
-        if (CollUtil.isNotEmpty(contentTaskBodies)) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    contentTaskBodies.forEach(body -> reliableMqOutbox.sendNow(MQConstants.TOPIC_SYNC_NOTE_CONTENT, body));
-                }
-            });
+            contentTasks.add(buildContentTask(noteId, oldContentUuid, null, NoteContentTaskTypeEnum.DELETE));
         }
 
-        enqueueNoteCacheInvalidation(noteId, currUserId);
+        NoteChangedEventMqDTO event = NoteChangedEventMqDTO.builder()
+                .creatorId(selectNoteDO.getCreatorId())
+                .noteId(noteId)
+                .changeType(NoteOperateEnum.UPDATE.getCode())
+                .contentTasks(contentTasks)
+                .build();
+
+        // 编辑事实、正文任务与变更事件经由事务消息原子提交；版本冲突在本地事务内抛出并回滚半消息。
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_NOTE_CHANGED, JsonUtils.toJsonString(event),
+                txId -> {
+                    notePersistenceService.updateNote(noteDO, txId);
+                    return true;
+                });
+
+        invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId);
 
         Set<String> newMediaUrls = new HashSet<>();
         if (StringUtils.isNotBlank(media.imgUris())) {
@@ -555,12 +571,7 @@ public class NoteServiceImpl implements NoteService {
                 .filter(url -> !newMediaUrls.contains(url))
                 .toList();
         if (CollUtil.isNotEmpty(obsoleteMediaUrls)) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    ossRpcService.deleteFiles(obsoleteMediaUrls);
-                }
-            });
+            ossRpcService.deleteFiles(obsoleteMediaUrls);
         }
 
         return Response.success();
@@ -646,7 +657,6 @@ public class NoteServiceImpl implements NoteService {
      * @return
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Response<?> deleteNote(DeleteNoteReqVO deleteNoteReqVO) {
         // 笔记 ID
         Long noteId = deleteNoteReqVO.getId();
@@ -672,41 +682,29 @@ public class NoteServiceImpl implements NoteService {
                 .revision(selectNoteDO.getRevision())
                 .build();
 
-        if (noteDOMapper.logicalDeleteByPrimaryKeyAndRevision(noteDO) != 1) {
-            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
-        }
+        List<NoteContentTaskMqDTO> contentTasks = StringUtils.isBlank(selectNoteDO.getContentUuid()) ? List.of()
+                : List.of(buildContentTask(noteId, selectNoteDO.getContentUuid(), null, NoteContentTaskTypeEnum.DELETE));
 
-        String contentTaskBody = StringUtils.isBlank(selectNoteDO.getContentUuid()) ? null
-                : buildNoteContentTask(noteId, selectNoteDO.getContentUuid(), null, NoteContentTaskTypeEnum.DELETE);
-        if (contentTaskBody != null) {
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
-        }
-
-        NoteOperateMqDTO noteOperateMqDTO = NoteOperateMqDTO.builder()
+        NoteChangedEventMqDTO event = NoteChangedEventMqDTO.builder()
                 .creatorId(selectNoteDO.getCreatorId())
                 .noteId(noteId)
-                .type(NoteOperateEnum.DELETE.getCode()) // 删除笔记
+                .changeType(NoteOperateEnum.DELETE.getCode()) // 删除笔记
+                .contentTasks(contentTasks)
                 .build();
 
-        String destination = MQConstants.TOPIC_NOTE_OPERATE + ":" + MQConstants.TAG_NOTE_DELETE;
-        String eventBody = JsonUtils.toJsonString(noteOperateMqDTO);
-        // 删除事实与所有后续事件一起提交，避免提交前缓存被重新填充。
-        reliableMqOutbox.enqueue(destination, eventBody);
-        enqueueNoteCacheInvalidation(noteId, currUserId);
+        // 删除事实、正文清理任务与计数扣减经由事务消息原子提交，避免提交前缓存被重新填充。
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_NOTE_CHANGED, JsonUtils.toJsonString(event),
+                txId -> {
+                    notePersistenceService.logicalDeleteNote(noteDO, txId);
+                    return true;
+                });
+
+        invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId);
 
         List<String> mediaUrls = getMediaUrls(selectNoteDO);
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                reliableMqOutbox.sendNow(destination, eventBody);
-                if (contentTaskBody != null) {
-                    reliableMqOutbox.sendNow(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
-                }
-                if (CollUtil.isNotEmpty(mediaUrls)) {
-                    ossRpcService.deleteFiles(mediaUrls);
-                }
-            }
-        });
+        if (CollUtil.isNotEmpty(mediaUrls)) {
+            ossRpcService.deleteFiles(mediaUrls);
+        }
 
         return Response.success();
     }
@@ -722,13 +720,13 @@ public class NoteServiceImpl implements NoteService {
         return mediaUrls;
     }
 
-    private String buildNoteContentTask(Long noteId, String contentUuid, String content, NoteContentTaskTypeEnum type) {
-        return JsonUtils.toJsonString(NoteContentTaskMqDTO.builder()
+    private NoteContentTaskMqDTO buildContentTask(Long noteId, String contentUuid, String content, NoteContentTaskTypeEnum type) {
+        return NoteContentTaskMqDTO.builder()
                 .noteId(noteId)
                 .contentUuid(contentUuid)
                 .content(content)
                 .type(type.name())
-                .build());
+                .build();
     }
 
     /**
@@ -783,7 +781,9 @@ public class NoteServiceImpl implements NoteService {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_VISIBLE_ONLY_ME);
         }
 
-        enqueueNoteCacheInvalidation(noteId, currUserId);
+        // 可见性变更无跨服务事件；共享 Redis 缓存提交后于本进程内失效，
+        // 各节点本地缓存由读路径的最小事实校验兜底。
+        registerPostCommitCacheInvalidation(currUserId, noteId);
 
         return Response.success();
     }
@@ -818,26 +818,19 @@ public class NoteServiceImpl implements NoteService {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
         }
 
-        enqueueNoteCacheInvalidation(noteId, currUserId);
+        registerPostCommitCacheInvalidation(currUserId, noteId);
 
         return Response.success();
     }
 
-    private void enqueueNoteCacheInvalidation(Long noteId, Long creatorId) {
-        NoteOperateMqDTO cacheEvent = NoteOperateMqDTO.builder()
-                .creatorId(creatorId)
-                .noteId(noteId)
-                .build();
-        String localCacheEventBody = String.valueOf(noteId);
-        String redisCacheEventBody = JsonUtils.toJsonString(cacheEvent);
-
-        reliableMqOutbox.enqueue(MQConstants.TOPIC_DELETE_NOTE_LOCAL_CACHE, localCacheEventBody);
-        reliableMqOutbox.enqueue(MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE, redisCacheEventBody);
+    /**
+     * 纯 DB 更新事务（可见性、置顶）提交后再失效 Redis 缓存，尽力而为。
+     */
+    private void registerPostCommitCacheInvalidation(Long creatorId, Long noteId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                reliableMqOutbox.sendNow(MQConstants.TOPIC_DELETE_NOTE_LOCAL_CACHE, localCacheEventBody);
-                reliableMqOutbox.sendNow(MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE, redisCacheEventBody);
+                invalidateNoteRedisCaches(creatorId, noteId);
             }
         });
     }
@@ -865,7 +858,7 @@ public class NoteServiceImpl implements NoteService {
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_like_check_and_update_zset.lua")));
         script.setResultType(Long.class);
 
-        Long result = redisTemplate.execute(script, Collections.singletonList(userNoteLikeZSetKey), noteId, DateUtils.localDateTime2Timestamp(now));
+        Long result = stringRedisTemplate.execute(script, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
 
         // 若 ZSet 列表不存在，需要重新初始化
         if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
@@ -879,19 +872,19 @@ public class NoteServiceImpl implements NoteService {
 
             // 若数据库中存在点赞记录，需要批量同步
             if (CollUtil.isNotEmpty(noteLikeDOS)) {
-                Object[] luaArgs = buildNoteLikeZSetLuaArgs(noteLikeDOS, expireSeconds);
+                String[] luaArgs = buildNoteLikeZSetLuaArgs(noteLikeDOS, expireSeconds);
 
-                redisTemplate.execute(script2, Collections.singletonList(userNoteLikeZSetKey), luaArgs);
+                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteLikeZSetKey), luaArgs);
 
                 // 再次调用 note_like_check_and_update_zset.lua 脚本，将点赞的笔记添加到 zset 中
-                redisTemplate.execute(script, Collections.singletonList(userNoteLikeZSetKey), noteId, DateUtils.localDateTime2Timestamp(now));
+                stringRedisTemplate.execute(script, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
             } else { // 若数据库中，无点赞的笔记记录，则直接将当前点赞的笔记 ID 添加到 ZSet 中，随机过期时间
-                List<Object> luaArgs = Lists.newArrayList();
-                luaArgs.add(DateUtils.localDateTime2Timestamp(LocalDateTime.now())); // score
-                luaArgs.add(noteId); // 当前点赞的笔记 ID
-                luaArgs.add(expireSeconds); // 随机过期时间
+                List<String> luaArgs = Lists.newArrayList();
+                luaArgs.add(String.valueOf(DateUtils.localDateTime2Timestamp(LocalDateTime.now()))); // score
+                luaArgs.add(String.valueOf(noteId)); // 当前点赞的笔记 ID
+                luaArgs.add(String.valueOf(expireSeconds)); // 随机过期时间
 
-                redisTemplate.execute(script2, Collections.singletonList(userNoteLikeZSetKey), luaArgs.toArray());
+                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteLikeZSetKey), luaArgs.toArray());
             }
         }
 
@@ -937,7 +930,7 @@ public class NoteServiceImpl implements NoteService {
 
         String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
 
-        redisTemplate.opsForZSet().remove(userNoteLikeZSetKey, noteId);
+        stringRedisTemplate.opsForZSet().remove(userNoteLikeZSetKey, String.valueOf(noteId));
 
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
                 .userId(userId)
@@ -986,7 +979,7 @@ public class NoteServiceImpl implements NoteService {
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_collect_check_and_update_zset.lua")));
         script.setResultType(Long.class);
 
-        Long result = redisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), noteId, DateUtils.localDateTime2Timestamp(now));
+        Long result = stringRedisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
 
         // 若 ZSet 列表不存在，需要重新初始化
         if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
@@ -1000,19 +993,19 @@ public class NoteServiceImpl implements NoteService {
 
             // 若数据库中存在已收藏笔记记录，需要批量同步
             if (CollUtil.isNotEmpty(noteCollectionDOS)) {
-                Object[] luaArgs = buildNoteCollectZSetLuaArgs(noteCollectionDOS, expireSeconds);
+                String[] luaArgs = buildNoteCollectZSetLuaArgs(noteCollectionDOS, expireSeconds);
 
-                redisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs);
+                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs);
 
                 // 再次调用 note_collect_check_and_update_zset.lua 脚本，将当前收藏的笔记添加到 zset 中
-                redisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), noteId, DateUtils.localDateTime2Timestamp(now));
+                stringRedisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
             } else { // 若数据库中，未收藏任何笔记，则直接将当前收藏的笔记 ID 添加到 ZSet 中，随机过期时间
-                List<Object> luaArgs = Lists.newArrayList();
-                luaArgs.add(DateUtils.localDateTime2Timestamp(LocalDateTime.now())); // score 收藏时间
-                luaArgs.add(noteId); // 当前收藏的笔记 ID
-                luaArgs.add(expireSeconds); // 随机过期时间
+                List<String> luaArgs = Lists.newArrayList();
+                luaArgs.add(String.valueOf(DateUtils.localDateTime2Timestamp(LocalDateTime.now()))); // score 收藏时间
+                luaArgs.add(String.valueOf(noteId)); // 当前收藏的笔记 ID
+                luaArgs.add(String.valueOf(expireSeconds)); // 随机过期时间
 
-                redisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs.toArray());
+                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs.toArray());
             }
         }
 
@@ -1058,7 +1051,7 @@ public class NoteServiceImpl implements NoteService {
 
         String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
 
-        redisTemplate.opsForZSet().remove(userNoteCollectZSetKey, noteId);
+        stringRedisTemplate.opsForZSet().remove(userNoteCollectZSetKey, String.valueOf(noteId));
 
         CollectUnCollectNoteMqDTO unCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
                 .userId(userId)
@@ -1139,7 +1132,7 @@ public class NoteServiceImpl implements NoteService {
         String publishedNoteListRedisKey = RedisKeyConstants.buildPublishedNoteListKey(userId);
         // 若游标为空，表示查询的是第一页
         if (!includePrivate && Objects.isNull(cursor)) {
-            String publishedNoteListJson = redisTemplate.opsForValue().get(publishedNoteListRedisKey);
+            String publishedNoteListJson = stringRedisTemplate.opsForValue().get(publishedNoteListRedisKey);
 
             if (StringUtils.isNotBlank(publishedNoteListJson)) {
                 try {
@@ -1321,7 +1314,7 @@ public class NoteServiceImpl implements NoteService {
         threadPoolTaskExecutor.submit(() -> {
             // 过期时间，一小时以内（保底30分钟+随机秒数）
             long expireSeconds = 60*30 + RandomUtil.randomInt(60*30);
-            redisTemplate.opsForValue()
+            stringRedisTemplate.opsForValue()
                     .set(publishedNoteListRedisKey, JsonUtils.toJsonString(noteVOS), expireSeconds, TimeUnit.SECONDS);
         });
     }
@@ -1353,18 +1346,18 @@ public class NoteServiceImpl implements NoteService {
      * @param expireSeconds
      * @return
      */
-    private static Object[] buildNoteCollectZSetLuaArgs(List<NoteCollectionDO> noteCollectionDOS, long expireSeconds) {
+    private static String[] buildNoteCollectZSetLuaArgs(List<NoteCollectionDO> noteCollectionDOS, long expireSeconds) {
         int argsLength = noteCollectionDOS.size() * 2 + 1; // 每个笔记收藏关系有 2 个参数（score 和 value），最后再跟一个过期时间
-        Object[] luaArgs = new Object[argsLength];
+        String[] luaArgs = new String[argsLength];
 
         int i = 0;
         for (NoteCollectionDO noteCollectionDO : noteCollectionDOS) {
-            luaArgs[i] = DateUtils.localDateTime2Timestamp(noteCollectionDO.getCreateTime()); // 收藏时间作为 score
-            luaArgs[i + 1] = noteCollectionDO.getNoteId();          // 笔记ID 作为 ZSet value
+            luaArgs[i] = String.valueOf(DateUtils.localDateTime2Timestamp(noteCollectionDO.getCreateTime())); // 收藏时间作为 score
+            luaArgs[i + 1] = String.valueOf(noteCollectionDO.getNoteId());          // 笔记ID 作为 ZSet value
             i += 2;
         }
 
-        luaArgs[argsLength - 1] = expireSeconds; // 最后一个参数是 ZSet 的过期时间
+        luaArgs[argsLength - 1] = String.valueOf(expireSeconds); // 最后一个参数是 ZSet 的过期时间
         return luaArgs;
     }
 
@@ -1375,18 +1368,18 @@ public class NoteServiceImpl implements NoteService {
      * @param expireSeconds
      * @return
      */
-    private static Object[] buildNoteLikeZSetLuaArgs(List<NoteLikeDO> noteLikeDOS, long expireSeconds) {
+    private static String[] buildNoteLikeZSetLuaArgs(List<NoteLikeDO> noteLikeDOS, long expireSeconds) {
         int argsLength = noteLikeDOS.size() * 2 + 1; // 每个笔记点赞关系有 2 个参数（score 和 value），最后再跟一个过期时间
-        Object[] luaArgs = new Object[argsLength];
+        String[] luaArgs = new String[argsLength];
 
         int i = 0;
         for (NoteLikeDO noteLikeDO : noteLikeDOS) {
-            luaArgs[i] = DateUtils.localDateTime2Timestamp(noteLikeDO.getCreateTime()); // 点赞时间作为 score
-            luaArgs[i + 1] = noteLikeDO.getNoteId();          // 笔记ID 作为 ZSet value
+            luaArgs[i] = String.valueOf(DateUtils.localDateTime2Timestamp(noteLikeDO.getCreateTime())); // 点赞时间作为 score
+            luaArgs[i + 1] = String.valueOf(noteLikeDO.getNoteId());          // 笔记ID 作为 ZSet value
             i += 2;
         }
 
-        luaArgs[argsLength - 1] = expireSeconds; // 最后一个参数是 ZSet 的过期时间
+        luaArgs[argsLength - 1] = String.valueOf(expireSeconds); // 最后一个参数是 ZSet 的过期时间
         return luaArgs;
     }
 
@@ -1492,7 +1485,7 @@ public class NoteServiceImpl implements NoteService {
                 .toList();
         List<String> cachedValues;
         try {
-            cachedValues = redisTemplate.opsForValue().multiGet(keys);
+            cachedValues = stringRedisTemplate.opsForValue().multiGet(keys);
         } catch (Exception e) {
             log.warn("Redis 不可用，笔记访问快照批量读取失败，回源 MySQL，noteIds={}", noteIds, e);
             return loadAccessSnapshotsFromMySql(noteIds);
@@ -1547,7 +1540,7 @@ public class NoteServiceImpl implements NoteService {
 
     private String getAccessSnapshotCacheValue(String key) {
         try {
-            return redisTemplate.opsForValue().get(key);
+            return stringRedisTemplate.opsForValue().get(key);
         } catch (Exception e) {
             log.warn("Redis 不可用，笔记访问快照读取失败，回源 MySQL，key={}", key, e);
             return null;
@@ -1556,7 +1549,7 @@ public class NoteServiceImpl implements NoteService {
 
     private void cacheAccessSnapshot(String key, String value) {
         try {
-            redisTemplate.opsForValue().set(key, value, 30, TimeUnit.SECONDS);
+            stringRedisTemplate.opsForValue().set(key, value, 30, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Redis 不可用，笔记访问快照写入失败，响应将继续返回，key={}", key, e);
         }
@@ -1564,7 +1557,7 @@ public class NoteServiceImpl implements NoteService {
 
     private void deleteAccessSnapshotCache(String key) {
         try {
-            redisTemplate.delete(key);
+            stringRedisTemplate.delete(key);
         } catch (Exception e) {
             log.warn("Redis 不可用，笔记访问快照删除失败，key={}", key, e);
         }

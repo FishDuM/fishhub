@@ -1,11 +1,10 @@
 package hk.ljx.fishhub.note.biz.service;
 
-import hk.ljx.fishhub.note.biz.constant.MQConstants;
+import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
-import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,61 +24,61 @@ class NoteInteractionPersistenceServiceTest {
     @Mock
     private NoteCollectionDOMapper noteCollectionDOMapper;
     @Mock
-    private ReliableMqOutbox outbox;
+    private TxJournalStore txJournalStore;
     @InjectMocks
     private NoteInteractionPersistenceService service;
 
     @Test
-    void shouldPersistLikeBeforeEnqueueingCountEvent() {
+    void shouldPersistLikeThenRecordJournal() {
         NoteLikeDO like = NoteLikeDO.builder().userId(1L).noteId(2L).build();
         when(noteLikeDOMapper.insertOrUpdate(like)).thenReturn(1);
 
-        service.saveLike(like, "event-body");
+        service.saveLike(like, "tx-1");
 
-        var ordered = inOrder(noteLikeDOMapper, outbox);
+        var ordered = inOrder(noteLikeDOMapper, txJournalStore);
         ordered.verify(noteLikeDOMapper).insertOrUpdate(like);
-        ordered.verify(outbox).enqueue(MQConstants.TOPIC_COUNT_NOTE_LIKE, "event-body");
+        ordered.verify(txJournalStore).record("tx-1");
     }
 
     @Test
-    void shouldNotEnqueueLikeCountWhenStateDidNotChange() {
+    void shouldNotRecordJournalWhenLikeStateDidNotChange() {
         NoteLikeDO like = NoteLikeDO.builder().userId(1L).noteId(2L).build();
         when(noteLikeDOMapper.insertOrUpdate(like)).thenReturn(0);
 
-        service.saveLike(like, "event-body");
+        service.saveLike(like, "tx-1");
 
-        verify(outbox, never()).enqueue(MQConstants.TOPIC_COUNT_NOTE_LIKE, "event-body");
+        verify(txJournalStore, never()).record("tx-1");
     }
 
     @Test
-    void shouldNotEnqueueUnlikeCountWhenStateDidNotChange() {
+    void shouldNotRecordJournalWhenUnlikeStateDidNotChange() {
         NoteLikeDO like = NoteLikeDO.builder().userId(1L).noteId(2L).build();
         when(noteLikeDOMapper.update2UnlikeByUserIdAndNoteId(like)).thenReturn(0);
 
-        service.saveUnlike(like, "event-body");
+        service.saveUnlike(like, "tx-1");
 
-        verify(outbox, never()).enqueue(MQConstants.TOPIC_COUNT_NOTE_LIKE, "event-body");
+        verify(txJournalStore, never()).record("tx-1");
     }
 
     @Test
-    void shouldEnqueueCollectCountOnlyAfterStateChanged() {
+    void shouldPersistCollectThenRecordJournal() {
         NoteCollectionDO collection = NoteCollectionDO.builder().userId(1L).noteId(2L).build();
         when(noteCollectionDOMapper.insertOrUpdate(collection)).thenReturn(1);
 
-        service.saveCollect(collection, "event-body");
+        service.saveCollect(collection, "tx-1");
 
-        var ordered = inOrder(noteCollectionDOMapper, outbox);
+        var ordered = inOrder(noteCollectionDOMapper, txJournalStore);
         ordered.verify(noteCollectionDOMapper).insertOrUpdate(collection);
-        ordered.verify(outbox).enqueue(MQConstants.TOPIC_COUNT_NOTE_COLLECT, "event-body");
+        ordered.verify(txJournalStore).record("tx-1");
     }
 
     @Test
-    void shouldNotEnqueueUncollectCountWhenStateDidNotChange() {
+    void shouldNotRecordJournalWhenUncollectStateDidNotChange() {
         NoteCollectionDO collection = NoteCollectionDO.builder().userId(1L).noteId(2L).build();
         when(noteCollectionDOMapper.update2UnCollectByUserIdAndNoteId(collection)).thenReturn(0);
 
-        service.saveUncollect(collection, "event-body");
+        service.saveUncollect(collection, "tx-1");
 
-        verify(outbox, never()).enqueue(MQConstants.TOPIC_COUNT_NOTE_COLLECT, "event-body");
+        verify(txJournalStore, never()).record("tx-1");
     }
 }

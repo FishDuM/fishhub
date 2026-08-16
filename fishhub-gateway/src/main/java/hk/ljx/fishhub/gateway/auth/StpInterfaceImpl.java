@@ -10,7 +10,7 @@ import hk.ljx.fishhub.gateway.constant.RedisKeyConstants;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -22,7 +22,7 @@ import java.util.List;
 public class StpInterfaceImpl implements StpInterface {
 
     @Resource
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private ObjectMapper objectMapper;
 
@@ -41,7 +41,7 @@ public class StpInterfaceImpl implements StpInterface {
         String userRolesKey = RedisKeyConstants.buildUserRoleKey(Long.valueOf(loginId.toString()));
 
         // 根据用户 ID ，从 Redis 中获取该用户的角色集合
-        String useRolesValue = redisTemplate.opsForValue().get(userRolesKey);
+        String useRolesValue = stringRedisTemplate.opsForValue().get(userRolesKey);
 
         List<String> userRoleKeys = parseStringList(useRolesValue, userRolesKey);
 
@@ -53,7 +53,7 @@ public class StpInterfaceImpl implements StpInterface {
                     .toList();
 
             // 通过 key 集合批量查询权限，提升查询性能。
-            List<String> rolePermissionsValues = redisTemplate.opsForValue().multiGet(rolePermissionsKeys);
+            List<String> rolePermissionsValues = stringRedisTemplate.opsForValue().multiGet(rolePermissionsKeys);
 
             if (CollUtil.isNotEmpty(rolePermissionsValues)) {
                 List<String> permissions = Lists.newArrayList();
@@ -85,7 +85,7 @@ public class StpInterfaceImpl implements StpInterface {
         String userRolesKey = RedisKeyConstants.buildUserRoleKey(Long.valueOf(loginId.toString()));
 
         // 根据用户 ID ，从 Redis 中获取该用户的角色集合
-        String useRolesValue = redisTemplate.opsForValue().get(userRolesKey);
+        String useRolesValue = stringRedisTemplate.opsForValue().get(userRolesKey);
 
         return parseStringList(useRolesValue, userRolesKey);
     }

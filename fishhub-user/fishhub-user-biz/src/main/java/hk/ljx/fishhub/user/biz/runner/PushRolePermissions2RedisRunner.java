@@ -17,7 +17,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -33,7 +33,7 @@ import static hk.ljx.fishhub.user.biz.constant.RoleConstants.COMMON_USER_ROLE_ID
 public class PushRolePermissions2RedisRunner implements ApplicationRunner {
 
     @Resource
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private RoleDOMapper roleDOMapper;
     @Resource
@@ -97,7 +97,7 @@ public class PushRolePermissions2RedisRunner implements ApplicationRunner {
                 // 同步至 Redis 中，方便后续网关查询 Redis, 用于鉴权
                 roleKeyPermissionsMap.forEach((roleKey, permissions) -> {
                     String key = RedisKeyConstants.buildRolePermissionsKey(roleKey);
-                    redisTemplate.opsForValue().set(key, JsonUtils.toJsonString(permissions));
+                    stringRedisTemplate.opsForValue().set(key, JsonUtils.toJsonString(permissions));
                 });
 
                 // 历史导入用户也必须具备系统默认角色，不能只在注册流程中赋权。
@@ -112,7 +112,7 @@ public class PushRolePermissions2RedisRunner implements ApplicationRunner {
                                 Collectors.mapping(userRoleDO -> roleIdAndKeyMap.get(userRoleDO.getRoleId()),
                                         Collectors.toList())));
 
-                userRolesMap.forEach((userId, roles) -> redisTemplate.opsForValue().set(
+                userRolesMap.forEach((userId, roles) -> stringRedisTemplate.opsForValue().set(
                         RedisKeyConstants.buildUserRoleKey(userId), JsonUtils.toJsonString(roles)));
             }
 

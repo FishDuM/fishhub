@@ -1,28 +1,54 @@
 package hk.ljx.fishhub.note.biz.service;
 
-import hk.ljx.fishhub.note.biz.constant.MQConstants;
+import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
-import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
+import hk.ljx.framework.common.exception.BizException;
+import hk.ljx.fishhub.note.biz.enums.ResponseCodeEnum;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 笔记元数据事务消息本地事务入口：业务写入与 journal 登记同事务提交，
+ * 提交事实由事务消息机制原子地转化为事件可见性。
+ */
 @Service
 public class NotePersistenceService {
 
     @Resource
     private NoteDOMapper noteDOMapper;
     @Resource
-    private ReliableMqOutbox reliableMqOutbox;
+    private TxJournalStore txJournalStore;
 
+    /**
+     * 发布笔记。
+     */
     @Transactional(rollbackFor = Exception.class)
-    public void savePublishedNote(NoteDO note, String eventDestination, String eventBody, String contentTaskBody) {
+    public void savePublishedNote(NoteDO note, String txId) {
         noteDOMapper.insert(note);
-        reliableMqOutbox.enqueue(eventDestination, eventBody);
-        reliableMqOutbox.enqueue(MQConstants.TOPIC_INVALIDATE_NOTE_REDIS_CACHE, eventBody);
-        if (contentTaskBody != null) {
-            reliableMqOutbox.enqueue(MQConstants.TOPIC_SYNC_NOTE_CONTENT, contentTaskBody);
+        txJournalStore.record(txId);
+    }
+
+    /**
+     * 编辑笔记（乐观锁校验版本）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateNote(NoteDO note, String txId) {
+        if (noteDOMapper.updateByPrimaryKeyAndRevision(note) != 1) {
+            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
         }
+        txJournalStore.record(txId);
+    }
+
+    /**
+     * 逻辑删除笔记（乐观锁校验版本）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void logicalDeleteNote(NoteDO note, String txId) {
+        if (noteDOMapper.logicalDeleteByPrimaryKeyAndRevision(note) != 1) {
+            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
+        }
+        txJournalStore.record(txId);
     }
 }

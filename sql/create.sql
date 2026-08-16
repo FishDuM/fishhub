@@ -63,26 +63,16 @@ CREATE TABLE `t_channel_topic_rel`  (
 -- ----------------------------
 
 -- ----------------------------
--- Table structure for t_mq_send_failure
+-- Table structure for t_tx_journal
+-- 事务消息本地事务回查日志：tx_id 行随业务事务提交，broker 回查以存在性判定提交事实；每日滚动清理（默认保留 24h）。
 -- ----------------------------
-DROP TABLE IF EXISTS `t_mq_send_failure`;
-CREATE TABLE `t_mq_send_failure` (
-  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `message_key` varchar(64) NOT NULL COMMENT '消息幂等键',
-  `topic` varchar(255) NOT NULL COMMENT 'RocketMQ Topic',
-  `ordering_key` varchar(255) NULL DEFAULT NULL COMMENT '同一业务实体的有序投递键',
-  `body` mediumtext NOT NULL COMMENT '消息体',
-  `retry_count` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '补发次数',
-  `next_retry_time` datetime NOT NULL COMMENT '下次补发时间',
-  `status` tinyint NOT NULL DEFAULT 0 COMMENT '状态(0：待补发 1：补发中)',
-  `locked_at` datetime NULL DEFAULT NULL COMMENT '任务认领时间',
-  `last_error` varchar(1000) NULL DEFAULT NULL COMMENT '最近一次错误',
+DROP TABLE IF EXISTS `t_tx_journal`;
+CREATE TABLE `t_tx_journal` (
+  `tx_id` varchar(64) NOT NULL COMMENT '事务消息 txId（回查判定键）',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_message_key` (`message_key`),
-  INDEX `idx_retry_scan` (`status`, `next_retry_time`, `locked_at`)
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'MQ事务Outbox及发送补偿表' ROW_FORMAT = DYNAMIC;
+  PRIMARY KEY (`tx_id`),
+  INDEX `idx_create_time` (`create_time`)
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '事务消息本地事务回查日志';
 
 -- ----------------------------
 -- Table structure for t_mq_consume_record

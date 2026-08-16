@@ -27,6 +27,8 @@
         <module>fishhub-spring-boot-starter-jackson</module>
         <!-- 业务上下文组件 -->
         <module>fishhub-spring-boot-starter-biz-context</module>
+        <!-- RocketMQ 事务消息组件 -->
+        <module>fishhub-spring-boot-starter-biz-mq</module>
     </modules>
 
 </project>

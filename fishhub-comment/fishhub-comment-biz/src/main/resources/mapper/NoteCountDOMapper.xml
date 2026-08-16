@@ -97,9 +97,11 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
-  <update id="updateCommentTotalByNoteId" parameterType="map">
-    update t_note_count
-    set comment_total = greatest(coalesce(comment_total, 0) + #{count}, 0)
-    where note_id = #{noteId}
-  </update>
+  <!-- 与 count 模块的发布侧同名语句保持同一规则：upsert 懒建行（删除先于发布消费时负增量建行），
+       增量为纯可交换累加，不做零点钳制，负数防护在读侧。 -->
+  <insert id="insertOrUpdateCommentTotalByNoteId" parameterType="map">
+    INSERT INTO t_note_count (note_id, comment_total)
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE comment_total = comment_total + #{count};
+  </insert>
 </mapper>

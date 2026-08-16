@@ -10,13 +10,12 @@ import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
-import hk.ljx.fishhub.comment.biz.model.dto.CountPublishCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.InvalidateChildCommentListCacheMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.InvalidateOneLevelCommentCacheMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.CommentChangedEventMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.SyncCommentContentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
-import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
+import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
@@ -50,7 +49,9 @@ public class Comment2DBConsumer {
     @Resource
     private TransactionTemplate transactionTemplate;
     @Resource
-    private SendMqRetryHelper sendMqRetryHelper;
+    private TransactionalMqSender transactionalMqSender;
+    @Resource
+    private TxJournalStore txJournalStore;
     @Resource
     private NoteRpcService noteRpcService;
 
@@ -237,87 +238,47 @@ public class Comment2DBConsumer {
 
             log.info("评论批量入库前校验完成，count={}", commentBOS.size());
 
-            // 编程式事务，保证整体操作的原子性
-            PersistedComments persistedComments = transactionTemplate.execute(status -> {
-                try {
-                    // 逐条使用 INSERT IGNORE 认领业务主键，避免并发重复消费时重复计数
-                    List<CommentBO> inserted = Lists.newArrayList();
-                    for (CommentBO commentBO : commentBOS) {
-                        if (commentDOMapper.batchInsert(Collections.singletonList(commentBO)) == 1) {
-                            inserted.add(commentBO);
+            // 变更事件与落库经由事务消息原子绑定：本地事务（认领写入 + journal）成功才对外可见。
+            List<CommentItemMqDTO> eventItems = commentBOS.stream().map(this::toEventItem).toList();
+            String eventBody = JsonUtils.toJsonString(CommentChangedEventMqDTO.builder()
+                    .changeType(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH)
+                    .items(eventItems)
+                    .build());
+
+            List<CommentBO> finalCommentBOS = commentBOS;
+            transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COMMENT_CHANGED, eventBody, txId -> {
+                int inserted = transactionTemplate.execute(status -> {
+                    try {
+                        int count = 0;
+                        for (CommentBO commentBO : finalCommentBOS) {
+                            if (commentDOMapper.batchInsert(Collections.singletonList(commentBO)) == 1) {
+                                count++;
+                            }
                         }
+                        if (count != finalCommentBOS.size()) {
+                            if (count == 0) {
+                                // 提交后、ACK 前崩溃的重投：批次 ID 只属于本条消息，先前投递必已整批提交并发出事件。
+                                // 幂等跳过，不登记 journal，半消息回滚丢弃。
+                                return count;
+                            }
+                            // 部分认领属于真并发冲突：回滚本批已认领行，整体重投重试
+                            throw new IllegalStateException("评论批次并发冲突，整体重试");
+                        }
+                        txJournalStore.record(txId);
+                        return count;
+                    } catch (Exception ex) {
+                        status.setRollbackOnly(); // 标记事务为回滚
+                        log.error("", ex);
+                        throw ex;
                     }
-
-                    List<String> contentTaskBodies = inserted.stream()
-                            .filter(commentBO -> Boolean.FALSE.equals(commentBO.getIsContentEmpty()))
-                            .map(this::buildContentTaskBody)
-                            .toList();
-                    contentTaskBodies.forEach(body ->
-                            sendMqRetryHelper.enqueue(MQConstants.TOPIC_SYNC_COMMENT_CONTENT, body));
-
-                    String countEventBody = null;
-                    if (CollUtil.isNotEmpty(inserted)) {
-                        List<CountPublishCommentMqDTO> countEvents = inserted.stream()
-                                .map(commentBO -> CountPublishCommentMqDTO.builder()
-                                        .noteId(commentBO.getNoteId())
-                                        .commentId(commentBO.getId())
-                                        .level(commentBO.getLevel())
-                                        .parentId(commentBO.getParentId())
-                                        .build())
-                                .toList();
-                        countEventBody = JsonUtils.toJsonString(countEvents);
-                        sendMqRetryHelper.enqueue(MQConstants.TOPIC_COUNT_NOTE_COMMENT, countEventBody);
-                    }
-
-                    List<String> cacheInvalidationBodies = inserted.stream()
-                            .filter(comment -> Objects.equals(comment.getLevel(), CommentLevelEnum.ONE.getCode()))
-                            .map(CommentBO::getNoteId)
-                            .distinct()
-                            .map(noteId -> JsonUtils.toJsonString(InvalidateOneLevelCommentCacheMqDTO.builder()
-                                    .eventId(UUID.randomUUID().toString())
-                                    .noteId(noteId)
-                                    .build()))
-                            .toList();
-                    cacheInvalidationBodies.forEach(body -> sendMqRetryHelper.enqueue(
-                            MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE, body));
-
-                    List<String> childListInvalidationBodies = inserted.stream()
-                            .filter(comment -> Objects.equals(comment.getLevel(), CommentLevelEnum.TWO.getCode()))
-                            .map(CommentBO::getParentId)
-                            .distinct()
-                            .map(parentCommentId -> JsonUtils.toJsonString(InvalidateChildCommentListCacheMqDTO.builder()
-                                    .eventId(UUID.randomUUID().toString())
-                                    .parentCommentId(parentCommentId)
-                                    .build()))
-                            .toList();
-                    childListInvalidationBodies.forEach(body -> sendMqRetryHelper.enqueue(
-                            MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE, body));
-
-                    return new PersistedComments(inserted, countEventBody, contentTaskBodies,
-                            cacheInvalidationBodies, childListInvalidationBodies);
-                } catch (Exception ex) {
-                    status.setRollbackOnly(); // 标记事务为回滚
-                    log.error("", ex);
-                    throw ex;
+                });
+                if (inserted == 0) {
+                    log.info("评论批次已被先前投递处理，跳过, count={}", finalCommentBOS.size());
+                    return false;
                 }
+                log.info("评论批量入库完成，count={}", inserted);
+                return true;
             });
-
-            List<CommentBO> insertedCommentBOS = Objects.requireNonNull(persistedComments).comments();
-
-            // 只处理本批次真正落库成功的评论，防止并发重复消费导致重复计数
-            if (CollUtil.isNotEmpty(insertedCommentBOS)) {
-                // 事件已经随评论记录一起提交；这里只做提交后的即时投递。
-                persistedComments.contentTaskBodies().forEach(body ->
-                        sendMqRetryHelper.sendNow(MQConstants.TOPIC_SYNC_COMMENT_CONTENT, body));
-                sendMqRetryHelper.sendNow(
-                        MQConstants.TOPIC_COUNT_NOTE_COMMENT,
-                        persistedComments.countEventBody());
-                persistedComments.cacheInvalidationBodies().forEach(body -> sendMqRetryHelper.sendNow(
-                        MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE, body));
-                persistedComments.childListInvalidationBodies().forEach(body -> sendMqRetryHelper.sendNow(
-                        MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE, body));
-
-            }
 
             // 手动 ACK，告诉 RocketMQ 这批次消息消费成功
             return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
@@ -328,19 +289,18 @@ public class Comment2DBConsumer {
         }
     }
 
-    private String buildContentTaskBody(CommentBO comment) {
-        return JsonUtils.toJsonString(SyncCommentContentMqDTO.builder()
-                .commentId(comment.getId())
+    private CommentItemMqDTO toEventItem(CommentBO comment) {
+        return CommentItemMqDTO.builder()
+                .id(comment.getId())
                 .noteId(comment.getNoteId())
-                .createTime(comment.getCreateTime())
+                .level(comment.getLevel())
+                .parentId(comment.getParentId())
+                .userId(comment.getUserId())
                 .contentUuid(comment.getContentUuid())
                 .content(comment.getContent())
-                .build());
-    }
-
-    private record PersistedComments(List<CommentBO> comments, String countEventBody,
-                                     List<String> contentTaskBodies, List<String> cacheInvalidationBodies,
-                                     List<String> childListInvalidationBodies) {
+                .isContentEmpty(comment.getIsContentEmpty())
+                .createTime(comment.getCreateTime())
+                .build();
     }
 
     @PreDestroy

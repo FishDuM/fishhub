@@ -26,11 +26,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-
+/**
+ * 消费评论点赞聚合落库后的热度重算事件（Set<评论 ID>）。
+ * 热度按数据库最新值重算，重复投递安全；目标评论已不存在时直接确认。
+ */
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_HEAT_UPDATE, // Group 组
-        topic = MQConstants.TOPIC_COMMENT_HEAT_UPDATE // 主题 Topic
-        )
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_HEAT_UPDATE,
+        topic = MQConstants.TOPIC_COMMENT_HEAT_UPDATE)
 @Slf4j
 public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
 
@@ -41,101 +43,66 @@ public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
 
     @Override
     public void onMessage(String body) {
-        consumeMessage(List.of(body));
-    }
-
-    private void consumeMessage(List<String> bodys) {
-        log.info("==> 【评论热度值计算】聚合消息, size: {}", bodys.size());
-        log.info("==> 【评论热度值计算】聚合消息, {}", JsonUtils.toJsonString(bodys));
-
-        // 将聚合后的消息体 Json 转 Set<Long>, 去重相同的评论 ID, 防止重复计算
         Set<Long> commentIds = Sets.newHashSet();
-        for (String body : bodys) {
-            try {
-                commentIds.addAll(JsonUtils.parseSet(body, Long.class));
-            } catch (Exception e) {
-                throw new IllegalArgumentException("评论热度消息格式错误", e);
-            }
+        try {
+            commentIds.addAll(JsonUtils.parseSet(body, Long.class));
+        } catch (Exception e) {
+            throw new IllegalArgumentException("评论热度消息格式错误", e);
         }
-
         if (commentIds.isEmpty()) {
             return;
         }
+        recomputeHeat(commentIds);
+    }
 
-        log.info("==> 去重后的评论 ID: {}", commentIds);
-
-        // 批量查询评论
+    private void recomputeHeat(Set<Long> commentIds) {
         List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(commentIds.stream().toList());
 
-        // 热度消息可能晚于删评论消息到达。目标评论已不存在时直接确认消费，
-        // 避免生成没有 WHEN 和 IN 参数的无效批量更新 SQL 并反复重试。
+        // 热度消息可能晚于删评论消息到达。目标评论已不存在时直接确认消费。
         if (commentDOS == null || commentDOS.isEmpty()) {
             log.info("==> 评论已不存在，忽略本次热度更新, commentIds: {}", commentIds);
             return;
         }
 
-        // 评论 ID
         List<Long> ids = Lists.newArrayList();
-        // 热度值 BO
         List<CommentHeatBO> commentBOS = Lists.newArrayList();
-
-        // 重新计算每条评论的热度值
         commentDOS.forEach(commentDO -> {
-            Long commentId = commentDO.getId();
-            // 被点赞数
-            Long likeTotal = commentDO.getLikeTotal();
-            // 被回复数
-            Long childCommentTotal = commentDO.getChildCommentTotal();
-
-            // 计算热度值
-            BigDecimal heatNum = HeatCalculator.calculateHeat(likeTotal, childCommentTotal);
-            ids.add(commentId);
+            BigDecimal heatNum = HeatCalculator.calculateHeat(
+                    commentDO.getLikeTotal(), commentDO.getChildCommentTotal());
+            ids.add(commentDO.getId());
             commentBOS.add(CommentHeatBO.builder()
-                    .id(commentId)
+                    .id(commentDO.getId())
                     .heat(heatNum.doubleValue())
                     .noteId(commentDO.getNoteId())
                     .build());
         });
 
-        // 批量更新评论热度值
         int count = commentDOMapper.batchUpdateHeatByCommentIds(ids, commentBOS);
-
-        if (count == 0) return;
-
-        // 更新 Redis 中热度评论 ZSET
+        if (count == 0) {
+            return;
+        }
         updateRedisHotComments(commentBOS);
     }
 
     /**
      * 更新 Redis 中热点评论 ZSET
-     *
-     * @param commentHeatBOList
      */
     private void updateRedisHotComments(List<CommentHeatBO> commentHeatBOList) {
-        // 过滤出热度值大于 0 的，并按所属笔记 ID 分组（若热度等于0，则不进行更新）
         Map<Long, List<CommentHeatBO>> noteIdAndBOListMap = commentHeatBOList.stream()
                 .filter(commentHeatBO -> commentHeatBO.getHeat() > 0)
                 .collect(Collectors.groupingBy(CommentHeatBO::getNoteId));
 
-        // 循环
         noteIdAndBOListMap.forEach((noteId, commentHeatBOS) -> {
-            // 构建热点评论 Redis Key
             String key = RedisKeyConstants.buildCommentListKey(noteId);
-
             DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-            // Lua 脚本路径
             script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/update_hot_comments.lua")));
-            // 返回值类型
             script.setResultType(Long.class);
 
-            // 构建执行 Lua 脚本所需的 ARGS 参数
             List<Object> args = Lists.newArrayList();
             commentHeatBOS.forEach(commentHeatBO -> {
-                args.add(commentHeatBO.getId()); // Member: 评论ID
-                args.add(commentHeatBO.getHeat()); // Score: 热度值
+                args.add(commentHeatBO.getId());
+                args.add(commentHeatBO.getHeat());
             });
-
-            // 执行 Lua 脚本
             redisTemplate.execute(script, Collections.singletonList(key), args.toArray());
         });
     }

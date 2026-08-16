@@ -8,7 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.Arrays;
@@ -25,7 +25,7 @@ class NoteServiceImplAccessTest {
     @Mock
     private NoteDOMapper noteDOMapper;
     @Mock
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
     @InjectMocks
@@ -34,7 +34,7 @@ class NoteServiceImplAccessTest {
     @Test
     void shouldUseOneBatchQueryWhenAccessSnapshotsAreCold() {
         List<Long> noteIds = List.of(11L, 12L, 13L);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.multiGet(List.of("note:access:11", "note:access:12", "note:access:13")))
                 .thenReturn(Arrays.asList(null, null, null));
         when(noteDOMapper.selectAccessInfosByNoteIds(noteIds)).thenReturn(List.of(
@@ -51,7 +51,7 @@ class NoteServiceImplAccessTest {
     @Test
     void shouldFallBackToOneBatchQueryWhenRedisIsUnavailable() {
         List<Long> noteIds = List.of(11L, 12L);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.multiGet(List.of("note:access:11", "note:access:12")))
                 .thenThrow(new IllegalStateException("redis unavailable"));
         when(noteDOMapper.selectAccessInfosByNoteIds(noteIds)).thenReturn(List.of(
@@ -66,7 +66,7 @@ class NoteServiceImplAccessTest {
 
     @Test
     void shouldReloadAccessSnapshotWhenCachedJsonIsCorrupted() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("note:access:11")).thenReturn("{");
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).build());
@@ -92,6 +92,6 @@ class NoteServiceImplAccessTest {
 
         assertEquals(List.of(requests.get(0), requests.get(1)), response.getData());
         verify(noteDOMapper).selectAccessInfosByNoteIds(List.of(11L, 12L, 13L));
-        verify(redisTemplate, never()).opsForValue();
+        verify(stringRedisTemplate, never()).opsForValue();
     }
 }

@@ -100,34 +100,35 @@
     </trim>
   </insert>
 
+  <!-- 增量为纯可交换累加，不做零点钳制：乱序 +1/-1 不再产生永久漂移，负数防护移到读侧。 -->
   <insert id="insertOrUpdateFansTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, fans_total)
-    VALUES (#{userId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE fans_total = GREATEST(0, fans_total + (#{count}));
+    VALUES (#{userId}, #{count})
+      ON DUPLICATE KEY UPDATE fans_total = fans_total + #{count};
   </insert>
 
   <insert id="insertOrUpdateLikeTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, like_total)
-    VALUES (#{userId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE like_total = GREATEST(0, like_total + (#{count}));
+    VALUES (#{userId}, #{count})
+      ON DUPLICATE KEY UPDATE like_total = like_total + #{count};
   </insert>
 
   <insert id="insertOrUpdateNoteTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, note_total)
-    VALUES (#{userId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE note_total = GREATEST(0, note_total + (#{count}));
+    VALUES (#{userId}, #{count})
+      ON DUPLICATE KEY UPDATE note_total = note_total + #{count};
   </insert>
 
   <insert id="insertOrUpdateCollectTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, collect_total)
-    VALUES (#{userId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE collect_total = GREATEST(0, collect_total + (#{count}));
+    VALUES (#{userId}, #{count})
+      ON DUPLICATE KEY UPDATE collect_total = collect_total + #{count};
   </insert>
 
   <insert id="insertOrUpdateFollowingTotalByUserId" parameterType="map">
     INSERT INTO t_user_count (user_id, following_total)
-    VALUES (#{userId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE following_total = GREATEST(0, following_total + (#{count}));
+    VALUES (#{userId}, #{count})
+      ON DUPLICATE KEY UPDATE following_total = following_total + #{count};
   </insert>
 
   <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO">

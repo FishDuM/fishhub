@@ -27,7 +27,6 @@ import hk.ljx.fishhub.comment.biz.enums.*;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.vo.*;
-import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import hk.ljx.fishhub.comment.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
@@ -63,8 +62,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CommentServiceImpl implements CommentService {
 
-    @Resource
-    private SendMqRetryHelper sendMqRetryHelper;
     @Resource
     private NoteRpcService noteRpcService;
     @Resource
@@ -144,7 +141,7 @@ public class CommentServiceImpl implements CommentService {
                 .creatorId(creatorId)
                 .build();
 
-        sendMqRetryHelper.sendReliable(MQConstants.TOPIC_PUBLISH_COMMENT, JsonUtils.toJsonString(publishCommentMqDTO));
+        rocketMQTemplate.syncSend(MQConstants.TOPIC_PUBLISH_COMMENT, JsonUtils.toJsonString(publishCommentMqDTO));
 
         return Response.success(Long.valueOf(commentId));
     }

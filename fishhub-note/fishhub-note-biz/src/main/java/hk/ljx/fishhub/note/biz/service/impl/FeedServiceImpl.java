@@ -28,7 +28,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import java.util.Collections;
@@ -74,7 +74,7 @@ public class FeedServiceImpl implements FeedService {
     @Resource
     private CountRpcService countRpcService;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Response<List<FindChannelRspVO>> findChannelList() {
@@ -236,13 +236,13 @@ public class FeedServiceImpl implements FeedService {
     private String discoverFeedVersion() {
         String key = RedisKeyConstants.discoverFeedVersionKey();
         try {
-            Object value = redisTemplate.opsForValue().get(key);
+            Object value = stringRedisTemplate.opsForValue().get(key);
             if (value != null && StringUtils.isNotBlank(String.valueOf(value))) {
                 return String.valueOf(value);
             }
             String initialVersion = String.valueOf(System.currentTimeMillis());
-            redisTemplate.opsForValue().setIfAbsent(key, initialVersion);
-            Object current = redisTemplate.opsForValue().get(key);
+            stringRedisTemplate.opsForValue().setIfAbsent(key, initialVersion);
+            Object current = stringRedisTemplate.opsForValue().get(key);
             return current == null ? initialVersion : String.valueOf(current);
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页跳过缓存并回源 MySQL", e);
@@ -251,7 +251,7 @@ public class FeedServiceImpl implements FeedService {
     }
 
     private DiscoverPageSnapshot readDiscoverPageSnapshot(String cacheKey) {
-        Object cached = redisTemplate.opsForValue().get(cacheKey);
+        Object cached = stringRedisTemplate.opsForValue().get(cacheKey);
         if (!(cached instanceof String cachedJson)) {
             return null;
         }
@@ -266,7 +266,7 @@ public class FeedServiceImpl implements FeedService {
 
     private void cacheDiscoverPageSnapshot(String cacheKey, DiscoverPageSnapshot snapshot) {
         try {
-            redisTemplate.opsForValue().set(cacheKey, JsonUtils.toJsonString(snapshot),
+            stringRedisTemplate.opsForValue().set(cacheKey, JsonUtils.toJsonString(snapshot),
                     30 + RandomUtil.randomInt(30), TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页缓存写入失败，响应将继续返回，key={}", cacheKey, e);
@@ -290,14 +290,14 @@ public class FeedServiceImpl implements FeedService {
 
     private String tryAcquireRebuildLock(String lockKey, long expireSeconds) {
         String token = UUID.randomUUID().toString();
-        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, token, expireSeconds, TimeUnit.SECONDS);
+        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(lockKey, token, expireSeconds, TimeUnit.SECONDS);
         return Boolean.TRUE.equals(acquired) ? token : null;
     }
 
     private void releaseRebuildLock(String lockKey, String token) {
         try {
             DefaultRedisScript<Long> script = new DefaultRedisScript<>(COMPARE_AND_DELETE_LOCK_SCRIPT, Long.class);
-            redisTemplate.execute(script, Collections.singletonList(lockKey), token);
+            stringRedisTemplate.execute(script, Collections.singletonList(lockKey), token);
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页重建锁释放失败，key={}", lockKey, e);
         }
@@ -342,7 +342,7 @@ public class FeedServiceImpl implements FeedService {
 
     private Object getRedisValue(String key, String cacheName) {
         try {
-            return redisTemplate.opsForValue().get(key);
+            return stringRedisTemplate.opsForValue().get(key);
         } catch (Exception e) {
             log.warn("Redis 不可用，{}读取失败，跳过缓存并回源 MySQL，key={}", cacheName, key, e);
             return null;
@@ -351,7 +351,7 @@ public class FeedServiceImpl implements FeedService {
 
     private void cacheTopics(String key, List<FindTopicRspVO> topics) {
         try {
-            redisTemplate.opsForValue().set(key, JsonUtils.toJsonString(topics), 10, TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().set(key, JsonUtils.toJsonString(topics), 10, TimeUnit.MINUTES);
         } catch (Exception e) {
             log.warn("Redis 不可用，话题快照缓存写入失败，响应将继续返回，key={}", key, e);
         }
@@ -359,7 +359,7 @@ public class FeedServiceImpl implements FeedService {
 
     private void deleteRedisValue(String key, String cacheName) {
         try {
-            redisTemplate.delete(key);
+            stringRedisTemplate.delete(key);
         } catch (Exception e) {
             log.warn("Redis 不可用，{}删除失败，key={}", cacheName, key, e);
         }

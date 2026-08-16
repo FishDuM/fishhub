@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 class StpInterfaceImplTest {
 
     @Mock
-    private RedisTemplate<String, String> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
 
@@ -29,13 +29,13 @@ class StpInterfaceImplTest {
     @BeforeEach
     void setUp() {
         stpInterface = new StpInterfaceImpl();
-        ReflectionTestUtils.setField(stpInterface, "redisTemplate", redisTemplate);
+        ReflectionTestUtils.setField(stpInterface, "stringRedisTemplate", stringRedisTemplate);
         ReflectionTestUtils.setField(stpInterface, "objectMapper", new ObjectMapper());
     }
 
     @Test
     void shouldReadRolesWrittenByRegistrationAsJsonArray() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildUserRoleKey(100L))).thenReturn("[\"common\"]");
 
         assertEquals(List.of("common"), stpInterface.getRoleList(100L, "login"));

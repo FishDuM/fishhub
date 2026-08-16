@@ -1,10 +1,9 @@
 package hk.ljx.fishhub.comment.biz.service;
 
-import hk.ljx.fishhub.comment.biz.constant.MQConstants;
+import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,18 +22,18 @@ class CommentLikePersistenceServiceTest {
     @Mock
     private CommentLikeDOMapper commentLikeDOMapper;
     @Mock
-    private SendMqRetryHelper sendMqRetryHelper;
+    private TxJournalStore txJournalStore;
     @InjectMocks
     private CommentLikePersistenceService service;
 
     @Test
-    void shouldEnqueueCountEventOnlyWhenLikeWasInserted() {
+    void shouldRecordJournalOnlyWhenLikeWasInserted() {
         LikeUnlikeCommentMqDTO operation = operation(LikeUnlikeCommentTypeEnum.LIKE.getCode());
         when(commentLikeDOMapper.insertIfAbsent(operation)).thenReturn(1);
 
-        assertTrue(service.apply(operation, "event"));
+        assertTrue(service.apply(operation, "tx-1"));
 
-        verify(sendMqRetryHelper).enqueue(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE, "event");
+        verify(txJournalStore).record("tx-1");
     }
 
     @Test
@@ -42,19 +41,19 @@ class CommentLikePersistenceServiceTest {
         LikeUnlikeCommentMqDTO operation = operation(LikeUnlikeCommentTypeEnum.LIKE.getCode());
         when(commentLikeDOMapper.insertIfAbsent(operation)).thenReturn(0);
 
-        assertFalse(service.apply(operation, "event"));
+        assertFalse(service.apply(operation, "tx-1"));
 
-        verify(sendMqRetryHelper, never()).enqueue(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE, "event");
+        verify(txJournalStore, never()).record("tx-1");
     }
 
     @Test
-    void shouldEnqueueCountEventOnlyWhenUnlikeDeletedARow() {
+    void shouldRecordJournalOnlyWhenUnlikeDeletedARow() {
         LikeUnlikeCommentMqDTO operation = operation(LikeUnlikeCommentTypeEnum.UNLIKE.getCode());
         when(commentLikeDOMapper.deleteIfPresent(operation)).thenReturn(1);
 
-        assertTrue(service.apply(operation, "event"));
+        assertTrue(service.apply(operation, "tx-1"));
 
-        verify(sendMqRetryHelper).enqueue(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE, "event");
+        verify(txJournalStore).record("tx-1");
     }
 
     private LikeUnlikeCommentMqDTO operation(Integer type) {

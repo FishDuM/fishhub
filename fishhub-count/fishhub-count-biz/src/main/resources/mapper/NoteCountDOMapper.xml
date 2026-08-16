@@ -28,22 +28,23 @@
       #{collectTotal,jdbcType=BIGINT}, #{commentTotal,jdbcType=BIGINT})
   </insert>
 
+  <!-- 增量为纯可交换累加，不做零点钳制：乱序 +1/-1 不再产生永久漂移，负数防护移到读侧。 -->
   <insert id="insertOrUpdateLikeTotalByNoteId" parameterType="map">
     INSERT INTO t_note_count (note_id, like_total)
-    VALUES (#{noteId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE like_total = GREATEST(0, like_total + #{count});
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE like_total = like_total + #{count};
   </insert>
 
   <insert id="insertOrUpdateCollectTotalByNoteId" parameterType="map">
     INSERT INTO t_note_count (note_id, collect_total)
-    VALUES (#{noteId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE collect_total = GREATEST(0, collect_total + #{count});
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE collect_total = collect_total + #{count};
   </insert>
 
   <insert id="insertOrUpdateCommentTotalByNoteId" parameterType="map">
     INSERT INTO t_note_count (note_id, comment_total)
-    VALUES (#{noteId}, GREATEST(0, #{count}))
-      ON DUPLICATE KEY UPDATE comment_total = GREATEST(0, comment_total + #{count});
+    VALUES (#{noteId}, #{count})
+      ON DUPLICATE KEY UPDATE comment_total = comment_total + #{count};
   </insert>
 
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO">

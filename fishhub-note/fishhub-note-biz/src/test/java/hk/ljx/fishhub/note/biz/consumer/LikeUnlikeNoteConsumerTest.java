@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.note.biz.consumer;
 
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
+import hk.ljx.framework.mq.tx.TxLocalTransaction;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
@@ -32,6 +34,8 @@ class LikeUnlikeNoteConsumerTest {
     private NoteInteractionCacheService noteInteractionCacheService;
     @Mock
     private NoteInteractionPersistenceService persistenceService;
+    @Mock
+    private TransactionalMqSender transactionalMqSender;
     @InjectMocks
     private LikeUnlikeNoteConsumer consumer;
 
@@ -51,6 +55,12 @@ class LikeUnlikeNoteConsumerTest {
         when(noteDOMapper.selectInteractionInfoByNoteId(10L)).thenReturn(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(0).build());
         when(persistenceService.saveUnlike(any(), any())).thenReturn(false);
+        // 模拟事务消息发送器：同步执行本地事务动作
+        org.mockito.Mockito.doAnswer(invocation -> {
+            TxLocalTransaction localTx = invocation.getArgument(2);
+            localTx.execute("tx-1");
+            return null;
+        }).when(transactionalMqSender).sendInTransaction(any(), any(), any());
 
         consumer.onMessage(message(MQConstants.TAG_UNLIKE, LikeUnlikeNoteTypeEnum.UNLIKE.getCode()));
 

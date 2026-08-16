@@ -10,11 +10,10 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.MqConsumeRecordMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
-import hk.ljx.fishhub.comment.biz.model.dto.DeleteCommentContentMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.InvalidateCommentCacheMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.InvalidateChildCommentListCacheMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.InvalidateOneLevelCommentCacheMqDTO;
-import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
+import hk.ljx.fishhub.comment.biz.model.dto.CommentChangedEventMqDTO;
+import hk.ljx.fishhub.comment.biz.model.dto.CommentItemMqDTO;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
+import hk.ljx.framework.mq.tx.TxJournalStore;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -49,7 +48,9 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     @Resource
     private MqConsumeRecordMapper mqConsumeRecordMapper;
     @Resource
-    private SendMqRetryHelper sendMqRetryHelper;
+    private TransactionalMqSender transactionalMqSender;
+    @Resource
+    private TxJournalStore txJournalStore;
     @Resource
     private TransactionTemplate transactionTemplate;
 
@@ -72,107 +73,56 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
         List<CommentDO> targets = collectDeleteTargets(root);
         List<Long> targetIds = targets.stream().map(CommentDO::getId).distinct().toList();
 
-        List<DeleteCommentContentMqDTO> contentDeletionTasks = targets.stream()
-                .filter(target -> !Boolean.TRUE.equals(target.getIsContentEmpty())
-                        && StringUtils.isNotBlank(target.getContentUuid()))
-                .map(target -> DeleteCommentContentMqDTO.builder()
+        // 变更事件与删除事实经由事务消息原子绑定；条目集合在事务外基于同一快照构建，保持确定性。
+        List<CommentItemMqDTO> eventItems = targets.stream()
+                .map(target -> CommentItemMqDTO.builder()
+                        .id(target.getId())
                         .noteId(target.getNoteId())
-                        .createTime(target.getCreateTime())
+                        .level(target.getLevel())
+                        .parentId(target.getParentId())
+                        .userId(target.getUserId())
                         .contentUuid(target.getContentUuid())
+                        .isContentEmpty(target.getIsContentEmpty())
+                        .createTime(target.getCreateTime())
                         .build())
                 .toList();
-        List<String> contentDeletionBodies = contentDeletionTasks.stream()
-                .map(JsonUtils::toJsonString)
-                .toList();
-        String heatUpdateBody = Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())
-                ? JsonUtils.toJsonString(Set.of(root.getParentId())) : null;
-        List<String> localCacheInvalidationBodies = new ArrayList<>(targetIds.stream()
-                .map(String::valueOf)
-                .toList());
-        if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
-            localCacheInvalidationBodies.add(String.valueOf(root.getParentId()));
-        }
-        String oneLevelCacheInvalidationBody = Objects.equals(root.getLevel(), CommentLevelEnum.ONE.getCode())
-                ? JsonUtils.toJsonString(InvalidateOneLevelCommentCacheMqDTO.builder()
-                        .eventId(java.util.UUID.randomUUID().toString())
-                        .noteId(root.getNoteId())
-                        .build()) : null;
-        Long childListParentCommentId = Objects.equals(root.getLevel(), CommentLevelEnum.ONE.getCode())
-                ? root.getId() : root.getParentId();
-        String childListInvalidationBody = JsonUtils.toJsonString(InvalidateChildCommentListCacheMqDTO.builder()
-                .eventId(java.util.UUID.randomUUID().toString())
-                .parentCommentId(childListParentCommentId)
-                .build());
-        String commentCacheInvalidationBody = JsonUtils.toJsonString(InvalidateCommentCacheMqDTO.builder()
-                .eventId(java.util.UUID.randomUUID().toString())
-                .deletedCommentIds(targetIds)
-                .parentCommentId(Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())
-                        ? root.getParentId() : null)
+        String eventBody = JsonUtils.toJsonString(CommentChangedEventMqDTO.builder()
+                .changeType(MQConstants.COMMENT_CHANGE_TYPE_DELETE)
+                .items(eventItems)
                 .build());
 
-        boolean deleted = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
-            // 消费幂等：并发重投时只允许一个消费者执行扣减
-            String messageKey = DigestUtil.sha256Hex(MQConstants.TOPIC_DELETE_COMMENT + ":" + body);
-            if (mqConsumeRecordMapper.exists(
-                    "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT, messageKey) > 0) {
-                return null;
-            }
-            try {
-                mqConsumeRecordMapper.insert(
-                        "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT, messageKey);
-            } catch (DuplicateKeyException e) {
-                return null;
-            }
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COMMENT_CHANGED, eventBody, txId -> {
+            boolean deleted = transactionTemplate.execute(status -> {
+                // 消费幂等：并发重投时只允许一个消费者执行扣减；未生效则不登记 journal，半消息随之回滚
+                String messageKey = DigestUtil.sha256Hex(MQConstants.TOPIC_DELETE_COMMENT + ":" + body);
+                if (mqConsumeRecordMapper.exists(
+                        "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT, messageKey) > 0) {
+                    return false;
+                }
+                try {
+                    mqConsumeRecordMapper.insert(
+                            "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT, messageKey);
+                } catch (DuplicateKeyException e) {
+                    return false;
+                }
 
-            contentDeletionBodies.forEach(bodyItem ->
-                    sendMqRetryHelper.enqueue(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
-            if (heatUpdateBody != null) {
-                sendMqRetryHelper.enqueue(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatUpdateBody);
-            }
-            localCacheInvalidationBodies.forEach(bodyItem ->
-                    sendMqRetryHelper.enqueue(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, bodyItem));
-            if (oneLevelCacheInvalidationBody != null) {
-                sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE,
-                        oneLevelCacheInvalidationBody);
-            }
-            sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE,
-                    childListInvalidationBody);
-            sendMqRetryHelper.enqueue(MQConstants.TOPIC_INVALIDATE_COMMENT_CACHE,
-                    commentCacheInvalidationBody);
+                commentLikeDOMapper.deleteByCommentIds(targetIds);
+                commentDOMapper.deleteByIds(targetIds);
+                noteCountDOMapper.insertOrUpdateCommentTotalByNoteId(root.getNoteId(), -targetIds.size());
 
-            commentLikeDOMapper.deleteByCommentIds(targetIds);
-            commentDOMapper.deleteByIds(targetIds);
-            noteCountDOMapper.updateCommentTotalByNoteId(root.getNoteId(), -targetIds.size());
-
-            if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
-                Long parentId = root.getParentId();
-                commentDOMapper.updateChildCommentTotal(parentId, -targetIds.size());
-                CommentDO earliest = commentDOMapper.selectEarliestByParentId(parentId);
-                commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
-                        earliest == null ? 0L : earliest.getId(), parentId);
-            }
-            return true;
-        }));
-
-        if (!deleted) {
-            return;
-        }
-
-        contentDeletionBodies.forEach(bodyItem ->
-                sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_CONTENT, bodyItem));
-        if (heatUpdateBody != null) {
-            sendMqRetryHelper.sendNow(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatUpdateBody);
-        }
-        localCacheInvalidationBodies.forEach(bodyItem ->
-                sendMqRetryHelper.sendNow(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, bodyItem));
-        if (oneLevelCacheInvalidationBody != null) {
-            sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_ONE_LEVEL_COMMENT_CACHE,
-                    oneLevelCacheInvalidationBody);
-        }
-        sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_CHILD_COMMENT_LIST_CACHE,
-                childListInvalidationBody);
-        sendMqRetryHelper.sendNow(MQConstants.TOPIC_INVALIDATE_COMMENT_CACHE,
-                commentCacheInvalidationBody);
+                if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
+                    Long parentId = root.getParentId();
+                    commentDOMapper.updateChildCommentTotal(parentId, -targetIds.size());
+                    CommentDO earliest = commentDOMapper.selectEarliestByParentId(parentId);
+                    commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
+                            earliest == null ? 0L : earliest.getId(), parentId);
+                }
+                txJournalStore.record(txId);
+                return true;
+            });
+            log.info("评论删除事务完成, rootId={}, applied={}", root.getId(), deleted);
+            return deleted;
+        });
     }
 
     private List<CommentDO> collectDeleteTargets(CommentDO root) {

@@ -8,7 +8,7 @@ import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
-import hk.ljx.fishhub.note.biz.retry.ReliableMqOutbox;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
 import jakarta.annotation.Resource;
@@ -32,7 +32,7 @@ import java.util.Objects;
 public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
 
     @Resource
-    private ReliableMqOutbox reliableMqOutbox;
+    private TransactionalMqSender transactionalMqSender;
     @Resource
     private NoteInteractionPersistenceService persistenceService;
     @Resource
@@ -106,10 +106,11 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
                 .status(type)
                 .build();
 
+        // 计数事件与点赞落库经由事务消息原子绑定；联合唯一索引判定重复消费时不登记 journal，
+        // 半消息随之回滚丢弃。
         String resolvedBody = JsonUtils.toJsonString(likeNoteMqDTO);
-        if (persistenceService.saveLike(noteLikeDO, resolvedBody)) {
-            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_LIKE, resolvedBody);
-        }
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_LIKE, resolvedBody,
+                txId -> persistenceService.saveLike(noteLikeDO, txId));
     }
 
     /**
@@ -154,9 +155,8 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<Message> {
                 .build();
 
         String resolvedBody = JsonUtils.toJsonString(unlikeNoteMqDTO);
-        if (persistenceService.saveUnlike(noteLikeDO, resolvedBody)) {
-            reliableMqOutbox.sendNow(MQConstants.TOPIC_COUNT_NOTE_LIKE, resolvedBody);
-        }
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_LIKE, resolvedBody,
+                txId -> persistenceService.saveUnlike(noteLikeDO, txId));
     }
 
     private boolean isWritable(NoteDO note, Long userId) {

@@ -5,7 +5,7 @@ import hk.ljx.fishhub.data.align.constant.MQConstants;
 import hk.ljx.fishhub.data.align.constant.RedisKeyConstants;
 import hk.ljx.fishhub.data.align.constant.TableConstants;
 import hk.ljx.fishhub.data.align.domain.mapper.InsertMapper;
-import hk.ljx.fishhub.data.align.model.dto.NoteOperateMqDTO;
+import hk.ljx.fishhub.data.align.model.dto.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.data.align.service.DailyChangeDeduplicator;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +21,8 @@ import java.util.Objects;
 
 
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_data_align_" + MQConstants.TOPIC_NOTE_OPERATE, // Group 组
-        topic = MQConstants.TOPIC_NOTE_OPERATE // 主题 Topic
+@RocketMQMessageListener(consumerGroup = "fishhub_group_data_align_" + MQConstants.TOPIC_NOTE_CHANGED, // Group 组
+        topic = MQConstants.TOPIC_NOTE_CHANGED // 主题 Topic
         )
 @Slf4j
 public class TodayNotePublishIncrementData2DBConsumer implements RocketMQListener<String> {
@@ -43,14 +43,18 @@ public class TodayNotePublishIncrementData2DBConsumer implements RocketMQListene
         log.info("## TodayNotePublishIncrementData2DBConsumer 消费到了 MQ: {}", body);
 
         // 消息体 JSON 字符串转 DTO
-        NoteOperateMqDTO noteOperateMqDTO = JsonUtils.parseObject(body, NoteOperateMqDTO.class);
+        NoteChangedEventMqDTO event = JsonUtils.parseObject(body, NoteChangedEventMqDTO.class);
 
-        if (Objects.isNull(noteOperateMqDTO) || noteOperateMqDTO.getCreatorId() == null) {
+        if (Objects.isNull(event) || event.getCreatorId() == null || event.getChangeType() == null) {
             throw new IllegalArgumentException("笔记操作对齐消息缺少用户 ID");
+        }
+        // 编辑不影响日增量，直接确认
+        if (!Objects.equals(event.getChangeType(), 1) && !Objects.equals(event.getChangeType(), 0)) {
+            return;
         }
 
         // 发布、被删除笔记发布者 ID
-        Long noteCreatorId = noteOperateMqDTO.getCreatorId();
+        Long noteCreatorId = event.getCreatorId();
 
         // 今日日期
         String date = LocalDate.now()

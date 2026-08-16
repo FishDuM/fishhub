@@ -11,8 +11,8 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
-import hk.ljx.fishhub.comment.biz.retry.SendMqRetryHelper;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
@@ -48,7 +48,7 @@ public class LikeUnlikeComment2DBConsumer {
     @Resource
     private CommentLikePersistenceService persistenceService;
     @Resource
-    private SendMqRetryHelper sendMqRetryHelper;
+    private TransactionalMqSender transactionalMqSender;
     @Resource
     private CommentDOMapper commentDOMapper;
     @Resource
@@ -182,9 +182,9 @@ public class LikeUnlikeComment2DBConsumer {
                         continue;
                     }
                     String eventBody = JsonUtils.toJsonString(operation);
-                    if (persistenceService.apply(operation, eventBody)) {
-                        sendMqRetryHelper.sendNow(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE, eventBody);
-                    }
+                    // 计数事件与点赞关系落库经由事务消息原子绑定；关系未变化时不登记 journal，半消息回滚丢弃
+                    transactionalMqSender.sendInTransaction(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE,
+                            eventBody, txId -> persistenceService.apply(operation, txId));
                 }
 
                 // 手动 ACK，告诉 RocketMQ 这批次消息消费成功

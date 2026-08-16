@@ -7,6 +7,7 @@ import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.count.biz.model.dto.AggregationCountLikeUnlikeCommentMqDTO;
+import hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -31,7 +32,7 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
     @Resource
     private CommentDOMapper commentDOMapper;
     @Resource
-    private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
+    private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
     private RedisTemplate<String, Object> redisTemplate;
     @Resource

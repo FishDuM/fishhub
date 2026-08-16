@@ -9,6 +9,7 @@ import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.service.NoteCountService;
+import hk.ljx.fishhub.count.biz.util.Counts;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
 import jakarta.annotation.Resource;
@@ -109,13 +110,13 @@ public class NoteCountServiceImpl implements NoteCountService {
             NoteCountDO noteCountDO = noteIdAndDOMap.get(findNoteCountsByIdRspDTO.getNoteId());
 
             if (Objects.isNull(findNoteCountsByIdRspDTO.getLikeTotal())) {
-                findNoteCountsByIdRspDTO.setLikeTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : 0L);
+                findNoteCountsByIdRspDTO.setLikeTotal(Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : null));
             }
             if (Objects.isNull(findNoteCountsByIdRspDTO.getCollectTotal())) {
-                findNoteCountsByIdRspDTO.setCollectTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : 0L);
+                findNoteCountsByIdRspDTO.setCollectTotal(Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : null));
             }
             if (Objects.isNull(findNoteCountsByIdRspDTO.getCommentTotal())) {
-                findNoteCountsByIdRspDTO.setCommentTotal(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : 0L);
+                findNoteCountsByIdRspDTO.setCommentTotal(Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : null));
             }
         }
 
@@ -159,15 +160,15 @@ public class NoteCountServiceImpl implements NoteCountService {
 
                     if (Objects.isNull(likeTotal)) {
                         countMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL,
-                                Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : 0);
+                                Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : null));
                     }
                     if (Objects.isNull(collectTotal)) {
                         countMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL,
-                                Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : 0);
+                                Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : null));
                     }
                     if (Objects.isNull(commentTotal)) {
                         countMap.put(RedisKeyConstants.FIELD_COMMENT_TOTAL,
-                                Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : 0);
+                                Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : null));
                     }
 
                     // 批量添加 Hash 的计数 Field，使用 putIfAbsent 防止覆盖并发产生的增量数据

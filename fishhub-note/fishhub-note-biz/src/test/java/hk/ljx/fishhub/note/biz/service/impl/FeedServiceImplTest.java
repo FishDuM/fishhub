@@ -16,7 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.List;
@@ -44,16 +44,16 @@ class FeedServiceImplTest {
     @Mock
     private CountRpcService countRpcService;
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Mock
-    private ValueOperations<String, Object> valueOperations;
+    private ValueOperations<String, String> valueOperations;
     @InjectMocks
     private FeedServiceImpl service;
 
     @Test
     void shouldRequestCountsOnceWhenCursorPageCacheMisses() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
@@ -75,7 +75,7 @@ class FeedServiceImplTest {
     @Test
     void shouldDeleteCorruptedCursorPageCacheAndReloadIt() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn("{");
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
@@ -89,12 +89,12 @@ class FeedServiceImplTest {
 
         service.findDiscoverNoteList(request);
 
-        verify(redisTemplate, atLeastOnce()).delete(pageKey);
+        verify(stringRedisTemplate, atLeastOnce()).delete(pageKey);
     }
 
     @Test
     void shouldFallBackToMySqlWhenDiscoverRedisIsUnavailable() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenThrow(new IllegalStateException("redis unavailable"));
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
@@ -113,7 +113,7 @@ class FeedServiceImplTest {
 
     @Test
     void shouldFallBackToMySqlWhenTopicRedisIsUnavailable() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.activeTopicSnapshotKey()))
                 .thenThrow(new IllegalStateException("redis unavailable"));
         when(topicDOMapper.selectAllEnabled()).thenReturn(List.of(TopicDO.builder().id(1L).name("Java").build()));
@@ -130,7 +130,7 @@ class FeedServiceImplTest {
     void shouldUseDoubleCheckAfterAcquiringDiscoverPageRebuildLock() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null, "{\"notes\":[],\"nextCursor\":null}");
         when(valueOperations.setIfAbsent(eq(lockKey), any(), eq(5L), eq(java.util.concurrent.TimeUnit.SECONDS)))
@@ -148,7 +148,7 @@ class FeedServiceImplTest {
     void shouldNotRetryMySqlWhenDiscoverPageRebuildFails() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(valueOperations.setIfAbsent(eq(lockKey), any(), eq(5L), eq(java.util.concurrent.TimeUnit.SECONDS)))

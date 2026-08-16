@@ -24,11 +24,11 @@ public interface NoteCountDOMapper {
     int updateByPrimaryKey(NoteCountDO record);
 
     /**
-     * 更新评论总数
+     * 累加评论总数，行不存在时按增量建行
      * @param noteId
      * @param count
      * @return
      */
-    int updateCommentTotalByNoteId(@Param("noteId") Long noteId,
-                                   @Param("count") int count);
+    int insertOrUpdateCommentTotalByNoteId(@Param("noteId") Long noteId,
+                                           @Param("count") int count);
 }

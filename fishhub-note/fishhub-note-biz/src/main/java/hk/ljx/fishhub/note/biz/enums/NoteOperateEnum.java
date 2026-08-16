@@ -11,6 +11,8 @@ public enum NoteOperateEnum {
     PUBLISH(1),
     // 笔记删除
     DELETE(0),
+    // 笔记编辑
+    UPDATE(2),
     ;
 
     private final Integer code;

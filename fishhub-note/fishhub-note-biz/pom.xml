@@ -63,6 +63,11 @@
             <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
+        </dependency>
+
         <!-- Jackson 组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>

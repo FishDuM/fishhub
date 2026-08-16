@@ -6,6 +6,7 @@ import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.CountFollowUnfollowMqDTO;
+import hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,7 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
     @Resource
     private UserCountDOMapper userCountDOMapper;
     @Resource
-    private hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor mqIdempotentExecutor;
+    private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
     private UserCountCacheVersionService userCountCacheVersionService;
 

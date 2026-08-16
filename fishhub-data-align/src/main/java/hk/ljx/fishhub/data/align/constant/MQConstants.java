@@ -16,7 +16,7 @@ public interface MQConstants {
     /**
      * Topic: 笔记操作（发布、删除）
      */
-    String TOPIC_NOTE_OPERATE = "NoteOperateTopic";
+    String TOPIC_NOTE_CHANGED = "NoteChangedTopic";
 
     /**
      * Topic: 关注数计数

@@ -350,9 +350,10 @@
     where id = #{id}
   </update>
 
+  <!-- 增量为纯可交换累加，不做零点钳制：须与 count 模块的发布侧增量保持同一规则，混用钳制会重新引入乱序漂移。 -->
   <update id="updateChildCommentTotal" parameterType="map">
     update t_comment
-    set child_comment_total = greatest(coalesce(child_comment_total, 0) + #{delta}, 0)
+    set child_comment_total = child_comment_total + #{delta}
     where id = #{id}
   </update>
 
