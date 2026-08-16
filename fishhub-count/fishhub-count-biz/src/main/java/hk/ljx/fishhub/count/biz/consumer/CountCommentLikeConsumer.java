@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_count_" + MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE,
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE,
         topic = MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE
         )
 @Slf4j

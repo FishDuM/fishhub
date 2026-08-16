@@ -1,3 +1,36 @@
+# fishhub 项目本地副本说明（请先读这段）
+
+> 本目录是 **官方 xxl-job v2.4.1**（com.xuxueli:xxl-job，GPL-3.0）的本地 vendored 副本，
+> **仅用于本地开发启动任务调度中心**。它已被 git 跟踪，但**不属于主仓库的 Maven reactor**
+> （根 pom.xml 未包含本模块，`mvn compile` 不会构建它），请勿将其加入根 pom 的 `<modules>`。
+
+**本地定制（相对官方原版的差异）**
+- 调度中心端口：`7777`，context-path：`/xxl-job-admin`
+  （见 `xxl-job-admin/src/main/resources/application.properties`）；
+- 数据源：`jdbc:mysql://192.168.0.100:3306/xxl_job`（本机 MySQL 的 LAN 地址；
+  库表结构与种子数据见主仓库 `sql/create.sql` 的 XXL-JOB 段）；
+- 业务侧对接配置（fishhub-data-align 的 `application-dev.yml`）：
+  `adminAddresses=http://localhost:7777/xxl-job-admin`、`accessToken=default_token`、
+  `appName=xxl-job-executor-fishhub`。
+
+**构建与启动**
+```bash
+cd xxl-job
+# 首次/新机器：先把 xxl-job-core 装进本地 m2（本机已装 2.4.1，可跳过此步）
+mvn -pl xxl-job-admin -am -DskipTests install
+# 启动调度中心（阻塞运行）
+mvn -pl xxl-job-admin spring-boot:run
+```
+- 控制台：http://localhost:7777/xxl-job-admin （账号 `admin` / `123456`，见 `xxl_job` 库 `xxl_job_user` 表）；
+- 执行器（fishhub-data-align）启动后自动注册到控制台，任务由 `sql/create.sql` 的种子数据预置。
+
+**升级方式**：从官方仓库（github.com/xuxueli/xxl-job，tag v2.4.1）替换本目录源码，
+并保留/还原 `xxl-job-admin/src/main/resources/application.properties` 中的本地定制
+（端口、context-path、数据源）。
+
+---
+
+> 以下为 xxl-job 官方 README 原文。
 <p align="center" >
     <img src="https://www.xuxueli.com/doc/static/xxl-job/images/xxl-logo.jpg" width="150">
     <h3 align="center">XXL-JOB</h3>
