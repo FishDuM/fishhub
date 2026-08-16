@@ -16,7 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<String> {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private CommentDOMapper commentDOMapper;
     @Resource(name = "fishhubTaskExecutor")
@@ -69,7 +69,7 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
         List<String> keys = parentIds.stream()
                 .map(RedisKeyConstants::buildHaveFirstReplyCommentKey)
                 .toList();
-        List<Object> values = redisTemplate.opsForValue().multiGet(keys);
+        List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
 
         // 提取 Redis 中不存在的评论 ID，需要进一步核对数据库
         List<Long> missingCommentIds = Lists.newArrayList();
@@ -113,12 +113,12 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
      */
     private void sync2Redis(List<Long> needSyncCommentIds) {
         needSyncCommentIds.forEach(commentId -> {
-            redisTemplate.opsForValue().set(
+            stringRedisTemplate.opsForValue().set(
                     RedisKeyConstants.buildHaveFirstReplyCommentKey(commentId),
-                    1,
+                    "1",
                     RandomUtil.randomInt(1, 5 * 60 * 60),
                     TimeUnit.SECONDS);
-            redisTemplate.delete(RedisKeyConstants.buildCommentDetailKey(commentId));
+            stringRedisTemplate.delete(RedisKeyConstants.buildCommentDetailKey(commentId));
             try {
                 rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(commentId));
             } catch (Exception e) {

@@ -7,7 +7,7 @@ import hk.ljx.fishhub.data.align.domain.mapper.SelectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -29,7 +29,7 @@ public class ShardedCountAlignmentRunner {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final SelectMapper selectMapper;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Value("${table.shards}")
     private int tableShards;
@@ -101,14 +101,14 @@ public class ShardedCountAlignmentRunner {
     }
 
     private void updateExistingHashCache(String cacheKey, String cacheField, long total) {
-        if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
-            redisTemplate.opsForHash().put(cacheKey, cacheField, total);
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(cacheKey))) {
+            stringRedisTemplate.opsForHash().put(cacheKey, cacheField, String.valueOf(total));
         }
     }
 
     private void advanceUserCountCacheVersion(Long userId) {
         String versionKey = RedisKeyConstants.buildCountUserCacheVersionKey(userId);
-        redisTemplate.opsForValue().increment(versionKey);
-        redisTemplate.expire(versionKey, USER_COUNT_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
+        stringRedisTemplate.opsForValue().increment(versionKey);
+        stringRedisTemplate.expire(versionKey, USER_COUNT_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
     }
 }

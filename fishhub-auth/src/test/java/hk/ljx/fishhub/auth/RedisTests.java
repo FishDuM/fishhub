@@ -4,7 +4,7 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.UUID;
 
@@ -17,18 +17,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RedisTests {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Test
     void valueRoundTrip() {
         String key = "fishhub:test:auth:" + UUID.randomUUID();
         try {
-            redisTemplate.opsForValue().set(key, "飞鱼社区");
-            assertTrue(Boolean.TRUE.equals(redisTemplate.hasKey(key)));
-            assertEquals("飞鱼社区", redisTemplate.opsForValue().get(key));
+            stringRedisTemplate.opsForValue().set(key, "飞鱼社区");
+            assertTrue(Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)));
+            assertEquals("飞鱼社区", stringRedisTemplate.opsForValue().get(key));
         } finally {
-            redisTemplate.delete(key);
+            stringRedisTemplate.delete(key);
         }
-        assertFalse(Boolean.TRUE.equals(redisTemplate.hasKey(key)));
+        assertFalse(Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)));
     }
 }

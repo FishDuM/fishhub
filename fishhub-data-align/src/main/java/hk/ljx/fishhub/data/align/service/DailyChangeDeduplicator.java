@@ -1,7 +1,7 @@
 package hk.ljx.fishhub.data.align.service;
 
 import jakarta.annotation.Resource;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
@@ -20,14 +20,14 @@ public class DailyChangeDeduplicator {
             Long.class);
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     public boolean exists(String key, Long id) {
-        Long result = redisTemplate.execute(EXISTS_SCRIPT, Collections.singletonList(key), id);
+        Long result = stringRedisTemplate.execute(EXISTS_SCRIPT, Collections.singletonList(key), String.valueOf(id));
         return Long.valueOf(1L).equals(result);
     }
 
     public void markAfterDatabaseSuccess(String key, Long id) {
-        redisTemplate.execute(MARK_SCRIPT, Collections.singletonList(key), id, EXPIRE_SECONDS);
+        stringRedisTemplate.execute(MARK_SCRIPT, Collections.singletonList(key), String.valueOf(id), String.valueOf(EXPIRE_SECONDS));
     }
 }

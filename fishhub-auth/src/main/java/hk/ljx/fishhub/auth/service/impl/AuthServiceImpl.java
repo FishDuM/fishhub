@@ -18,7 +18,7 @@ import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -36,7 +36,7 @@ public class AuthServiceImpl implements AuthService {
                     + "return 0;", Long.class);
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private PasswordEncoder passwordEncoder;
     @Resource
@@ -155,7 +155,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void verifyAndConsumeVerificationCode(String phone, String verificationCode) {
-        Long consumed = redisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT,
+        Long consumed = stringRedisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT,
                 List.of(RedisKeyConstants.buildVerificationCodeKey(phone)), verificationCode);
         if (!Long.valueOf(1L).equals(consumed)) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);

@@ -14,7 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
@@ -39,7 +39,7 @@ public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
     @Resource
     private CommentDOMapper commentDOMapper;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public void onMessage(String body) {
@@ -98,12 +98,12 @@ public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
             script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/update_hot_comments.lua")));
             script.setResultType(Long.class);
 
-            List<Object> args = Lists.newArrayList();
+            List<String> args = Lists.newArrayList();
             commentHeatBOS.forEach(commentHeatBO -> {
-                args.add(commentHeatBO.getId());
-                args.add(commentHeatBO.getHeat());
+                args.add(String.valueOf(commentHeatBO.getId()));
+                args.add(String.valueOf(commentHeatBO.getHeat()));
             });
-            redisTemplate.execute(script, Collections.singletonList(key), args.toArray());
+            stringRedisTemplate.execute(script, Collections.singletonList(key), args.toArray());
         });
     }
 }

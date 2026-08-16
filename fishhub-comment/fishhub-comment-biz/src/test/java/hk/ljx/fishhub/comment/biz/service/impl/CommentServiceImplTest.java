@@ -8,7 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -27,9 +27,9 @@ class CommentServiceImplTest {
     @Mock
     private CommentDOMapper commentDOMapper;
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Mock
-    private ValueOperations<String, Object> valueOperations;
+    private ValueOperations<String, String> valueOperations;
     @InjectMocks
     private CommentServiceImpl service;
 
@@ -40,9 +40,9 @@ class CommentServiceImplTest {
         String versionKey = "version:comment:one-level-total:" + noteId;
         String lockKey = "lock:comment:one-level-total:" + noteId;
         when(noteRpcService.isAccessible(noteId)).thenReturn(true);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(versionKey)).thenReturn(0L);
-        when(valueOperations.get(cacheKey)).thenReturn(null, 0L);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(versionKey)).thenReturn("0");
+        when(valueOperations.get(cacheKey)).thenReturn(null, "0");
         when(valueOperations.setIfAbsent(eq(lockKey), any(), anyLong(), any())).thenReturn(true);
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();
 
@@ -59,8 +59,8 @@ class CommentServiceImplTest {
         String versionKey = "version:comment:one-level-total:" + noteId;
         String lockKey = "lock:comment:one-level-total:" + noteId;
         when(noteRpcService.isAccessible(noteId)).thenReturn(true);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(versionKey)).thenReturn(0L);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(versionKey)).thenReturn("0");
         when(valueOperations.get(cacheKey)).thenReturn(null);
         when(valueOperations.setIfAbsent(eq(lockKey), any(), anyLong(), any())).thenReturn(true);
         when(commentDOMapper.selectOneLevelCountByNoteId(noteId))

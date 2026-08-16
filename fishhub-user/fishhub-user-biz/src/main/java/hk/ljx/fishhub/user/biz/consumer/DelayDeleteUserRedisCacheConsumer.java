@@ -6,7 +6,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -20,7 +20,7 @@ import java.util.Arrays;
 public class DelayDeleteUserRedisCacheConsumer implements RocketMQListener<String>  {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public void onMessage(String body) {
@@ -31,6 +31,6 @@ public class DelayDeleteUserRedisCacheConsumer implements RocketMQListener<Strin
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
         // 批量删除
-        redisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
     }
 }

@@ -26,7 +26,7 @@ import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
@@ -43,7 +43,7 @@ import java.util.*;
 public class RelationServiceImpl implements RelationService {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private UserRpcService userRpcService;
     @Resource
@@ -94,7 +94,7 @@ public class RelationServiceImpl implements RelationService {
         // 当前时间转时间戳
         long timestamp = DateUtils.localDateTime2Timestamp(now);
 
-        Long result = redisTemplate.execute(script, Collections.singletonList(followingRedisKey), followUserId, timestamp);
+        Long result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
 
         // 校验 Lua 脚本执行结果
         checkLuaScriptResult(result);
@@ -114,18 +114,18 @@ public class RelationServiceImpl implements RelationService {
                 script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_add_and_expire.lua")));
                 script2.setResultType(Long.class);
 
-                redisTemplate.execute(script2, Collections.singletonList(followingRedisKey), followUserId, timestamp, expireSeconds);
+                stringRedisTemplate.execute(script2, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
             } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
-                Object[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
+                String[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
 
                 // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
                 DefaultRedisScript<Long> script3 = new DefaultRedisScript<>();
                 script3.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_batch_add_and_expire.lua")));
                 script3.setResultType(Long.class);
-                redisTemplate.execute(script3, Collections.singletonList(followingRedisKey), luaArgs);
+                stringRedisTemplate.execute(script3, Collections.singletonList(followingRedisKey), luaArgs);
 
                 // 再次调用上面的 Lua 脚本：follow_check_and_add.lua , 将最新的关注关系添加进去
-                result = redisTemplate.execute(script, Collections.singletonList(followingRedisKey), followUserId, timestamp);
+                result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
                 checkLuaScriptResult(result);
             }
         }
@@ -152,7 +152,7 @@ public class RelationServiceImpl implements RelationService {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
             // Redis 是加速层；发送失败时清空本次关系缓存，后续从 MySQL 重新加载。
-            redisTemplate.delete(followingRedisKey);
+            stringRedisTemplate.delete(followingRedisKey);
             throw new IllegalStateException("关注消息发送失败", e);
         }
 
@@ -191,7 +191,7 @@ public class RelationServiceImpl implements RelationService {
         script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/unfollow_check_and_delete.lua")));
         script.setResultType(Long.class);
 
-        Long result = redisTemplate.execute(script, Collections.singletonList(followingRedisKey), unfollowUserId);
+        Long result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
 
         // 校验 Lua 脚本执行结果
         // 取关的用户不在关注列表中
@@ -211,16 +211,16 @@ public class RelationServiceImpl implements RelationService {
             if (CollUtil.isEmpty(followingDOS)) {
                 throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
             } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
-                Object[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
+                String[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
 
                 // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
                 DefaultRedisScript<Long> script3 = new DefaultRedisScript<>();
                 script3.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_batch_add_and_expire.lua")));
                 script3.setResultType(Long.class);
-                redisTemplate.execute(script3, Collections.singletonList(followingRedisKey), luaArgs);
+                stringRedisTemplate.execute(script3, Collections.singletonList(followingRedisKey), luaArgs);
 
                 // 再次调用上面的 Lua 脚本：unfollow_check_and_delete.lua , 将取关的用户删除
-                result = redisTemplate.execute(script, Collections.singletonList(followingRedisKey), unfollowUserId);
+                result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
                 // 再次校验结果
                 if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
                     throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
@@ -248,7 +248,7 @@ public class RelationServiceImpl implements RelationService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
-            redisTemplate.delete(followingRedisKey);
+            stringRedisTemplate.delete(followingRedisKey);
             throw new IllegalStateException("取关消息发送失败", e);
         }
 
@@ -257,8 +257,6 @@ public class RelationServiceImpl implements RelationService {
 
     /**
      * 查询关注列表
-     *
-     * @param findFollowingListReqVO
      * @return
      */
     @Override
@@ -279,8 +277,6 @@ public class RelationServiceImpl implements RelationService {
 
     /**
      * 查询关注列表
-     *
-     * @param findFansListReqVO
      * @return
      */
     @Override
@@ -391,18 +387,18 @@ public class RelationServiceImpl implements RelationService {
      * @param expireSeconds
      * @return
      */
-    private static Object[] buildLuaArgs(List<FollowingDO> followingDOS, long expireSeconds) {
+    private static String[] buildLuaArgs(List<FollowingDO> followingDOS, long expireSeconds) {
         int argsLength = followingDOS.size() * 2 + 1; // 每个关注关系有 2 个参数（score 和 value），再加一个过期时间
-        Object[] luaArgs = new Object[argsLength];
+        String[] luaArgs = new String[argsLength];
 
         int i = 0;
         for (FollowingDO following : followingDOS) {
-            luaArgs[i] = DateUtils.localDateTime2Timestamp(following.getCreateTime()); // 关注时间作为 score
-            luaArgs[i + 1] = following.getFollowingUserId();          // 关注的用户 ID 作为 ZSet value
+            luaArgs[i] = String.valueOf(DateUtils.localDateTime2Timestamp(following.getCreateTime())); // 关注时间作为 score
+            luaArgs[i + 1] = String.valueOf(following.getFollowingUserId());          // 关注的用户 ID 作为 ZSet value
             i += 2;
         }
 
-        luaArgs[argsLength - 1] = expireSeconds; // 最后一个参数是 ZSet 的过期时间
+        luaArgs[argsLength - 1] = String.valueOf(expireSeconds); // 最后一个参数是 ZSet 的过期时间
         return luaArgs;
     }
 

@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -35,19 +35,19 @@ class ShardedCountAlignmentRunnerTest {
     private SelectMapper selectMapper;
 
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Mock
-    private ValueOperations<String, Object> valueOperations;
+    private ValueOperations<String, String> valueOperations;
 
     @Test
     void shouldAdvanceUserCountCacheVersionAfterAligningDatabaseTotal() {
-        ShardedCountAlignmentRunner runner = new ShardedCountAlignmentRunner(selectMapper, redisTemplate);
+        ShardedCountAlignmentRunner runner = new ShardedCountAlignmentRunner(selectMapper, stringRedisTemplate);
         ReflectionTestUtils.setField(runner, "tableShards", 1);
         String tableSuffix = TableConstants.buildTableNameSuffix(
                 LocalDate.now().minusDays(1).format(DATE_FORMATTER), 0);
         when(selectMapper.selectTempTableExists("t_data_align_user_like_count_temp_" + tableSuffix)).thenReturn(1);
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
 
         AtomicBoolean firstBatch = new AtomicBoolean(true);
         AtomicReference<Long> updatedUserId = new AtomicReference<>();
@@ -72,7 +72,7 @@ class ShardedCountAlignmentRunnerTest {
         assertEquals(100L, updatedUserId.get());
         assertEquals(8L, updatedTotal.get());
         verify(valueOperations).increment(RedisKeyConstants.buildCountUserCacheVersionKey(100L));
-        verify(redisTemplate).expire(RedisKeyConstants.buildCountUserCacheVersionKey(100L),
+        verify(stringRedisTemplate).expire(RedisKeyConstants.buildCountUserCacheVersionKey(100L),
                 3 * 60 * 60L, TimeUnit.SECONDS);
         assertEquals(List.of(100L), deletedIds.get());
         verify(selectMapper).selectTempTableExists(anyString());

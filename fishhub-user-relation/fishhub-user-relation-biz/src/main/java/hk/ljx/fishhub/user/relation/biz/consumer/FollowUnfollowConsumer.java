@@ -22,7 +22,7 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -47,7 +47,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     @Resource
     private RateLimiter rateLimiter;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private MqConsumeRecordMapper mqConsumeRecordMapper;
     @Resource
@@ -134,7 +134,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         });
 
         // MySQL 是关系事实源。重复投递也执行缓存失效，确保 Redis 暂时不可用后仍能靠 MQ 重试恢复。
-        redisTemplate.delete(RedisKeyConstants.buildUserFansKey(followUserId));
+        stringRedisTemplate.delete(RedisKeyConstants.buildUserFansKey(followUserId));
     }
 
     /**
@@ -184,7 +184,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             return applied;
         });
 
-        redisTemplate.delete(RedisKeyConstants.buildUserFansKey(unfollowUserId));
+        stringRedisTemplate.delete(RedisKeyConstants.buildUserFansKey(unfollowUserId));
     }
 
 }

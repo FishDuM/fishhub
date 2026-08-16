@@ -25,7 +25,7 @@ import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -54,7 +54,7 @@ public class LikeUnlikeComment2DBConsumer {
     @Resource
     private NoteRpcService noteRpcService;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     private DefaultMQPushConsumer consumer;
 
@@ -167,7 +167,7 @@ public class LikeUnlikeComment2DBConsumer {
                     CommentDO comment = comments.get(operation.getCommentId());
                     if (comment == null) {
                         // 评论已删除时无需落关系；清空布隆缓存，使下次刷新以数据库状态为准。
-                        redisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
+                        stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
                         continue;
                     }
                     if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())
@@ -176,7 +176,7 @@ public class LikeUnlikeComment2DBConsumer {
                             .userId(operation.getUserId())
                             .build())) {
                         // 点赞请求已乐观写入布隆过滤器；拒绝时清空用户缓存，后续刷新自动恢复真实状态。
-                        redisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
+                        stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
                         log.info("丢弃不可写笔记上的评论点赞，commentId={}, userId={}",
                                 operation.getCommentId(), operation.getUserId());
                         continue;

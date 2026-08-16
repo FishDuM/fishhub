@@ -1,7 +1,6 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
-import com.google.common.collect.Lists;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
@@ -15,7 +14,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -42,7 +41,7 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
     @Resource
     private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public void onMessage(String body) {
@@ -92,7 +91,7 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
                 .collect(Collectors.toList());
 
         // 删除流程的笔记评论总数扣减在评论模块事务内完成，此处只需清缓存
-        redisTemplate.delete(noteCountKeys);
+        stringRedisTemplate.delete(noteCountKeys);
         if (!isPublish) {
             List<String> commentCountKeys = event.getItems().stream()
                     .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
@@ -101,7 +100,7 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
                     .distinct()
                     .map(RedisKeyConstants::buildCountCommentKey)
                     .collect(Collectors.toList());
-            redisTemplate.delete(commentCountKeys);
+            stringRedisTemplate.delete(commentCountKeys);
         }
     }
 }

@@ -23,7 +23,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -52,13 +51,7 @@ class UserServiceImplTest {
     private UserDOMapper userDOMapper;
 
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
-
-    @Mock
     private StringRedisTemplate stringRedisTemplate;
-
-    @Mock
-    private ValueOperations<String, Object> valueOperations;
 
     @Mock
     private ValueOperations<String, String> stringValueOperations;
@@ -89,8 +82,8 @@ class UserServiceImplTest {
                 .nickname("fish3")
                 .build();
 
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.multiGet(List.of("user:info:2", "user:info:3")))
+        when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOperations);
+        when(stringValueOperations.multiGet(List.of("user:info:2", "user:info:3")))
                 .thenReturn(Arrays.asList(JsonUtils.toJsonString(cachedUser), null));
         when(userDOMapper.selectByIds(List.of(3L))).thenReturn(List.of(databaseUser));
 

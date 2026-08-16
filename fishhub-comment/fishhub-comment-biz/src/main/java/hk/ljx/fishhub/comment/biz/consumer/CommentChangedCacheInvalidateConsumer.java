@@ -12,7 +12,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit;
 public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<String> {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private CommentDetailCache commentDetailCache;
 
@@ -60,7 +60,7 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
                 .filter(Objects::nonNull)
                 .distinct()
                 .forEach(parentId ->
-                        redisTemplate.delete(RedisKeyConstants.buildChildCommentListKey(parentId)));
+                        stringRedisTemplate.delete(RedisKeyConstants.buildChildCommentListKey(parentId)));
 
         if (!isDelete) {
             return;
@@ -86,9 +86,9 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
                 .forEach(parentId -> {
                     countKeys.add(RedisKeyConstants.buildCountCommentKey(parentId));
                     detailKeys.add(RedisKeyConstants.buildCommentDetailKey(parentId));
-                    redisTemplate.delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(parentId));
+                    stringRedisTemplate.delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(parentId));
                 });
-        redisTemplate.delete(countKeys);
+        stringRedisTemplate.delete(countKeys);
         commentDetailCache.delete(detailKeys);
         log.info("评论删除后的缓存已失效, deletedCommentCount={}", commentIds.size());
     }
@@ -98,13 +98,13 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
      */
     private void invalidateOneLevelList(Long noteId) {
         String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-        Long version = redisTemplate.opsForValue().increment(versionKey);
+        Long version = stringRedisTemplate.opsForValue().increment(versionKey);
         if (version != null && version > 0) {
-            redisTemplate.expire(versionKey,
+            stringRedisTemplate.expire(versionKey,
                     RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
-            redisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId,
+            stringRedisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId,
                     String.valueOf(version - 1)));
         }
-        redisTemplate.delete(List.of(RedisKeyConstants.buildCommentListKey(noteId)));
+        stringRedisTemplate.delete(List.of(RedisKeyConstants.buildCommentListKey(noteId)));
     }
 }

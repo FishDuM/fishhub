@@ -15,7 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
 
@@ -34,7 +34,7 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
     @Resource
     private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private UserCountCacheVersionService userCountCacheVersionService;
 
@@ -69,7 +69,7 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
                 userCountDOMapper.insertOrUpdateCollectTotalByUserId(count, creatorId);
             });
         });
-        redisTemplate.delete(countList.stream()
+        stringRedisTemplate.delete(countList.stream()
                 .map(item -> RedisKeyConstants.buildCountNoteKey(item.getNoteId()))
                 .distinct()
                 .toList());

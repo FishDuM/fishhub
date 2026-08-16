@@ -2,7 +2,7 @@ package hk.ljx.fishhub.count.biz.service;
 
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
 import jakarta.annotation.Resource;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -17,24 +17,24 @@ public class UserCountCacheVersionService {
     public static final long VERSION_EXPIRE_SECONDS = 3 * 60 * 60L;
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     public long currentVersion(Long userId) {
-        Object value = redisTemplate.opsForValue().get(RedisKeyConstants.buildCountUserCacheVersionKey(userId));
-        return value == null ? 0L : Long.parseLong(String.valueOf(value));
+        String value = stringRedisTemplate.opsForValue().get(RedisKeyConstants.buildCountUserCacheVersionKey(userId));
+        return value == null ? 0L : Long.parseLong(value);
     }
 
     public List<Long> currentVersions(List<Long> userIds) {
         List<String> keys = userIds.stream().map(RedisKeyConstants::buildCountUserCacheVersionKey).toList();
-        List<Object> values = redisTemplate.opsForValue().multiGet(keys);
+        List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
         return values.stream()
-                .map(value -> value == null ? 0L : Long.parseLong(String.valueOf(value)))
+                .map(value -> value == null ? 0L : Long.parseLong(value))
                 .toList();
     }
 
     public void advanceVersion(Long userId) {
         String versionKey = RedisKeyConstants.buildCountUserCacheVersionKey(userId);
-        redisTemplate.opsForValue().increment(versionKey);
-        redisTemplate.expire(versionKey, VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
+        stringRedisTemplate.opsForValue().increment(versionKey);
+        stringRedisTemplate.expire(versionKey, VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
     }
 }

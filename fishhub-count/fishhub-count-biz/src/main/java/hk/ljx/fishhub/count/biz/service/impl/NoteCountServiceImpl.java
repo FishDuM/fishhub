@@ -15,7 +15,7 @@ import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.stereotype.Service;
 
@@ -33,7 +33,7 @@ public class NoteCountServiceImpl implements NoteCountService {
     @Resource
     private NoteCountDOMapper noteCountDOMapper;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 批量查询笔记计数
@@ -64,7 +64,7 @@ public class NoteCountServiceImpl implements NoteCountService {
         // 循环入参中需要查询的笔记 ID 集合，构建对应 DTO, 并设置缓存中存在的计数，以及过滤出需要查数据库的笔记 ID
         for (int i = 0; i < noteIds.size(); i++) {
             Long currNoteId = noteIds.get(i);
-            List<?> currCountHash = (List<?>) countHashes.get(i);
+            List<String> currCountHash = (List<String>) countHashes.get(i);
 
             // 点赞数、收藏数、评论数
             Long likeTotal = toLong(currCountHash.get(0));
@@ -123,8 +123,8 @@ public class NoteCountServiceImpl implements NoteCountService {
         return Response.success(findNoteCountsByIdRspDTOS);
     }
 
-    private Long toLong(Object value) {
-        return value instanceof Number number ? number.longValue() : null;
+    private Long toLong(String value) {
+        return value == null ? null : Long.parseLong(value);
     }
 
     /**
@@ -135,7 +135,7 @@ public class NoteCountServiceImpl implements NoteCountService {
      */
     private void syncNoteHash2Redis(List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS, Map<Long, NoteCountDO> noteIdAndDOMap) {
         // 将笔记计数同步到 Redis 中
-        redisTemplate.executePipelined(new SessionCallback<>() {
+        stringRedisTemplate.executePipelined(new SessionCallback<>() {
             @Override
             public Object execute(RedisOperations operations) {
                 // 循环已构建好的返参 DTO 集合
@@ -173,7 +173,7 @@ public class NoteCountServiceImpl implements NoteCountService {
 
                     // 批量添加 Hash 的计数 Field，使用 putIfAbsent 防止覆盖并发产生的增量数据
                     for (Map.Entry<String, Long> entry : countMap.entrySet()) {
-                        operations.opsForHash().putIfAbsent(noteCountHashKey, entry.getKey(), entry.getValue());
+                        operations.opsForHash().putIfAbsent(noteCountHashKey, entry.getKey(), String.valueOf(entry.getValue()));
                     }
 
                     // 设置随机过期时间 (1小时以内)
@@ -193,7 +193,7 @@ public class NoteCountServiceImpl implements NoteCountService {
      * @return
      */
     private List<Object> getCountHashesByPipelineFromRedis(List<String> hashKeys) {
-        return redisTemplate.executePipelined(new SessionCallback<>() {
+        return stringRedisTemplate.executePipelined(new SessionCallback<>() {
             @Override
             public Object execute(RedisOperations operations) {
                 for (String hashKey : hashKeys) {

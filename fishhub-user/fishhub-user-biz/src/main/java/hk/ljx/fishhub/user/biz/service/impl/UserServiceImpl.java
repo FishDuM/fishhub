@@ -45,7 +45,6 @@ import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.Message;
@@ -74,8 +73,6 @@ public class UserServiceImpl implements UserService {
     private RoleDOMapper roleDOMapper;
     @Resource
     private OssRpcService ossRpcService;
-    @Resource
-    private RedisTemplate<String, Object> redisTemplate;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
     @Resource
@@ -242,7 +239,7 @@ public class UserServiceImpl implements UserService {
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
         // 批量删除
-        redisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
     }
 
     @Override
@@ -400,7 +397,7 @@ public class UserServiceImpl implements UserService {
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
 
         // 再从 Redis 缓存中查询
-        String userInfoRedisValue = (String) redisTemplate.opsForValue().get(userInfoRedisKey);
+        String userInfoRedisValue = stringRedisTemplate.opsForValue().get(userInfoRedisKey);
 
         // 若 Redis 缓存中存在该用户信息
         if (StringUtils.isNotBlank(userInfoRedisValue)) {
@@ -427,7 +424,7 @@ public class UserServiceImpl implements UserService {
                 // 防止缓存穿透，将空数据存入 Redis 缓存 (过期时间不宜设置过长)
                 // 保底1分钟 + 随机秒数
                 long expireSeconds = 60 + RandomUtil.randomInt(60);
-                redisTemplate.opsForValue().set(userInfoRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
+                stringRedisTemplate.opsForValue().set(userInfoRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
             });
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
@@ -443,7 +440,7 @@ public class UserServiceImpl implements UserService {
         threadPoolTaskExecutor.submit(() -> {
             // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
             long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-            redisTemplate.opsForValue()
+            stringRedisTemplate.opsForValue()
                     .set(userInfoRedisKey, JsonUtils.toJsonString(findUserByIdRspDTO), expireSeconds, TimeUnit.SECONDS);
         });
 
@@ -470,13 +467,13 @@ public class UserServiceImpl implements UserService {
                 .toList();
 
         // 先从 Redis 缓存中查, multiGet 批量查询提升性能
-        List<Object> redisValues = redisTemplate.opsForValue().multiGet(redisKeys);
+        List<String> redisValues = stringRedisTemplate.opsForValue().multiGet(redisKeys);
         // 如果缓存中不为空
         if (CollUtil.isNotEmpty(redisValues)) {
             // 过滤掉为空的数据
             redisValues = redisValues.stream()
                     .filter(Objects::nonNull)
-                    .filter(value -> !"null".equals(String.valueOf(value)))
+                    .filter(value -> !"null".equals(value))
                     .toList();
         }
 
@@ -486,7 +483,7 @@ public class UserServiceImpl implements UserService {
         // 将过滤后的缓存集合，转换为 DTO 返参实体类
         if (CollUtil.isNotEmpty(redisValues)) {
             findUserByIdRspDTOS.addAll(redisValues.stream()
-                    .map(value -> JsonUtils.parseObject(String.valueOf(value), FindUserByIdRspDTO.class))
+                    .map(value -> JsonUtils.parseObject(value, FindUserByIdRspDTO.class))
                     .filter(Objects::nonNull)
                     .toList());
         }
@@ -542,7 +539,7 @@ public class UserServiceImpl implements UserService {
                         .collect(Collectors.toMap(FindUserByIdRspDTO::getId, p -> p));
 
                 // 执行 pipeline 操作
-                redisTemplate.executePipelined(new SessionCallback<>() {
+                stringRedisTemplate.executePipelined(new SessionCallback<>() {
                     @Override
                     public Object execute(RedisOperations operations) {
                         for (UserDO userDO : finalUserDOS) {
@@ -611,7 +608,7 @@ public class UserServiceImpl implements UserService {
         // 2. 再查询 Redis 缓存
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
-        String userProfileJson = (String) redisTemplate.opsForValue().get(userProfileRedisKey);
+        String userProfileJson = stringRedisTemplate.opsForValue().get(userProfileRedisKey);
 
         if (StringUtils.isNotBlank(userProfileJson)) {
             FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
@@ -716,7 +713,7 @@ public class UserServiceImpl implements UserService {
             long expireTime = 60*60 + RandomUtil.randomInt(60 * 60);
 
             // 将 VO 转为 Json 字符串写入到 Redis 中
-            redisTemplate.opsForValue().set(userProfileRedisKey, JsonUtils.toJsonString(findUserProfileRspVO), expireTime, TimeUnit.SECONDS);
+            stringRedisTemplate.opsForValue().set(userProfileRedisKey, JsonUtils.toJsonString(findUserProfileRspVO), expireTime, TimeUnit.SECONDS);
         });
     }
 }

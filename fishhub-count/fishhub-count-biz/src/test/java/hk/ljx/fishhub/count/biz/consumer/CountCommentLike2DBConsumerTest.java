@@ -12,7 +12,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.Message;
 
 import java.util.List;
@@ -33,7 +33,7 @@ class CountCommentLike2DBConsumerTest {
     @Mock
     private MqIdempotentExecutor mqIdempotentExecutor;
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Mock
     private RocketMQTemplate rocketMQTemplate;
     @InjectMocks

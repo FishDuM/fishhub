@@ -18,7 +18,7 @@ import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
@@ -36,7 +36,7 @@ public class UserCountServiceImpl implements UserCountService {
     @Resource
     private UserCountDOMapper userCountDOMapper;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
@@ -62,7 +62,7 @@ public class UserCountServiceImpl implements UserCountService {
         long cacheVersion = userCountCacheVersionService.currentVersion(userId);
         String userCountHashKey = RedisKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
 
-        List<Object> counts = redisTemplate.opsForHash()
+        List<String> counts = stringRedisTemplate.<String, String>opsForHash()
                 .multiGet(userCountHashKey, List.of(
                         RedisKeyConstants.FIELD_COLLECT_TOTAL,
                         RedisKeyConstants.FIELD_FANS_TOTAL,
@@ -72,17 +72,17 @@ public class UserCountServiceImpl implements UserCountService {
                 ));
 
         // 若 Hash 中计数不为空，优先以其为主（实时性更高）
-        Object collectTotal = counts.get(0);
-        Object fansTotal = counts.get(1);
-        Object noteTotal = counts.get(2);
-        Object followingTotal = counts.get(3);
-        Object likeTotal = counts.get(4);
+        String collectTotal = counts.get(0);
+        String fansTotal = counts.get(1);
+        String noteTotal = counts.get(2);
+        String followingTotal = counts.get(3);
+        String likeTotal = counts.get(4);
 
-        findUserCountByIdRspDTO.setCollectTotal(Objects.isNull(collectTotal) ? 0 : Long.parseLong(String.valueOf(collectTotal)));
-        findUserCountByIdRspDTO.setFansTotal(Objects.isNull(fansTotal) ? 0 : Long.parseLong(String.valueOf(fansTotal)));
-        findUserCountByIdRspDTO.setNoteTotal(Objects.isNull(noteTotal) ? 0 : Long.parseLong(String.valueOf(noteTotal)));
-        findUserCountByIdRspDTO.setFollowingTotal(Objects.isNull(followingTotal) ? 0 : Long.parseLong(String.valueOf(followingTotal)));
-        findUserCountByIdRspDTO.setLikeTotal(Objects.isNull(likeTotal) ? 0 : Long.parseLong(String.valueOf(likeTotal)));
+        findUserCountByIdRspDTO.setCollectTotal(Objects.isNull(collectTotal) ? 0 : Long.parseLong(collectTotal));
+        findUserCountByIdRspDTO.setFansTotal(Objects.isNull(fansTotal) ? 0 : Long.parseLong(fansTotal));
+        findUserCountByIdRspDTO.setNoteTotal(Objects.isNull(noteTotal) ? 0 : Long.parseLong(noteTotal));
+        findUserCountByIdRspDTO.setFollowingTotal(Objects.isNull(followingTotal) ? 0 : Long.parseLong(followingTotal));
+        findUserCountByIdRspDTO.setLikeTotal(Objects.isNull(likeTotal) ? 0 : Long.parseLong(likeTotal));
 
         // 若 Hash 中有任何一个计数为空
         boolean isAnyNull = counts.stream().anyMatch(Objects::isNull);
@@ -132,7 +132,7 @@ public class UserCountServiceImpl implements UserCountService {
             hashKeys.add(RedisKeyConstants.buildCountUserSnapshotKey(userIds.get(i), cacheVersions.get(i)));
         }
 
-        List<Object> countHashes = redisTemplate.executePipelined(new SessionCallback<>() {
+        List<Object> countHashes = stringRedisTemplate.executePipelined(new SessionCallback<>() {
             @Override
             public Object execute(RedisOperations operations) {
                 for (String hashKey : hashKeys) {
@@ -153,13 +153,13 @@ public class UserCountServiceImpl implements UserCountService {
 
         for (int i = 0; i < userIds.size(); i++) {
             Long userId = userIds.get(i);
-            List<Object> counts = (List<Object>) countHashes.get(i);
+            List<String> counts = (List<String>) countHashes.get(i);
 
-            Object collectTotal = counts.get(0);
-            Object fansTotal = counts.get(1);
-            Object noteTotal = counts.get(2);
-            Object followingTotal = counts.get(3);
-            Object likeTotal = counts.get(4);
+            String collectTotal = counts.get(0);
+            String fansTotal = counts.get(1);
+            String noteTotal = counts.get(2);
+            String followingTotal = counts.get(3);
+            String likeTotal = counts.get(4);
 
             if (collectTotal == null || fansTotal == null || noteTotal == null || followingTotal == null || likeTotal == null) {
                 userIdsNeedQuery.add(userId);
@@ -167,11 +167,11 @@ public class UserCountServiceImpl implements UserCountService {
 
             FindUserCountsByIdRspDTO dto = FindUserCountsByIdRspDTO.builder()
                     .userId(userId)
-                    .collectTotal(collectTotal == null ? null : Long.parseLong(String.valueOf(collectTotal)))
-                    .fansTotal(fansTotal == null ? null : Long.parseLong(String.valueOf(fansTotal)))
-                    .noteTotal(noteTotal == null ? null : Long.parseLong(String.valueOf(noteTotal)))
-                    .followingTotal(followingTotal == null ? null : Long.parseLong(String.valueOf(followingTotal)))
-                    .likeTotal(likeTotal == null ? null : Long.parseLong(String.valueOf(likeTotal)))
+                    .collectTotal(collectTotal == null ? null : Long.parseLong(collectTotal))
+                    .fansTotal(fansTotal == null ? null : Long.parseLong(fansTotal))
+                    .noteTotal(noteTotal == null ? null : Long.parseLong(noteTotal))
+                    .followingTotal(followingTotal == null ? null : Long.parseLong(followingTotal))
+                    .likeTotal(likeTotal == null ? null : Long.parseLong(likeTotal))
                     .build();
             resultList.add(dto);
         }
@@ -244,26 +244,26 @@ public class UserCountServiceImpl implements UserCountService {
      * @return
      */
     private void syncHashCount2Redis(String userCountHashKey, UserCountDO userCountDO,
-                                     Object collectTotal, Object fansTotal, Object noteTotal, Object followingTotal, Object likeTotal) {
+                                     String collectTotal, String fansTotal, String noteTotal, String followingTotal, String likeTotal) {
         threadPoolTaskExecutor.submit(() -> {
             // 存放计数
-            Map<String, Long> userCountMap = Maps.newHashMap();
+            Map<String, String> userCountMap = Maps.newHashMap();
             if (Objects.isNull(collectTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal()));
+                userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal())));
 
             if (Objects.isNull(fansTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal()));
+                userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal())));
 
             if (Objects.isNull(noteTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal()));
+                userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal())));
 
             if (Objects.isNull(followingTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal()));
+                userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal())));
 
             if (Objects.isNull(likeTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal()));
+                userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal())));
 
-            redisTemplate.executePipelined(new SessionCallback<>() {
+            stringRedisTemplate.executePipelined(new SessionCallback<>() {
                 @Override
                 public Object execute(RedisOperations operations) {
                     // 批量添加 Hash 的计数 Field

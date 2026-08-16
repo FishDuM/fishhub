@@ -14,7 +14,7 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.support.MessageBuilder;
 
 import java.util.LinkedHashSet;
@@ -34,7 +34,7 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
     @Resource
     private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
@@ -67,7 +67,7 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
                 commentDOMapper.updateLikeTotalByCommentId(count, commentId);
             });
         });
-        redisTemplate.delete(countList.stream()
+        stringRedisTemplate.delete(countList.stream()
                 .map(item -> RedisKeyConstants.buildCountCommentKey(item.getCommentId()))
                 .distinct()
                 .toList());

@@ -10,7 +10,7 @@ import hk.ljx.fishhub.auth.service.VerificationCodeService;
 import hk.ljx.fishhub.auth.sms.AliyunSmsHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     @Resource
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
     @Resource
     private AliyunSmsHelper aliyunSmsHelper;
 
@@ -47,7 +47,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
                 "if current == 1 then redis.call('expire', KEYS[1], ARGV[1]); end; " +
                 "return current;");
         limitScript.setResultType(Long.class);
-        Long requestCount = (Long) redisTemplate.execute(limitScript, java.util.Collections.singletonList(GLOBAL_RATE_LIMIT_KEY), 60);
+        Long requestCount = stringRedisTemplate.execute(limitScript, java.util.Collections.singletonList(GLOBAL_RATE_LIMIT_KEY), String.valueOf(60));
         if (requestCount != null && requestCount > GLOBAL_RATE_LIMIT_PER_MINUTE) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
         }
@@ -55,7 +55,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         // 生成 6 位随机数字验证码
         String verificationCode = RandomUtil.randomNumbers(6);
 
-        Boolean reserved = redisTemplate.opsForValue()
+        Boolean reserved = stringRedisTemplate.opsForValue()
                 .setIfAbsent(key, verificationCode, 3, TimeUnit.MINUTES);
         if (!Boolean.TRUE.equals(reserved)) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
@@ -66,7 +66,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String templateParam = String.format("{\"code\":\"%s\"}", verificationCode);
         boolean sent = aliyunSmsHelper.sendMessage(signName, templateCode, phone, templateParam);
         if (!sent) {
-            redisTemplate.delete(key);
+            stringRedisTemplate.delete(key);
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FAIL);
         }
 
