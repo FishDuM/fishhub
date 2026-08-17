@@ -18,6 +18,11 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApiOperationLogAspect {
 
+    /**
+     * 入参/出参日志截断长度
+     */
+    private static final int MAX_LOG_LENGTH = 500;
+
     @Pointcut("@annotation(hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog)")
     public void apiOperationLog() {}
 
@@ -33,7 +38,8 @@ public class ApiOperationLogAspect {
         String className = joinPoint.getTarget().getClass().getSimpleName();
         String methodName = joinPoint.getSignature().getName();
         Object[] args = joinPoint.getArgs();
-        String argsJsonStr = Arrays.stream(args).map(toJsonStr()).collect(Collectors.joining(", "));
+        String argsJsonStr = Arrays.stream(args).map(toJsonStr().andThen(ApiOperationLogAspect::truncate))
+                .collect(Collectors.joining(", "));
         String description = getApiOperationLogDescription(joinPoint);
         log.info("====== 请求开始: [{}], 入参: {}, 请求类: {}, 请求方法: {} =================================== ",
                 description, argsJsonStr, className, methodName);
@@ -41,7 +47,7 @@ public class ApiOperationLogAspect {
         Object result = joinPoint.proceed();
         long executionTime = System.currentTimeMillis() - startTime;
         log.info("====== 请求结束: [{}], 耗时: {}ms, 出参: {} =================================== ",
-                description, executionTime, JsonUtils.toJsonString(result));
+                description, executionTime, truncate(JsonUtils.toJsonString(result)));
 
         return result;
     }
@@ -56,6 +62,16 @@ public class ApiOperationLogAspect {
         Method method = signature.getMethod();
         ApiOperationLog apiOperationLog = method.getAnnotation(ApiOperationLog.class);
         return apiOperationLog.description();
+    }
+
+    /**
+     * 截断超长日志内容
+     */
+    private static String truncate(String s) {
+        if (s == null || s.length() <= MAX_LOG_LENGTH) {
+            return s;
+        }
+        return s.substring(0, MAX_LOG_LENGTH) + "...(truncated " + (s.length() - MAX_LOG_LENGTH) + " chars)";
     }
 
     /**

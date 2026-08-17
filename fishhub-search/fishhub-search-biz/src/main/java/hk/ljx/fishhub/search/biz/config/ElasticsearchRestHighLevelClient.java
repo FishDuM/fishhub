@@ -29,6 +29,14 @@ public class ElasticsearchRestHighLevelClient {
 
         HttpHost httpHost = new HttpHost(host, port, HTTP);
 
-        return new RestHighLevelClient(RestClient.builder(httpHost));
+        // ES 停服/慢查询时尽快失败：显式配置请求超时与连接池
+        return new RestHighLevelClient(RestClient.builder(httpHost)
+                .setRequestConfigCallback(builder -> builder
+                        .setConnectTimeout(1000)
+                        .setSocketTimeout(3000)
+                        .setConnectionRequestTimeout(1000))
+                .setHttpClientConfigCallback(builder -> builder
+                        .setMaxConnTotal(200)                 // 与 Tomcat 200 线程匹配
+                        .setMaxConnPerRoute(100)));
     }
 }

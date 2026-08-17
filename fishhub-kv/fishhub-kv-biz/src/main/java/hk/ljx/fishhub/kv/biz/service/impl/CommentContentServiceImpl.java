@@ -14,8 +14,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.cassandra.core.CassandraTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -78,32 +82,45 @@ public class CommentContentServiceImpl implements CommentContentService {
         // 查询评论的发布年月、内容 UUID
         List<FindCommentContentReqDTO> commentContentKeys = batchFindCommentContentReqDTO.getCommentContentKeys();
 
-        // 批量查询 Cassandra (Cassandra不支持多键 IN 查询，此处改为精确主键循环查询，或使用并行流)
-        List<CommentContentDO> commentContentDOS = Lists.newArrayList();
+        List<FindCommentContentRspDTO> findCommentContentRspDTOS = Lists.newArrayList();
         if (CollUtil.isNotEmpty(commentContentKeys)) {
+            // 按 yearMonth 分组批量查询（IN×IN 组合交叉风险高，按月份拆最安全）
+            Map<String, List<FindCommentContentReqDTO>> byMonth = commentContentKeys.stream()
+                    .collect(Collectors.groupingBy(FindCommentContentReqDTO::getYearMonth));
+
+            Map<String, CommentContentDO> foundById = new HashMap<>();
+            for (Map.Entry<String, List<FindCommentContentReqDTO>> entry : byMonth.entrySet()) {
+                List<UUID> contentIds = entry.getValue().stream()
+                        .map(key -> UUID.fromString(key.getContentId()))
+                        .toList();
+                List<CommentContentDO> commentContentDOS = commentContentRepository
+                        .findByPrimaryKeyNoteIdAndPrimaryKeyYearMonthInAndPrimaryKeyContentIdIn(
+                                noteId, List.of(entry.getKey()), contentIds);
+                for (CommentContentDO commentContentDO : commentContentDOS) {
+                    // 键归一化为小写去重（C* 主键是规范小写 UUID，入参可能大写/带空格）
+                    foundById.putIfAbsent(
+                            normalizeContentId(commentContentDO.getPrimaryKey().getContentId().toString()),
+                            commentContentDO);
+                }
+            }
+
+            // 按入参顺序组装，缺失 key 跳过
             for (FindCommentContentReqDTO key : commentContentKeys) {
-                commentContentRepository.findById(
-                        CommentContentPrimaryKey.builder()
-                                .noteId(noteId)
-                                .yearMonth(key.getYearMonth())
-                                .contentId(UUID.fromString(key.getContentId()))
-                                .build()
-                ).ifPresent(commentContentDOS::add);
+                CommentContentDO commentContentDO = foundById.get(normalizeContentId(key.getContentId()));
+                if (commentContentDO != null) {
+                    findCommentContentRspDTOS.add(FindCommentContentRspDTO.builder()
+                            .contentId(key.getContentId())
+                            .content(commentContentDO.getContent())
+                            .build());
+                }
             }
         }
 
-        // DO 转 DTO
-        List<FindCommentContentRspDTO> findCommentContentRspDTOS = Lists.newArrayList();
-        if (CollUtil.isNotEmpty(commentContentDOS)) {
-            findCommentContentRspDTOS = commentContentDOS.stream()
-                    .map(commentContentDO -> FindCommentContentRspDTO.builder()
-                            .contentId(String.valueOf(commentContentDO.getPrimaryKey().getContentId()))
-                            .content(commentContentDO.getContent())
-                            .build())
-                    .toList();
-        }
-
         return Response.success(findCommentContentRspDTOS);
+    }
+
+    private static String normalizeContentId(String contentId) {
+        return contentId == null ? null : contentId.trim().toLowerCase(Locale.ROOT);
     }
 
     /**

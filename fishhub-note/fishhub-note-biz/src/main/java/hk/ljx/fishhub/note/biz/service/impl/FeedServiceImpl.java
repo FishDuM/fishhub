@@ -56,6 +56,12 @@ public class FeedServiceImpl implements FeedService {
             .expireAfterWrite(1, TimeUnit.MINUTES)
             .build();
 
+    // 频道列表本地缓存 1min，避免热路径每请求查一次 MySQL。
+    private final Cache<String, List<FindChannelRspVO>> channelLocalCache = Caffeine.newBuilder()
+            .maximumSize(1)
+            .expireAfterWrite(1, TimeUnit.MINUTES)
+            .build();
+
     @Resource
     private ChannelDOMapper channelDOMapper;
     @Resource
@@ -75,9 +81,31 @@ public class FeedServiceImpl implements FeedService {
 
     @Override
     public Response<List<FindChannelRspVO>> findChannelList() {
-        List<FindChannelRspVO> channels = channelDOMapper.selectAllEnabled().stream()
-                .map(channel -> FindChannelRspVO.builder().id(channel.getId()).name(channel.getName()).build())
-                .toList();
+        String key = RedisKeyConstants.activeChannelSnapshotKey();
+        List<FindChannelRspVO> local = channelLocalCache.getIfPresent(key);
+        if (local != null) {
+            return Response.success(local);
+        }
+        Object cached = getRedisValue(key, "频道快照");
+        List<FindChannelRspVO> channels;
+        if (cached instanceof String cachedJson) {
+            try {
+                channels = JsonUtils.parseList(cachedJson, FindChannelRspVO.class);
+            } catch (Exception e) {
+                log.warn("频道快照缓存解析失败，跳过缓存并尝试删除，key={}", key, e);
+                channels = null;
+                deleteRedisValue(key, "频道快照");
+            }
+        } else {
+            channels = null;
+        }
+        if (CollUtil.isEmpty(channels)) {
+            channels = channelDOMapper.selectAllEnabled().stream()
+                    .map(channel -> FindChannelRspVO.builder().id(channel.getId()).name(channel.getName()).build())
+                    .toList();
+            cacheChannels(key, channels);
+        }
+        channelLocalCache.put(key, channels);
         return Response.success(channels);
     }
 
@@ -88,7 +116,7 @@ public class FeedServiceImpl implements FeedService {
     }
 
     private DiscoverNotePageResponse<NoteItemRspVO> findDiscoverNoteListByCursor(Long channelId, Long cursor) {
-        String version = discoverFeedVersion();
+        String version = discoverFeedVersion(channelId);
         DiscoverPageSnapshot snapshot = version == null
                 ? loadDiscoverPageSnapshotFromMySql(channelId, cursor)
                 : loadDiscoverPageSnapshot(channelId, cursor, version);
@@ -152,6 +180,8 @@ public class FeedServiceImpl implements FeedService {
         List<NoteDO> page = hasMore ? result.subList(0, (int) PAGE_SIZE) : result;
         List<NoteItemRspVO> notes = toNoteItems(page);
         notes.forEach(note -> note.setIsLiked(false));
+        // 重建时把计数随快照一起缓存，命中路径免 count Feign。
+        fillCountsIntoNoteItems(notes);
         Long nextCursor = hasMore && !notes.isEmpty() ? notes.get(notes.size() - 1).getNoteId() : null;
         return new DiscoverPageSnapshot(notes, nextCursor);
     }
@@ -171,6 +201,7 @@ public class FeedServiceImpl implements FeedService {
             return Collections.emptyList();
         }
 
+        // 计数随快照 JSON 一起缓存，命中路径免 count Feign。
         List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
                 .noteId(note.getId())
                 .type(note.getType())
@@ -178,7 +209,6 @@ public class FeedServiceImpl implements FeedService {
                 .videoUri(note.getVideoUri())
                 .title(note.getTitle())
                 .creatorId(note.getCreatorId())
-                .likeTotal("0")
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
@@ -199,6 +229,19 @@ public class FeedServiceImpl implements FeedService {
         if (CollUtil.isEmpty(notes)) {
             return;
         }
+        // 仅计数为空（库重建路径）才调 count Feign。
+        boolean countEmbedded = notes.stream().allMatch(note -> note.getLikeTotal() != null);
+        if (!countEmbedded) {
+            fillCountsIntoNoteItems(notes);
+        }
+        setLikedState(notes);
+    }
+
+    /** 从 count 服务回填点赞数到快照项（仅重建路径调用；命中路径见 {@link #hydrateVolatileFields}）。 */
+    private void fillCountsIntoNoteItems(List<NoteItemRspVO> notes) {
+        if (CollUtil.isEmpty(notes)) {
+            return;
+        }
         Map<Long, FindNoteCountsByIdRspDTO> counts = safeCounts(notes.stream()
                 .map(NoteItemRspVO::getNoteId)
                 .toList()).stream().collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId,
@@ -206,9 +249,7 @@ public class FeedServiceImpl implements FeedService {
         notes.forEach(note -> {
             FindNoteCountsByIdRspDTO count = counts.get(note.getNoteId());
             note.setLikeTotal(String.valueOf(count == null || count.getLikeTotal() == null ? 0L : count.getLikeTotal()));
-            note.setIsLiked(false);
         });
-        setLikedState(notes);
     }
 
     /**
@@ -230,8 +271,9 @@ public class FeedServiceImpl implements FeedService {
         return counts == null ? Collections.emptyList() : counts;
     }
 
-    private String discoverFeedVersion() {
-        String key = RedisKeyConstants.discoverFeedVersionKey();
+    private String discoverFeedVersion(Long channelId) {
+        // 版本按频道拆分：只影响所属频道与首页(0)。
+        String key = RedisKeyConstants.buildDiscoverFeedVersionKey(channelId);
         try {
             Object value = stringRedisTemplate.opsForValue().get(key);
             if (value != null && StringUtils.isNotBlank(String.valueOf(value))) {
@@ -350,6 +392,15 @@ public class FeedServiceImpl implements FeedService {
         } catch (Exception e) {
             log.warn("Redis 不可用，{}读取失败，跳过缓存并回源 MySQL，key={}", cacheName, key, e);
             return null;
+        }
+    }
+
+    private void cacheChannels(String key, List<FindChannelRspVO> channels) {
+        try {
+            stringRedisTemplate.opsForValue().set(key, JsonUtils.toJsonString(channels),
+                    CacheTtl.basePlusRandom(10, 5), TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，频道快照缓存写入失败，响应将继续返回，key={}", key, e);
         }
     }
 

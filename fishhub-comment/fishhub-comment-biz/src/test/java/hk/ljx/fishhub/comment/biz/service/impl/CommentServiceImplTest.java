@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.comment.biz.service.impl;
 
+import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.vo.FindCommentPageListReqVO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
@@ -12,13 +13,16 @@ import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,6 +63,36 @@ class CommentServiceImplTest {
 
         verify(commentDOMapper, times(0)).selectOneLevelCountByNoteId(noteId);
         org.junit.jupiter.api.Assertions.assertEquals(0L, response.getTotalCount());
+    }
+
+    @Test
+    void shouldRebuildCommentListZSetOnlyByLockWinner() throws InterruptedException {
+        String key = RedisKeyConstants.buildCommentListKey(100L);
+        String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(100L);
+        when(stringRedisTemplate.hasKey(key)).thenReturn(false, false);
+        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
+        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
+        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
+        when(commentDOMapper.selectHeatComments(100L)).thenReturn(List.of());
+
+        ReflectionTestUtils.invokeMethod(service, "rebuildCommentListZSetWithLock", key, 100L);
+
+        verify(commentDOMapper, times(1)).selectHeatComments(100L);
+        verify(rebuildLock).unlock();
+    }
+
+    @Test
+    void shouldSkipRebuildWhenCommentListLockNotAcquired() throws InterruptedException {
+        String key = RedisKeyConstants.buildCommentListKey(100L);
+        String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(100L);
+        when(stringRedisTemplate.hasKey(key)).thenReturn(false, false, false);
+        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
+        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(false);
+
+        ReflectionTestUtils.invokeMethod(service, "rebuildCommentListZSetWithLock", key, 100L);
+
+        verify(commentDOMapper, never()).selectHeatComments(100L);
+        verify(rebuildLock, never()).unlock();
     }
 
     @Test

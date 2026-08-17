@@ -249,12 +249,8 @@ public class Comment2DBConsumer {
             transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COMMENT_CHANGED, eventBody, txId -> {
                 int inserted = transactionTemplate.execute(status -> {
                     try {
-                        int count = 0;
-                        for (CommentBO commentBO : finalCommentBOS) {
-                            if (commentDOMapper.batchInsert(Collections.singletonList(commentBO)) == 1) {
-                                count++;
-                            }
-                        }
+                        // 真批量：整批一条多行 insert（insert IGNORE），事务从 N 个降到 1 个。
+                        int count = commentDOMapper.batchInsert(finalCommentBOS);
                         if (count != finalCommentBOS.size()) {
                             if (count == 0) {
                                 // 提交后、ACK 前崩溃的重投：批次 ID 只属于本条消息，先前投递必已整批提交并发出事件。

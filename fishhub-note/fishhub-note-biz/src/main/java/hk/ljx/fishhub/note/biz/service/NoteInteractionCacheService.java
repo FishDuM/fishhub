@@ -8,6 +8,9 @@ import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -21,11 +24,16 @@ import java.util.concurrent.TimeUnit;
 /**
  * 用户笔记互动状态缓存。MySQL 关系表是数据源，Redis Set 只负责加速查询。
  */
+@Slf4j
 @Service
 public class NoteInteractionCacheService {
 
     private static final String INITIALIZED_MEMBER = "__initialized__";
     private static final long BASE_EXPIRE_SECONDS = 24 * 60 * 60L;
+
+    private static final int CACHE_REBUILD_RETRY_TIMES = 3;
+    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
+    private static final long INTERACTION_CACHE_REBUILD_LOCK_SECONDS = 2L;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -33,6 +41,8 @@ public class NoteInteractionCacheService {
     private NoteLikeDOMapper noteLikeDOMapper;
     @Resource
     private NoteCollectionDOMapper noteCollectionDOMapper;
+    @Resource
+    private RedissonClient redissonClient;
 
     public boolean isLiked(Long userId, Long noteId) {
         String key = ensureLikeCache(userId);
@@ -108,24 +118,104 @@ public class NoteInteractionCacheService {
 
     private String ensureLikeCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteLikeSetKey(userId);
-        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+            return key;
+        }
+        String lockKey = RedisKeyConstants.buildUserNoteInteractionInitLockKey(userId);
+        RLock lock = tryAcquireRebuildLock(lockKey, INTERACTION_CACHE_REBUILD_LOCK_SECONDS);
+        if (lock == null) {
+            // 抢不到锁则轮询等待，超时本地兜底重建。
+            if (waitForCacheKey(key)) {
+                return key;
+            }
             List<NoteLikeDO> records = noteLikeDOMapper.selectByUserId(userId);
             initializeSet(key, records == null ? Collections.emptyList() : records.stream()
                     .map(NoteLikeDO::getNoteId)
                     .toList());
+            return key;
         }
-        return key;
+        try {
+            // 二次检查：抢锁期间其他节点可能已写入。
+            if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                List<NoteLikeDO> records = noteLikeDOMapper.selectByUserId(userId);
+                initializeSet(key, records == null ? Collections.emptyList() : records.stream()
+                        .map(NoteLikeDO::getNoteId)
+                        .toList());
+            }
+            return key;
+        } finally {
+            releaseRebuildLock(lock, lockKey);
+        }
     }
 
     private String ensureCollectCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteCollectSetKey(userId);
-        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+            return key;
+        }
+        String lockKey = RedisKeyConstants.buildUserNoteInteractionInitLockKey(userId);
+        RLock lock = tryAcquireRebuildLock(lockKey, INTERACTION_CACHE_REBUILD_LOCK_SECONDS);
+        if (lock == null) {
+            if (waitForCacheKey(key)) {
+                return key;
+            }
             List<NoteCollectionDO> records = noteCollectionDOMapper.selectByUserId(userId);
             initializeSet(key, records == null ? Collections.emptyList() : records.stream()
                     .map(NoteCollectionDO::getNoteId)
                     .toList());
+            return key;
         }
-        return key;
+        try {
+            if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                List<NoteCollectionDO> records = noteCollectionDOMapper.selectByUserId(userId);
+                initializeSet(key, records == null ? Collections.emptyList() : records.stream()
+                        .map(NoteCollectionDO::getNoteId)
+                        .toList());
+            }
+            return key;
+        } finally {
+            releaseRebuildLock(lock, lockKey);
+        }
+    }
+
+    private boolean waitForCacheKey(String key) {
+        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
+            sleepBeforeCacheRetry();
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
+        RLock lock = redissonClient.getLock(lockKey);
+        if (lock == null) {
+            return null;
+        }
+        try {
+            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
+        } catch (Exception e) {
+            throw new IllegalStateException("Redis 不可用，互动缓存重建锁获取失败, lockKey=" + lockKey, e);
+        }
+    }
+
+    private void releaseRebuildLock(RLock lock, String lockKey) {
+        try {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        } catch (Exception e) {
+            log.warn("Redis 不可用，互动缓存重建锁释放失败，key={}", lockKey, e);
+        }
+    }
+
+    private void sleepBeforeCacheRetry() {
+        try {
+            Thread.sleep(CACHE_REBUILD_RETRY_INTERVAL_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void initializeSet(String key, Collection<Long> noteIds) {

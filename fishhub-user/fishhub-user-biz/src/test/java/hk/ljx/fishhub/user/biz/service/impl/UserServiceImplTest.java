@@ -8,6 +8,7 @@ import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
+import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.ResolveLoginableUserReqDTO;
@@ -56,6 +57,9 @@ class UserServiceImplTest {
 
     @Mock
     private UserRoleDOMapper userRoleDOMapper;
+
+    @Mock
+    private RolePermissionService rolePermissionService;
 
     @InjectMocks
     private UserServiceImpl userService;

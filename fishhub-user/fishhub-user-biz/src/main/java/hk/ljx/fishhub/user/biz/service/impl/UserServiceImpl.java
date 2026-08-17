@@ -34,6 +34,7 @@ import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
+import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
@@ -86,6 +87,8 @@ public class UserServiceImpl implements UserService {
     private CountRpcService countRpcService;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
+    @Resource
+    private RolePermissionService rolePermissionService;
 
     /**
      * 用户信息本地缓存
@@ -304,6 +307,8 @@ public class UserServiceImpl implements UserService {
                 .isDeleted(DeletedEnum.NO.getValue())
                 .build();
         userRoleDOMapper.insert(userRoleDO);
+        // 装配默认角色后失效旧快照，下次登录按最新角色装配
+        rolePermissionService.evict(userId);
 
         return resolvedLoginableUserResponse(userDO);
     }

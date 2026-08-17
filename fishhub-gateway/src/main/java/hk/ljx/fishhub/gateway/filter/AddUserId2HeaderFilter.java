@@ -11,6 +11,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import static hk.ljx.framework.common.constant.GlobalConstants.USER_ID;
+import static hk.ljx.fishhub.gateway.auth.SaTokenConfigure.USER_ID_ATTR;
 
 
 @Component
@@ -28,12 +29,19 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
                 .mutate()
                 .headers(headers -> headers.remove(USER_ID));
 
-        String authorization = exchange.getRequest().getHeaders().getFirst(AUTHORIZATION);
-        if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
-            String token = authorization.substring(BEARER_PREFIX.length()).trim();
-            Object loginId = StpUtil.getLoginIdByToken(token);
-            if (loginId != null) {
-                requestBuilder.header(USER_ID, loginId.toString());
+        // 优先读取 setAuth 已写入 attribute 的 loginId，省一次 token 解析（Redis 读）。
+        Object cachedLoginId = exchange.getAttribute(USER_ID_ATTR);
+        if (cachedLoginId != null) {
+            requestBuilder.header(USER_ID, cachedLoginId.toString());
+        } else {
+            // 免登录路径回退为按 token 解析。
+            String authorization = exchange.getRequest().getHeaders().getFirst(AUTHORIZATION);
+            if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
+                String token = authorization.substring(BEARER_PREFIX.length()).trim();
+                Object loginId = StpUtil.getLoginIdByToken(token);
+                if (loginId != null) {
+                    requestBuilder.header(USER_ID, loginId.toString());
+                }
             }
         }
 

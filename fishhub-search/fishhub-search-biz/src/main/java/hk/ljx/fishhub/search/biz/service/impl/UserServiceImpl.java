@@ -89,20 +89,20 @@ public class UserServiceImpl implements UserService {
         // 总文档数，默认为 0
         long total = 0;
         try {
-            log.info("==> SearchRequest: {}", searchRequest);
+            log.debug("==> SearchRequest: {}", searchRequest);
 
             // 执行查询请求
             SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
 
             // 处理搜索结果
             total = searchResponse.getHits().getTotalHits().value;
-            log.info("==> 命中文档总数, hits: {}", total);
+            log.debug("==> 命中文档总数, hits: {}", total);
 
             // 获取搜索命中的文档列表
             SearchHits hits = searchResponse.getHits();
 
             for (SearchHit hit : hits) {
-                log.info("==> 文档数据: {}", hit.getSourceAsString());
+                log.debug("==> 文档数据: {}", hit.getSourceAsString());
 
                 // 获取文档的所有字段（以 Map 的形式返回）
                 Map<String, Object> sourceAsMap = hit.getSourceAsMap();

@@ -9,9 +9,14 @@ public class RedisKeyConstants {
     private static final String VERIFICATION_CODE_KEY_PREFIX = "verification_code:";
 
     /**
-     * 全局发送限流 KEY（固定 Key，按分钟窗口计数）
+     * 每手机号分钟限流 KEY 前缀
      */
-    public static final String GLOBAL_RATE_LIMIT_KEY = "verification_code:global:minute";
+    private static final String PHONE_RATE_LIMIT_KEY_PREFIX = "verification_code:minute:phone:";
+
+    /**
+     * 每 IP 分钟限流 KEY 前缀（依赖网关透传 X-Forwarded-For）
+     */
+    private static final String IP_RATE_LIMIT_KEY_PREFIX = "verification_code:minute:ip:";
 
 
     /**
@@ -21,6 +26,14 @@ public class RedisKeyConstants {
      */
     public static String buildVerificationCodeKey(String phone) {
         return VERIFICATION_CODE_KEY_PREFIX + phone;
+    }
+
+    public static String buildPhoneRateLimitKey(String phone) {
+        return PHONE_RATE_LIMIT_KEY_PREFIX + phone;
+    }
+
+    public static String buildIpRateLimitKey(String ip) {
+        return IP_RATE_LIMIT_KEY_PREFIX + ip;
     }
 
 }

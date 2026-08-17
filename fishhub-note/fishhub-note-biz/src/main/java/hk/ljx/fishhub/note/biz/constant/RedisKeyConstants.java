@@ -13,13 +13,22 @@ public class RedisKeyConstants {
      */
     private static final String NOTE_ACCESS_KEY = "note:access:";
 
-    private static final String DISCOVER_FEED_VERSION_KEY = "feed:discover:version";
+    // 笔记访问快照重建单飞锁前缀（防热点笔记击穿）
+    private static final String NOTE_ACCESS_REBUILD_LOCK_KEY = "lock:note:access:";
+
+    // 用户互动缓存（点赞/收藏 Set）初始化单飞锁前缀
+    private static final String USER_NOTE_INTERACTION_INIT_LOCK_KEY = "lock:note:interaction:init:";
+
+    // 发现页版本 Key 前缀（按频道拆分，频道 0 表示首页/全量）
+    private static final String DISCOVER_FEED_VERSION_KEY_PREFIX = "feed:discover:version:";
 
     private static final String DISCOVER_FEED_CURSOR_KEY = "feed:discover:cursor:";
 
     private static final String DISCOVER_FEED_CURSOR_LOCK_KEY = "lock:feed:discover:cursor:";
 
     private static final String ACTIVE_TOPIC_SNAPSHOT_KEY = "topic:active:snapshot";
+
+    private static final String ACTIVE_CHANNEL_SNAPSHOT_KEY = "channel:active:snapshot";
 
     /**
      * 已发布笔记列表 KEY 前缀
@@ -68,8 +77,16 @@ public class RedisKeyConstants {
         return NOTE_ACCESS_KEY + noteId;
     }
 
-    public static String discoverFeedVersionKey() {
-        return DISCOVER_FEED_VERSION_KEY;
+    public static String buildNoteAccessRebuildLockKey(Long noteId) {
+        return NOTE_ACCESS_REBUILD_LOCK_KEY + noteId;
+    }
+
+    public static String buildUserNoteInteractionInitLockKey(Long userId) {
+        return USER_NOTE_INTERACTION_INIT_LOCK_KEY + userId;
+    }
+
+    public static String buildDiscoverFeedVersionKey(Long channelId) {
+        return DISCOVER_FEED_VERSION_KEY_PREFIX + (channelId == null ? 0 : channelId);
     }
 
     public static String buildDiscoverFeedCursorKey(String version, Long channelId, Long cursor) {
@@ -84,6 +101,10 @@ public class RedisKeyConstants {
 
     public static String activeTopicSnapshotKey() {
         return ACTIVE_TOPIC_SNAPSHOT_KEY;
+    }
+
+    public static String activeChannelSnapshotKey() {
+        return ACTIVE_CHANNEL_SNAPSHOT_KEY;
     }
 
 

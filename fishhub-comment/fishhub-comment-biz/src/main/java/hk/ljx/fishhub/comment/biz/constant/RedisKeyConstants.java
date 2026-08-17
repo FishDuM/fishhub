@@ -38,6 +38,9 @@ public class RedisKeyConstants {
      */
     private static final String COMMENT_LIST_KEY_PREFIX = "comment:list:";
 
+    /** 评论分页 ZSET 重建单飞锁 Key 前缀 */
+    private static final String COMMENT_LIST_REBUILD_LOCK_KEY_PREFIX = "lock:comment:list:rebuild:";
+
     /**
      * Key 前缀：二级评论分页 ZSET
      */
@@ -100,6 +103,11 @@ public class RedisKeyConstants {
      */
     public static String buildCommentListKey(Long noteId) {
         return COMMENT_LIST_KEY_PREFIX + noteId;
+    }
+
+    /** 构建评论分页 ZSET 重建单飞锁完整 KEY */
+    public static String buildCommentListRebuildLockKey(Long noteId) {
+        return COMMENT_LIST_REBUILD_LOCK_KEY_PREFIX + noteId;
     }
 
     /**

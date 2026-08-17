@@ -163,16 +163,16 @@ public class NoteServiceImpl implements NoteService {
         List<SearchNoteRspVO> searchNoteRspVOS = Lists.newArrayList();
         long total = 0;
         try {
-            log.info("==> SearchRequest: {}", searchRequest.source().toString());
+            log.debug("==> SearchRequest: {}", searchRequest.source().toString());
             SearchResponse searchResponse = restHighLevelClient.search(searchRequest, RequestOptions.DEFAULT);
 
             total = searchResponse.getHits().getTotalHits().value;
-            log.info("==> 命中文档总数, hits: {}", total);
+            log.debug("==> 命中文档总数, hits: {}", total);
 
             SearchHits hits = searchResponse.getHits();
 
             for (SearchHit hit : hits) {
-                log.info("==> 文档数据: {}", hit.getSourceAsString());
+                log.debug("==> 文档数据: {}", hit.getSourceAsString());
 
                 Map<String, Object> sourceAsMap = hit.getSourceAsMap();
 

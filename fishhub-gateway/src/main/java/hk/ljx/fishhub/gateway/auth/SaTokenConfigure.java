@@ -5,17 +5,60 @@ import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.NotPermissionException;
 import cn.dev33.satoken.exception.NotRoleException;
 import cn.dev33.satoken.exception.SaTokenException;
+import cn.dev33.satoken.reactor.context.SaReactorSyncHolder;
 import cn.dev33.satoken.reactor.filter.SaReactorFilter;
 import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.server.ServerWebExchange;
+
+import java.util.Set;
+
+import static hk.ljx.framework.common.constant.GlobalConstants.USER_ID;
 
 
 @Configuration
 @Slf4j
 public class SaTokenConfigure {
+
+    /**
+     * Exchange attribute：setAuth 写入的 loginId，供 AddUserId2HeaderFilter 直接读取。
+     */
+    public static final String USER_ID_ATTR = "fishhub:" + USER_ID;
+
+    /**
+     * 免登录白名单
+     */
+    private static final Set<String> LOGIN_WHITELIST_PATHS = Set.of(
+            "/auth/login",
+            "/auth/verification/code/send",
+            "/user/user/profile",
+            "/note/channel/list",
+            "/note/discover/note/list",
+            "/note/note/detail",
+            "/note/note/published/list",
+            "/comment/comment/list",
+            "/comment/comment/child/list",
+            "/relation/relation/following/list",
+            "/relation/relation/fans/list",
+            "/search/search/note",
+            "/search/search/user");
+
+    public static boolean isWhitelisted(String path) {
+        return LOGIN_WHITELIST_PATHS.contains(path);
+    }
+
+    /**
+     * 将 loginId 写入 exchange attribute。
+     */
+    public static void putLoginIdAttribute(ServerWebExchange exchange, Object loginId) {
+        if (loginId != null) {
+            exchange.getAttributes().put(USER_ID_ATTR, String.valueOf(loginId));
+        }
+    }
+
     // 注册 Sa-Token全局过滤器
     @Bean
     public SaReactorFilter getSaReactorFilter() {
@@ -25,23 +68,17 @@ public class SaTokenConfigure {
                 // 鉴权方法：每次访问进入
                 .setAuth(obj -> {
                     log.info("==================> SaReactorFilter, Path: {}", SaHolder.getRequest().getRequestPath());
-                    // 登录校验
-                    SaRouter.match("/**") // 拦截所有路由
-                            .notMatch("/auth/login") // 排除登录接口
-                            .notMatch("/auth/verification/code/send") // 排除验证码发送接口
-                            .notMatch("/user/user/profile") // 排除用户主页查看
-                            .notMatch("/note/channel/list") // 排除发现页频道标签接口
-                            .notMatch("/note/discover/note/list") // 排除发现页瀑布流接口
-                            .notMatch("/note/note/detail") // 排除笔记详情读取接口
-                            .notMatch("/note/note/published/list") // 排除个人主页已发布笔记接口
-                            .notMatch("/comment/comment/list") // 排除评论读取接口
-                            .notMatch("/comment/comment/child/list") // 排除子评论读取接口
-                            .notMatch("/relation/relation/following/list") // 排除关注列表读取接口
-                            .notMatch("/relation/relation/fans/list") // 排除粉丝列表读取接口
-                            .notMatch("/search/search/note") // 排除笔记搜索接口
-                            .notMatch("/search/search/user") // 排除用户搜索接口
-                            .check(r -> StpUtil.checkLogin()) // 校验是否登录
-                    ;
+                    // 登录校验：非白名单路径只解析一次 token，并透传 loginId 到 exchange attribute
+                    if (!isWhitelisted(SaHolder.getRequest().getRequestPath())) {
+                        Object loginId = StpUtil.getLoginIdDefaultNull();
+                        if (loginId == null) {
+                            throw new NotLoginException("未登录", NotLoginException.NOT_TOKEN, null);
+                        }
+                        ServerWebExchange exchange = SaReactorSyncHolder.getContext();
+                        if (exchange != null) {
+                            putLoginIdAttribute(exchange, loginId);
+                        }
+                    }
 
                     // 对外业务接口按权限校验。
                     SaRouter.match("/note/note/publish",

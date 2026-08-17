@@ -9,8 +9,9 @@ public interface VerificationCodeService {
     /**
      * 发送短信验证码
      *
-     * @param sendVerificationCodeReqVO
+     * @param sendVerificationCodeReqVO 请求参数
+     * @param clientIp                 客户端 IP；为空时跳过 IP 限流
      * @return
      */
-    Response<?> send(SendVerificationCodeReqVO sendVerificationCodeReqVO);
+    Response<?> send(SendVerificationCodeReqVO sendVerificationCodeReqVO, String clientIp);
 }

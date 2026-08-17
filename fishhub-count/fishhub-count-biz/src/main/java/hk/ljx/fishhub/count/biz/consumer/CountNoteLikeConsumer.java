@@ -6,41 +6,79 @@ import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.enums.LikeUnlikeNoteTypeEnum;
 import hk.ljx.fishhub.count.biz.model.dto.AggregationCountLikeUnlikeNoteMqDTO;
 import hk.ljx.fishhub.count.biz.model.dto.CountLikeUnlikeNoteMqDTO;
+import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
-
+/**
+ * 笔记点赞/取消点赞事件的批量聚合消费者。
+ *
+ * <p>手动 {@link DefaultMQPushConsumer} 接收整批消息，聚合成每 noteId 一条 delta
+ * 后只发 1 条消息给 2DB 消费者（1 个事务落库）。
+ */
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_NOTE_LIKE, // Group 组
-        topic = MQConstants.TOPIC_COUNT_NOTE_LIKE // 主题 Topic
-        )
 @Slf4j
-public class CountNoteLikeConsumer implements RocketMQListener<String> {
+public class CountNoteLikeConsumer {
+
+    /** 每批最多拉取的消息数 */
+    private static final int CONSUME_BATCH_MAX_SIZE = 30;
+
+    @Value("${rocketmq.name-server}")
+    private String namesrvAddr;
 
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
-    @Override
-    public void onMessage(String body) {
-        // RocketMQ 仅在本次处理返回后确认消息，进程退出时不会丢失内存队列中的消息。
-        consumeMessage(List.of(body));
+    private DefaultMQPushConsumer consumer;
+
+    @Bean
+    public DefaultMQPushConsumer countNoteLikePushConsumer() throws MQClientException {
+        String group = "fishhub_group_" + MQConstants.TOPIC_COUNT_NOTE_LIKE;
+        consumer = new DefaultMQPushConsumer(group);
+        consumer.setNamesrvAddr(namesrvAddr);
+        consumer.subscribe(MQConstants.TOPIC_COUNT_NOTE_LIKE, "*");
+        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
+        consumer.setMessageModel(MessageModel.CLUSTERING);
+        consumer.setConsumeMessageBatchMaxSize(CONSUME_BATCH_MAX_SIZE);
+        consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
+            try {
+                List<String> bodys = msgs.stream()
+                        .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
+                        .toList();
+                consumeMessage(bodys);
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            } catch (Exception e) {
+                log.error("笔记点赞计数聚合消费失败，整批稍后重投", e);
+                return ConsumeConcurrentlyStatus.RECONSUME_LATER;
+            }
+        });
+        consumer.start();
+        return consumer;
     }
 
     private void consumeMessage(List<String> bodys) {
         log.info("==> 【笔记点赞数】聚合消息, size: {}", bodys.size());
-        log.info("==> 【笔记点赞数】聚合消息, {}", JsonUtils.toJsonString(bodys));
 
-        // 聚合批次标识：同批重投时内容不变，不同批次的相同聚合结果可区分
+        // 聚合批次标识：同批重投时内容不变
         String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(String.join("|", bodys));
 
         // List<String> 转 List<CountLikeUnlikeNoteMqDTO>
@@ -93,11 +131,20 @@ public class CountNoteLikeConsumer implements RocketMQListener<String> {
 
         log.info("## 【笔记点赞数】聚合后的计数数据: {}", JsonUtils.toJsonString(countList));
 
-        // 发送 MQ, 笔记点赞数据落库
+        // 整批只发 1 条消息给 2DB 落库
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(countList))
                 .build();
-
-        // 第一阶段不修改缓存；数据库消费者提交后统一失效缓存。
         rocketMQTemplate.syncSend(MQConstants.TOPIC_COUNT_NOTE_LIKE_2_DB, message);
+    }
+
+    @PreDestroy
+    public void destroy() {
+        if (Objects.nonNull(consumer)) {
+            try {
+                consumer.shutdown();
+            } catch (Exception e) {
+                log.error("笔记点赞聚合消费者关闭失败", e);
+            }
+        }
     }
 }

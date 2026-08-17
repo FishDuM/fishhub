@@ -48,6 +48,8 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -73,6 +75,10 @@ import java.util.stream.Collectors;
 public class NoteServiceImpl implements NoteService {
 
     private static final long ZSET_NOT_INITIALIZED = -1L;
+
+    private static final int ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES = 3;
+    private static final long ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
+    private static final long ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS = 2L;
 
     private static DefaultRedisScript<Long> luaScript(String luaPath) {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
@@ -116,6 +122,8 @@ public class NoteServiceImpl implements NoteService {
     private NotePersistenceService notePersistenceService;
     @Resource
     private NoteInteractionCacheService noteInteractionCacheService;
+    @Resource
+    private RedissonClient redissonClient;
     @Resource
     private UserNoteListService userNoteListService;
     @Resource
@@ -201,7 +209,7 @@ public class NoteServiceImpl implements NoteService {
     private static final Cache<Long, String> LOCAL_CACHE = Caffeine.newBuilder()
             .initialCapacity(10000) // 设置初始容量为 10000 个条目
             .maximumSize(10000) // 设置缓存的最大容量为 10000 个条目
-            .expireAfterWrite(1, TimeUnit.HOURS) // 设置缓存条目在写入后 1 小时过期
+            .expireAfterWrite(90, TimeUnit.SECONDS) // 与 Redis 详情 TTL 同量级，计数自愈 ≤90s
             .build();
 
     /**
@@ -338,23 +346,48 @@ public class NoteServiceImpl implements NoteService {
 
         // Redis 为共享存储，提交后于本进程内直接失效，无需跨节点事件；
         // 各节点本地缓存由读路径的最小事实校验兜底。
-        invalidateNoteRedisCaches(creatorId, noteDO.getId());
+        invalidateNoteRedisCaches(creatorId, noteDO.getId(), noteDO.getChannelId());
     }
 
     /**
      * 提交后失效笔记相关 Redis 缓存（详情快照、作者发布列表、发现页版本）。
      * 尽力而为：失败仅记日志，缓存过期时间兜底。
+     * <p>发现页失效改为按频道 bump 版本：只影响所属频道与首页 0。
+     *
+     * @param channelIds 受影响频道（可为空）；频道 0（首页）总是参与
      */
-    private void invalidateNoteRedisCaches(Long creatorId, Long noteId) {
+    private void invalidateNoteRedisCaches(Long creatorId, Long noteId, Long... channelIds) {
         try {
             stringRedisTemplate.delete(List.of(
                     RedisKeyConstants.buildNoteDetailKey(noteId),
                     RedisKeyConstants.buildNoteAccessKey(noteId),
-                    RedisKeyConstants.buildPublishedNoteListKey(creatorId),
-                    // 删除版本标记后，下一次发现页请求会生成新版本，旧页缓存自然失效。
-                    RedisKeyConstants.discoverFeedVersionKey()));
+                    RedisKeyConstants.buildPublishedNoteListKey(creatorId)));
+            Set<Long> channels = new LinkedHashSet<>();
+            channels.add(0L);
+            if (channelIds != null) {
+                for (Long channelId : channelIds) {
+                    if (channelId != null) {
+                        channels.add(channelId);
+                    }
+                }
+            }
+            for (Long channelId : channels) {
+                bumpDiscoverFeedVersion(channelId);
+            }
         } catch (Exception e) {
             log.warn("笔记缓存失效失败，等待缓存过期兜底, noteId={}", noteId, e);
+        }
+    }
+
+    // 发现页版本限频 bump：SET NX EX 30，窗口内不重复 bump，靠快照 TTL 兜底。
+    private void bumpDiscoverFeedVersion(Long channelId) {
+        try {
+            stringRedisTemplate.opsForValue().setIfAbsent(
+                    RedisKeyConstants.buildDiscoverFeedVersionKey(channelId),
+                    String.valueOf(System.currentTimeMillis()),
+                    30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，发现页版本 bump 失败，等待缓存过期兜底, channelId={}", channelId, e);
         }
     }
 
@@ -382,7 +415,10 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
             if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                fillNoteCounts(findNoteDetailRspVO);
+                // 计数已随 JSON 内嵌，命中路径免 count Feign；旧缓存缺计数时回填。
+                if (needsCountRefresh(findNoteDetailRspVO)) {
+                    fillNoteCounts(findNoteDetailRspVO);
+                }
                 return Response.success(findNoteDetailRspVO);
             }
             LOCAL_CACHE.invalidate(noteId);
@@ -407,7 +443,10 @@ public class NoteServiceImpl implements NoteService {
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
             });
-            fillNoteCounts(findNoteDetailRspVO);
+            // 计数已随 JSON 内嵌，命中路径免 count Feign；旧缓存缺计数时回填。
+            if (needsCountRefresh(findNoteDetailRspVO)) {
+                fillNoteCounts(findNoteDetailRspVO);
+            }
             return Response.success(findNoteDetailRspVO);
             }
         }
@@ -484,19 +523,20 @@ public class NoteServiceImpl implements NoteService {
         // 获取拼装后的 FindNoteDetailRspVO
         FindNoteDetailRspVO findNoteDetailRspVO = resultFuture.get();
 
+        // 计数随详情 JSON 一起缓存，命中路径免 count Feign（TTL 缩至 30~90s 保新鲜）。
+        fillNoteCounts(findNoteDetailRspVO);
+
         // 异步线程中将笔记详情存入 Redis
         threadPoolTaskExecutor.submit(() -> {
             try {
                 String noteDetailJson1 = JsonUtils.toJsonString(findNoteDetailRspVO);
-                // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
-                long expireSeconds = CacheTtl.days(1, 1);
+                long expireSeconds = CacheTtl.basePlusRandom(30, 60);
                 stringRedisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
             } catch (Exception e) {
                 log.warn("Redis 不可用，笔记详情缓存写入失败，响应将继续返回，noteId={}", noteId, e);
             }
         });
 
-        fillNoteCounts(findNoteDetailRspVO);
         return Response.success(findNoteDetailRspVO);
     }
 
@@ -575,7 +615,9 @@ public class NoteServiceImpl implements NoteService {
                     return true;
                 });
 
-        invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId);
+        // 频道可能被修改，新旧频道版本都要 bump。
+        invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId,
+                selectNoteDO.getChannelId(), updateNoteReqVO.getChannelId());
 
         Set<String> newMediaUrls = new HashSet<>();
         if (StringUtils.isNotBlank(media.imgUris())) {
@@ -716,7 +758,7 @@ public class NoteServiceImpl implements NoteService {
                     return true;
                 });
 
-        invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId);
+        invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId, selectNoteDO.getChannelId());
 
         List<String> mediaUrls = getMediaUrls(selectNoteDO);
         if (CollUtil.isNotEmpty(mediaUrls)) {
@@ -800,7 +842,7 @@ public class NoteServiceImpl implements NoteService {
 
         // 可见性变更无跨服务事件；共享 Redis 缓存提交后于本进程内失效，
         // 各节点本地缓存由读路径的最小事实校验兜底。
-        registerPostCommitCacheInvalidation(currUserId, noteId);
+        registerPostCommitCacheInvalidation(currUserId, noteId, selectNoteDO.getChannelId());
 
         return Response.success();
     }
@@ -821,6 +863,9 @@ public class NoteServiceImpl implements NoteService {
 
         Long currUserId = LoginUserContextHolder.getUserId();
 
+        // 置顶改变频道排序，需按频道 ID bump 版本。
+        NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
+
         // 构建置顶/取消置顶 DO 实体类
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
@@ -835,7 +880,8 @@ public class NoteServiceImpl implements NoteService {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
         }
 
-        registerPostCommitCacheInvalidation(currUserId, noteId);
+        registerPostCommitCacheInvalidation(currUserId, noteId,
+                selectNoteDO == null ? null : selectNoteDO.getChannelId());
 
         return Response.success();
     }
@@ -843,11 +889,11 @@ public class NoteServiceImpl implements NoteService {
     /**
      * 纯 DB 更新事务（可见性、置顶）提交后再失效 Redis 缓存，尽力而为。
      */
-    private void registerPostCommitCacheInvalidation(Long creatorId, Long noteId) {
+    private void registerPostCommitCacheInvalidation(Long creatorId, Long noteId, Long channelId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                invalidateNoteRedisCaches(creatorId, noteId);
+                invalidateNoteRedisCaches(creatorId, noteId, channelId);
             }
         });
     }
@@ -1409,6 +1455,11 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
+    private boolean needsCountRefresh(FindNoteDetailRspVO noteDetail) {
+        return noteDetail == null || noteDetail.getLikeTotal() == null
+                || noteDetail.getCollectTotal() == null || noteDetail.getCommentTotal() == null;
+    }
+
     private void fillNoteCounts(FindNoteDetailRspVO noteDetail) {
         try {
             List<FindNoteCountsByIdRspDTO> counts = countRpcService.findByNoteIds(List.of(noteDetail.getId()));
@@ -1459,26 +1510,121 @@ public class NoteServiceImpl implements NoteService {
      */
     private NoteAccessSnapshot loadAccessSnapshot(Long noteId) {
         String key = RedisKeyConstants.buildNoteAccessKey(noteId);
+        NoteAccessSnapshot cachedSnapshot = readAccessSnapshot(key);
+        if (cachedSnapshot != null) {
+            return cachedSnapshot;
+        }
+
+        // 热点笔记被击穿时单飞重建：抢锁者回源写回，抢不到者轮询等待。
+        String lockKey = RedisKeyConstants.buildNoteAccessRebuildLockKey(noteId);
+        RLock lock;
+        try {
+            lock = tryAcquireRebuildLock(lockKey, ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，笔记访问快照重建锁获取失败，回源 MySQL，noteId={}", noteId, e);
+            return loadAccessSnapshotFromMySql(noteId, key, false);
+        }
+        if (lock == null) {
+            try {
+                NoteAccessSnapshot rebuilt = waitForAccessSnapshot(key);
+                if (rebuilt != null) {
+                    return rebuilt;
+                }
+            } catch (Exception e) {
+                log.warn("Redis 不可用，笔记访问快照轮询失败，回源 MySQL，noteId={}", noteId, e);
+            }
+            // 轮询超时兜底：查库不写回，写回由锁持有者负责。
+            return loadAccessSnapshotFromMySql(noteId, key, false);
+        }
+        try {
+            // 二次检查：抢锁期间其他重建者可能已写入。
+            NoteAccessSnapshot reRead = readAccessSnapshot(key);
+            if (reRead != null) {
+                return reRead;
+            }
+            return loadAccessSnapshotFromMySql(noteId, key, true);
+        } finally {
+            releaseRebuildLock(lock, lockKey);
+        }
+    }
+
+    /** 读取访问快照缓存；空白/"null"/解析失败统一走重建（解析失败先删脏值）。 */
+    private NoteAccessSnapshot readAccessSnapshot(String key) {
         String cached = getAccessSnapshotCacheValue(key);
-        if (StringUtils.isNotBlank(cached)) {
+        if (StringUtils.isBlank(cached)) {
+            return null;
+        }
+        if ("null".equals(cached)) {
+            return null;
+        }
+        try {
+            return JsonUtils.parseObject(cached, NoteAccessSnapshot.class);
+        } catch (Exception e) {
+            log.warn("笔记访问快照解析失败，跳过缓存并回源 MySQL，key={}", key, e);
+            deleteAccessSnapshotCache(key);
+            return null;
+        }
+    }
+
+    private NoteAccessSnapshot waitForAccessSnapshot(String key) {
+        for (int i = 0; i < ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES; i++) {
+            sleepBeforeAccessSnapshotRetry();
+            NoteAccessSnapshot snapshot = readAccessSnapshot(key);
+            if (snapshot != null) {
+                return snapshot;
+            }
+            // "null" 哨兵已折叠为 null；哨兵写入也视为重建完成。
+            String cached = getAccessSnapshotCacheValue(key);
             if ("null".equals(cached)) {
                 return null;
             }
-            try {
-                return JsonUtils.parseObject(cached, NoteAccessSnapshot.class);
-            } catch (Exception e) {
-                log.warn("笔记访问快照解析失败，跳过缓存并回源 MySQL，key={}", key, e);
-                deleteAccessSnapshotCache(key);
-            }
         }
+        return null;
+    }
+
+    private NoteAccessSnapshot loadAccessSnapshotFromMySql(Long noteId, String key, boolean cacheResult) {
         NoteDO note = noteDOMapper.selectAccessInfoByNoteId(noteId);
         if (note == null) {
-            cacheAccessSnapshot(key, "null");
+            if (cacheResult) {
+                cacheAccessSnapshot(key, "null");
+            }
             return null;
         }
         NoteAccessSnapshot snapshot = toAccessSnapshot(note);
-        cacheAccessSnapshot(key, JsonUtils.toJsonString(snapshot));
+        if (cacheResult) {
+            cacheAccessSnapshot(key, JsonUtils.toJsonString(snapshot));
+        }
         return snapshot;
+    }
+
+    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
+        RLock lock = redissonClient.getLock(lockKey);
+        if (lock == null) {
+            return null;
+        }
+        try {
+            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
+        } catch (Exception e) {
+            throw new IllegalStateException("Redis 不可用，笔记访问快照重建锁获取失败, lockKey=" + lockKey, e);
+        }
+    }
+
+    private void releaseRebuildLock(RLock lock, String lockKey) {
+        try {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        } catch (Exception e) {
+            log.warn("Redis 不可用，笔记访问快照重建锁释放失败，key={}", lockKey, e);
+        }
+    }
+
+    private void sleepBeforeAccessSnapshotRetry() {
+        try {
+            Thread.sleep(ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

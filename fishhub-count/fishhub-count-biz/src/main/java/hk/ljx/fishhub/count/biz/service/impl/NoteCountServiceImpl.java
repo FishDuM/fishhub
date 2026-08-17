@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -35,6 +36,8 @@ public class NoteCountServiceImpl implements NoteCountService {
     private NoteCountDOMapper noteCountDOMapper;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource(name = "fishhubTaskExecutor")
+    private ThreadPoolTaskExecutor fishhubTaskExecutor;
 
     /**
      * 批量查询笔记计数
@@ -97,16 +100,45 @@ public class NoteCountServiceImpl implements NoteCountService {
         // 从数据库中批量查询过滤出的 noteIdsNeedQuery 笔记 ID
         List<NoteCountDO> noteCountDOS = noteCountDOMapper.selectByNoteIds(noteIdsNeedQuery);
 
-        // DO 集合转 Map；没有计数行的笔记按 0 处理，避免向调用方返回 null。
+        // DO 转 Map；没有计数行的笔记按 0 处理
         Map<Long, NoteCountDO> noteIdAndDOMap = CollUtil.isEmpty(noteCountDOS)
                 ? Map.of()
                 : noteCountDOS.stream()
                 .collect(Collectors.toMap(NoteCountDO::getNoteId, noteCountDO -> noteCountDO));
 
-        // 将缺失的 Hash 字段（包括不存在计数行时的 0）同步到 Redis。
-        syncNoteHash2Redis(findNoteCountsByIdRspDTOS, noteIdAndDOMap);
+        // 填充前保留 null 快照再异步回写，避免填充后写回被整体跳过
+        List<FindNoteCountsByIdRspDTO> needWriteBack = findNoteCountsByIdRspDTOS.stream()
+                .filter(dto -> hasAnyNullCount(dto))
+                .map(dto -> FindNoteCountsByIdRspDTO.builder()
+                        .noteId(dto.getNoteId())
+                        .likeTotal(dto.getLikeTotal())
+                        .collectTotal(dto.getCollectTotal())
+                        .commentTotal(dto.getCommentTotal())
+                        .build())
+                .toList();
 
-        // 针对 DTO 中为 null 的计数字段，使用数据库结果或默认值 0 补齐。
+        // 用库值或 0 补齐 DTO 中为 null 的计数字段
+        fillNullCountsFromDb(findNoteCountsByIdRspDTOS, noteIdAndDOMap);
+
+        if (CollUtil.isNotEmpty(needWriteBack)) {
+            asyncSyncNoteHash2Redis(needWriteBack, noteIdAndDOMap);
+        }
+
+        return Response.success(findNoteCountsByIdRspDTOS);
+    }
+
+    private Long toLong(String value) {
+        return value == null ? null : Long.parseLong(value);
+    }
+
+    private boolean hasAnyNullCount(FindNoteCountsByIdRspDTO dto) {
+        return Objects.isNull(dto.getLikeTotal()) || Objects.isNull(dto.getCollectTotal()) || Objects.isNull(dto.getCommentTotal());
+    }
+
+    /**
+     * 使用数据库结果补齐响应 DTO 中为 null 的计数字段（无计数行按 0 处理）。
+     */
+    private void fillNullCountsFromDb(List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS, Map<Long, NoteCountDO> noteIdAndDOMap) {
         for (FindNoteCountsByIdRspDTO findNoteCountsByIdRspDTO : findNoteCountsByIdRspDTOS) {
             NoteCountDO noteCountDO = noteIdAndDOMap.get(findNoteCountsByIdRspDTO.getNoteId());
 
@@ -120,12 +152,24 @@ public class NoteCountServiceImpl implements NoteCountService {
                 findNoteCountsByIdRspDTO.setCommentTotal(Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : null));
             }
         }
-
-        return Response.success(findNoteCountsByIdRspDTOS);
     }
 
-    private Long toLong(String value) {
-        return value == null ? null : Long.parseLong(value);
+    /**
+     * 异步回写缺失计数到 Redis；线程池拒绝时降级为同步回写，保证缓存最终建立。
+     */
+    private void asyncSyncNoteHash2Redis(List<FindNoteCountsByIdRspDTO> needWriteBack, Map<Long, NoteCountDO> noteIdAndDOMap) {
+        try {
+            fishhubTaskExecutor.execute(() -> {
+                try {
+                    syncNoteHash2Redis(needWriteBack, noteIdAndDOMap);
+                } catch (Exception e) {
+                    log.warn("笔记计数异步回写 Redis 失败，等待下次回源重建", e);
+                }
+            });
+        } catch (Exception e) {
+            log.warn("笔记计数异步回写任务提交失败，降级为同步回写", e);
+            syncNoteHash2Redis(needWriteBack, noteIdAndDOMap);
+        }
     }
 
     /**

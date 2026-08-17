@@ -38,12 +38,12 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
     @Resource
     private RocketMQTemplate rocketMQTemplate;
 
-    // 每秒创建 5000 个令牌
-    private RateLimiter rateLimiter = RateLimiter.create(5000);
+    // 每批只 acquire 一次，限速 20000 安全
+    private RateLimiter rateLimiter = RateLimiter.create(20000);
 
     @Override
     public void onMessage(String body) {
-        // 流量削峰：通过获取令牌，如果没有令牌可用，将阻塞，直到获得
+        // 流量削峰，无令牌时阻塞
         rateLimiter.acquire();
 
         log.info("## 消费到了 MQ 【计数: 评论点赞数入库】, {}...", body);
@@ -72,8 +72,7 @@ public class CountCommentLike2DBConsumer implements RocketMQListener<String> {
                 .distinct()
                 .toList());
 
-        // 无论本次是否为重复投递，都重算热度。这样数据库提交后、发送热度事件前进程崩溃时，
-        // 上游消息重投仍会补齐热度；热度消费者按当前数据库值重算，重复投递安全。
+        // 无论是否重复投递都重算热度，消费者按库值重算，重投安全
         Set<Long> commentIds = countList.stream()
                 .map(AggregationCountLikeUnlikeCommentMqDTO::getCommentId)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));

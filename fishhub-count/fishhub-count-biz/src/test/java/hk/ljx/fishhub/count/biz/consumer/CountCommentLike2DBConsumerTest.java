@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,5 +57,33 @@ class CountCommentLike2DBConsumerTest {
         Message<?> message = (Message<?>) messageCaptor.getValue();
         assertEquals(Set.of(10L), JsonUtils.parseSet(
                 String.valueOf(message.getPayload()), Long.class));
+    }
+
+    @Test
+    void shouldApplyWholeBatchInOneIdempotentTransaction() {
+        String body = JsonUtils.toJsonString(List.of(
+                AggregationCountLikeUnlikeCommentMqDTO.builder()
+                        .commentId(10L)
+                        .count(5)
+                        .batchId("batch-10")
+                        .build(),
+                AggregationCountLikeUnlikeCommentMqDTO.builder()
+                        .commentId(11L)
+                        .count(-2)
+                        .batchId("batch-10")
+                        .build()));
+        when(mqIdempotentExecutor.execute(anyString(), anyString(), any())).thenAnswer(inv -> {
+            Runnable action = inv.getArgument(2);
+            action.run();
+            return true;
+        });
+
+        consumer.onMessage(body);
+
+        // 整批聚合消息只开 1 个幂等事务，事务内逐条 upsert
+        verify(mqIdempotentExecutor, times(1)).execute(anyString(), anyString(), any());
+        verify(commentDOMapper).updateLikeTotalByCommentId(5, 10L);
+        verify(commentDOMapper).updateLikeTotalByCommentId(-2, 11L);
+        verify(rocketMQTemplate, times(1)).syncSend(eq(MQConstants.TOPIC_COMMENT_HEAT_UPDATE), any(Message.class));
     }
 }

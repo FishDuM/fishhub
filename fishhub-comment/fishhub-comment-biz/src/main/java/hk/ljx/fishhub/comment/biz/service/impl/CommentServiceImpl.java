@@ -103,6 +103,7 @@ public class CommentServiceImpl implements CommentService {
     private static final int CACHE_REBUILD_RETRY_TIMES = 3;
     private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
     private static final long ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS = 2L;
+    private static final long COMMENT_LIST_REBUILD_LOCK_SECONDS = 5L;
 
     /**
      * 评论点赞布隆过滤器：由 Redisson RBloomFilter 实现，不依赖 RedisBloom 模块。
@@ -190,9 +191,9 @@ public class CommentServiceImpl implements CommentService {
 
         // 若不存在
         if (!hasKey) {
-            // 异步将热点评论同步到 redis 中（最多同步 500 条）
+            // 异步同步热点评论到 redis（最多 500 条），单飞锁防热 key 击穿重复查库
             threadPoolTaskExecutor.execute(() ->
-                    syncHeatComments2Redis(commentZSetKey, noteId));
+                    rebuildCommentListZSetWithLock(commentZSetKey, noteId));
         }
 
         // 若 ZSET 缓存存在, 并且查询的是前 50 页的评论
@@ -1306,6 +1307,44 @@ public class CommentServiceImpl implements CommentService {
             // 使用 Redis Pipeline 提升写入性能
             commentDetailCache.putAll(data);
         });
+    }
+
+    /** 评论列表 ZSET 单飞重建：抢锁者二次检查后重建，未抢锁者轮询等待，锁在任务内释放 */
+    private void rebuildCommentListZSetWithLock(String key, Long noteId) {
+        String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(noteId);
+        RLock lock;
+        try {
+            lock = tryAcquireRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，评论列表 ZSET 重建锁获取失败，跳过重建，noteId={}", noteId, e);
+            return;
+        }
+        if (lock == null) {
+            try {
+                waitForCommentListZSet(key);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，评论列表 ZSET 重建等待失败，noteId={}", noteId, e);
+            }
+            return;
+        }
+        try {
+            // 二次检查：抢锁期间其他节点可能已完成重建
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                return;
+            }
+            syncHeatComments2Redis(key, noteId);
+        } finally {
+            releaseRebuildLock(lock, lockKey);
+        }
+    }
+
+    private void waitForCommentListZSet(String key) {
+        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
+            sleepBeforeCacheRetry();
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                return;
+            }
+        }
     }
 
     /**
