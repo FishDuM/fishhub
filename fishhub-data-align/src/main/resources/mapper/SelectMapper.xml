@@ -38,8 +38,8 @@
         select count(*) from t_following where user_id = #{userId}
     </select>
 
-    <select id="selectCountFromFansTableByUserId" parameterType="map" resultType="int">
-        select count(*) from t_fans where user_id = #{userId}
+    <select id="selectCountFromFollowingTableByFollowingUserId" parameterType="map" resultType="int">
+        select count(*) from t_following where following_user_id = #{userId}
     </select>
 
     <select id="selectBatchFromDataAlignNoteLikeCountTempTable" resultType="long" parameterType="map">

@@ -32,10 +32,10 @@ public interface SelectMapper {
     List<Long> selectBatchFromDataAlignFansCountTempTable(@Param("tableNameSuffix") String tableNameSuffix,
                                                                @Param("batchSize") int batchSize);
 
-    /**
-     * 查询 t_fans 粉丝表，获取粉丝总数
-     */
-    int selectCountFromFansTableByUserId(long userId);
+    /** 粉丝总数：t_following 中 following_user_id = 目标用户的记录数 */
+    int selectCountFromFollowingTableByFollowingUserId(long userId);
+
+    /** 粉丝总数：t_following 中 following_user_id = 目标用户的记录数 */
 
     /**
      * 日增量表：用户获得的点赞数计数变更 - 批量查询

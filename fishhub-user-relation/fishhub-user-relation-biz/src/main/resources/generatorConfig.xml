@@ -43,9 +43,8 @@
         <!-- Mapper 接口存放路径 -->
         <javaClientGenerator type="XMLMAPPER" targetPackage="hk.ljx.fishhub.user.relation.biz.domain.mapper"
                              targetProject="src/main/java"/>
-
-        <!-- 需要生成的表-实体类 -->
-        <table tableName="t_fans" domainObjectName="FansDO"
+        <!-- 需要生成的表-实体类：t_following -->
+        <table tableName="t_following" domainObjectName="FollowingDO"
                enableCountByExample="false"
                enableUpdateByExample="false"
                enableDeleteByExample="false"

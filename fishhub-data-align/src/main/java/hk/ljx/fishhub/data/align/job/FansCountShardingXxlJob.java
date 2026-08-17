@@ -20,7 +20,7 @@ public class FansCountShardingXxlJob {
     public void alignFansCount() {
         alignmentRunner.runUserCount("用户粉丝数", "t_data_align_fans_count_temp_",
                 suffix -> selectMapper.selectBatchFromDataAlignFansCountTempTable(suffix, alignmentRunner.batchSize()),
-                selectMapper::selectCountFromFansTableByUserId,
+                selectMapper::selectCountFromFollowingTableByFollowingUserId,
                 updateMapper::updateUserFansTotalByUserId,
                 deleteMapper::batchDeleteDataAlignFansCountTempTable);
     }

@@ -11,9 +11,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FansDO;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
-import hk.ljx.fishhub.user.relation.biz.domain.mapper.FansDOMapper;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.fishhub.user.relation.biz.enums.LuaResultEnum;
 import hk.ljx.fishhub.user.relation.biz.enums.ResponseCodeEnum;
@@ -61,8 +59,6 @@ public class RelationServiceImpl implements RelationService {
     private UserRpcService userRpcService;
     @Resource
     private FollowingDOMapper followingDOMapper;
-    @Resource
-    private FansDOMapper fansDOMapper;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
     @Resource
@@ -275,14 +271,14 @@ public class RelationServiceImpl implements RelationService {
     @Override
     public RelationCursorPageResponse<FindFansUserRspVO> findFansList(FindFansListReqVO request) {
         long pageSize = 10L;
-        List<FansDO> records = fansDOMapper.selectCursorPageByUserId(
+        List<FollowingDO> records = followingDOMapper.selectCursorPageByFollowingUserId(
                 request.getUserId(), request.getCursor(), pageSize + 1);
         if (records.isEmpty()) {
             return RelationCursorPageResponse.success(Collections.emptyList(), pageSize, null);
         }
         boolean hasMore = records.size() > pageSize;
-        List<FansDO> pageRecords = hasMore ? records.subList(0, (int) pageSize) : records;
-        List<Long> userIds = pageRecords.stream().map(FansDO::getFansUserId).toList();
+        List<FollowingDO> pageRecords = hasMore ? records.subList(0, (int) pageSize) : records;
+        List<Long> userIds = pageRecords.stream().map(FollowingDO::getUserId).toList();
         List<FindFansUserRspVO> users = rpcUserServiceAndCountServiceAndDTO2VO(userIds, Collections.emptyList());
         Long nextCursor = hasMore ? pageRecords.get(pageRecords.size() - 1).getId() : null;
         return RelationCursorPageResponse.success(users, pageSize, nextCursor);

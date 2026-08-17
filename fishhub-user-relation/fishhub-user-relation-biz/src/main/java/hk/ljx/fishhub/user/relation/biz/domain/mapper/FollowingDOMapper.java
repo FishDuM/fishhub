@@ -25,6 +25,12 @@ public interface FollowingDOMapper {
                                                @Param("cursor") Long cursor,
                                                @Param("limit") long limit);
 
+    /** 粉丝列表反向查询：following_user_id = 目标用户的记录，粉丝即该行 user_id */
+
+    List<FollowingDO> selectCursorPageByFollowingUserId(@Param("followingUserId") Long followingUserId,
+                                                        @Param("cursor") Long cursor,
+                                                        @Param("limit") long limit);
+
     List<Long> selectFollowingUserIds(@Param("userId") Long userId,
                                       @Param("followingUserIds") List<Long> followingUserIds);
 

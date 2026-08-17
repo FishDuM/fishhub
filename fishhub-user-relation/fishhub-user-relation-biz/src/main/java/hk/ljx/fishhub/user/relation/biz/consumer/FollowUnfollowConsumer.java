@@ -1,17 +1,10 @@
 package hk.ljx.fishhub.user.relation.biz.consumer;
 
 import com.google.common.util.concurrent.RateLimiter;
-import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.common.util.JsonUtils;
-import hk.ljx.framework.mq.tx.TransactionalMqSender;
-import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
-import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FansDO;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
-import hk.ljx.fishhub.user.relation.biz.domain.mapper.FansDOMapper;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
-import hk.ljx.fishhub.user.relation.biz.domain.mapper.MqConsumeRecordMapper;
 import hk.ljx.fishhub.user.relation.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.user.relation.biz.model.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
@@ -22,14 +15,18 @@ import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-
+/**
+ * 关注 / 取关消费者。
+ * 幂等由唯一键 uk(user_id, following_user_id) 保证；关系写入成功后发统一计数事件。
+ */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW, // Group 组
         topic = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW, // 消费的主题 Topic
@@ -41,19 +38,11 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     @Resource
     private FollowingDOMapper followingDOMapper;
     @Resource
-    private FansDOMapper fansDOMapper;
-    @Resource
     private TransactionTemplate transactionTemplate;
     @Resource
     private RateLimiter rateLimiter;
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private MqConsumeRecordMapper mqConsumeRecordMapper;
-    @Resource
-    private TransactionalMqSender transactionalMqSender;
-    @Resource
-    private TxJournalStore txJournalStore;
+    private RocketMQTemplate rocketMQTemplate;
 
     @Override
     public void onMessage(Message message) {
@@ -77,6 +66,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
 
     /**
      * 关注
+     *
      * @param bodyJsonStr
      */
     private void handleFollowTagMessage(String bodyJsonStr) {
@@ -95,50 +85,25 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             return;
         }
 
-        CountFollowUnfollowMqDTO countEvent = CountFollowUnfollowMqDTO.builder()
-                .userId(userId)
-                .targetUserId(followUserId)
-                .type(FollowUnfollowTypeEnum.FOLLOW.getCode())
-                .createTime(createTime)
-                .build();
-        String countEventBody = JsonUtils.toJsonString(countEvent);
-        String messageKey = DigestUtil.sha256Hex("follow:" + bodyJsonStr);
+        // 重复投递 / 已关注时 insertIgnore 返回 0，视为状态未变化，不再发计数事件
+        boolean applied = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            int count = followingDOMapper.insertIgnore(FollowingDO.builder()
+                    .userId(userId)
+                    .followingUserId(followUserId)
+                    .createTime(createTime)
+                    .build());
+            return count == 1;
+        }));
 
-        // 关系状态迁移与变更事件经由事务消息原子绑定；重复消费或状态未变化时不登记 journal，半消息回滚。
-        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_USER_RELATION_CHANGED, countEventBody, txId -> {
-            Boolean applied = transactionTemplate.execute(status -> {
-                if (mqConsumeRecordMapper.insert("follow-unfollow", messageKey) != 1) {
-                    return false;
-                }
-
-                int count = followingDOMapper.insertIgnore(FollowingDO.builder()
-                        .userId(userId)
-                        .followingUserId(followUserId)
-                        .createTime(createTime)
-                        .build());
-                fansDOMapper.insertIgnore(FansDO.builder()
-                        .userId(followUserId)
-                        .fansUserId(userId)
-                        .createTime(createTime)
-                        .build());
-
-                // t_following 是关注状态的主记录；已经存在时不重复产生计数事件。
-                if (count != 1) {
-                    return false;
-                }
-                txJournalStore.record(txId);
-                return true;
-            });
-            log.info("关注关系事务完成, userId={}, targetUserId={}, applied={}", userId, followUserId, applied);
-            return applied;
-        });
-
-        // MySQL 是关系事实源。重复投递也执行缓存失效，确保 Redis 暂时不可用后仍能靠 MQ 重试恢复。
-        stringRedisTemplate.delete(RedisKeyConstants.buildUserFansKey(followUserId));
+        if (applied) {
+            sendCountEvent(userId, followUserId, FollowUnfollowTypeEnum.FOLLOW.getCode(), createTime);
+        }
+        log.info("关注关系落库完成, userId={}, targetUserId={}, applied={}", userId, followUserId, applied);
     }
 
     /**
      * 取关
+     *
      * @param bodyJsonStr
      */
     private void handleUnfollowTagMessage(String bodyJsonStr) {
@@ -157,34 +122,33 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             return;
         }
 
+        // 取关不存在的关注关系返回 0，视为状态未变化，不再发计数事件
+        boolean applied = Boolean.TRUE.equals(transactionTemplate.execute(status ->
+                followingDOMapper.deleteByUserIdAndFollowingUserId(userId, unfollowUserId) == 1));
+
+        if (applied) {
+            sendCountEvent(userId, unfollowUserId, FollowUnfollowTypeEnum.UNFOLLOW.getCode(), createTime);
+        }
+        log.info("取关关系落库完成, userId={}, targetUserId={}, applied={}", userId, unfollowUserId, applied);
+    }
+
+    /**
+     * 发送统一关系计数事件（关注 +1 / 粉丝 +1 由 count 服务一次消费）
+     */
+    private void sendCountEvent(Long userId, Long targetUserId, Integer type, LocalDateTime createTime) {
         CountFollowUnfollowMqDTO countEvent = CountFollowUnfollowMqDTO.builder()
                 .userId(userId)
-                .targetUserId(unfollowUserId)
-                .type(FollowUnfollowTypeEnum.UNFOLLOW.getCode())
+                .targetUserId(targetUserId)
+                .type(type)
                 .createTime(createTime)
                 .build();
-        String countEventBody = JsonUtils.toJsonString(countEvent);
-        String messageKey = DigestUtil.sha256Hex("unfollow:" + bodyJsonStr);
-
-        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_USER_RELATION_CHANGED, countEventBody, txId -> {
-            Boolean applied = transactionTemplate.execute(status -> {
-                if (mqConsumeRecordMapper.insert("follow-unfollow", messageKey) != 1) {
-                    return false;
-                }
-
-                int count = followingDOMapper.deleteByUserIdAndFollowingUserId(userId, unfollowUserId);
-                fansDOMapper.deleteByUserIdAndFansUserId(unfollowUserId, userId);
-                if (count != 1) {
-                    return false;
-                }
-                txJournalStore.record(txId);
-                return true;
-            });
-            log.info("取关关系事务完成, userId={}, targetUserId={}, applied={}", userId, unfollowUserId, applied);
-            return applied;
-        });
-
-        stringRedisTemplate.delete(RedisKeyConstants.buildUserFansKey(unfollowUserId));
+        try {
+            rocketMQTemplate.syncSendOrderly(MQConstants.TOPIC_COUNT_FOLLOWING,
+                    MessageBuilder.withPayload(JsonUtils.toJsonString(countEvent)).build(),
+                    String.valueOf(userId));
+        } catch (Exception e) {
+            log.error("关注/取关计数事件发送失败，交由对账兜底, userId={}, targetUserId={}", userId, targetUserId, e);
+        }
     }
 
 }
