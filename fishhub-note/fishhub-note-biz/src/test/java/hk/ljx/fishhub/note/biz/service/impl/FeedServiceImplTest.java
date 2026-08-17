@@ -16,10 +16,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -47,6 +50,10 @@ class FeedServiceImplTest {
     private StringRedisTemplate stringRedisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private RedissonClient redissonClient;
+    @Mock
+    private RLock rebuildLock;
     @InjectMocks
     private FeedServiceImpl service;
 
@@ -127,14 +134,14 @@ class FeedServiceImplTest {
     }
 
     @Test
-    void shouldUseDoubleCheckAfterAcquiringDiscoverPageRebuildLock() {
+    void shouldUseDoubleCheckAfterAcquiringDiscoverPageRebuildLock() throws InterruptedException {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null, "{\"notes\":[],\"nextCursor\":null}");
-        when(valueOperations.setIfAbsent(eq(lockKey), any(), eq(5L), eq(java.util.concurrent.TimeUnit.SECONDS)))
-                .thenReturn(true);
+        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
+        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
@@ -145,14 +152,14 @@ class FeedServiceImplTest {
     }
 
     @Test
-    void shouldNotRetryMySqlWhenDiscoverPageRebuildFails() {
+    void shouldNotRetryMySqlWhenDiscoverPageRebuildFails() throws InterruptedException {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("feed:discover:version")).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
-        when(valueOperations.setIfAbsent(eq(lockKey), any(), eq(5L), eq(java.util.concurrent.TimeUnit.SECONDS)))
-                .thenReturn(true);
+        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
+        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();

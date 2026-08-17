@@ -14,9 +14,10 @@ public class RedisKeyConstants {
     private static final String HAVE_FIRST_REPLY_COMMENT_KEY_PREFIX = "comment:havaFirstReplyCommentId:";
 
     /**
-     * Key 前缀：布隆过滤器 - 用户点赞的评论
+     * Key 前缀：布隆过滤器 - 用户点赞的评论。
+     * v2：由 Redisson RBloomFilter 管理
      */
-    private static final String BLOOM_COMMENT_LIKES_KEY_PREFIX = "bloom:comment:likes:";
+    private static final String BLOOM_COMMENT_LIKES_KEY_PREFIX = "bloom:comment:likes:v2:";
 
     /**
      * 一级评论分页总数缓存。不能复用 count:note:*，后者由计数服务作为 Hash 使用。

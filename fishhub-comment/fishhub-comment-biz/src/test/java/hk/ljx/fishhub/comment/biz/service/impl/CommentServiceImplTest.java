@@ -8,8 +8,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,11 +34,15 @@ class CommentServiceImplTest {
     private StringRedisTemplate stringRedisTemplate;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private RedissonClient redissonClient;
+    @Mock
+    private RLock rebuildLock;
     @InjectMocks
     private CommentServiceImpl service;
 
     @Test
-    void shouldDoubleCheckOneLevelCommentTotalAfterAcquiringRebuildLock() {
+    void shouldDoubleCheckOneLevelCommentTotalAfterAcquiringRebuildLock() throws InterruptedException {
         Long noteId = 100L;
         String cacheKey = "cache:comment:one-level-total:" + noteId + ":v:0";
         String versionKey = "version:comment:one-level-total:" + noteId;
@@ -43,7 +51,8 @@ class CommentServiceImplTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(versionKey)).thenReturn("0");
         when(valueOperations.get(cacheKey)).thenReturn(null, "0");
-        when(valueOperations.setIfAbsent(eq(lockKey), any(), anyLong(), any())).thenReturn(true);
+        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
+        when(rebuildLock.tryLock(0, 2L, TimeUnit.SECONDS)).thenReturn(true);
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();
 
         var response = service.findCommentPageList(request);
@@ -53,7 +62,7 @@ class CommentServiceImplTest {
     }
 
     @Test
-    void shouldNotRetryMySqlWhenOneLevelCommentCountQueryFails() {
+    void shouldNotRetryMySqlWhenOneLevelCommentCountQueryFails() throws InterruptedException {
         Long noteId = 100L;
         String cacheKey = "cache:comment:one-level-total:" + noteId + ":v:0";
         String versionKey = "version:comment:one-level-total:" + noteId;
@@ -62,7 +71,8 @@ class CommentServiceImplTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(versionKey)).thenReturn("0");
         when(valueOperations.get(cacheKey)).thenReturn(null);
-        when(valueOperations.setIfAbsent(eq(lockKey), any(), anyLong(), any())).thenReturn(true);
+        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
+        when(rebuildLock.tryLock(0, 2L, TimeUnit.SECONDS)).thenReturn(true);
         when(commentDOMapper.selectOneLevelCountByNoteId(noteId))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();

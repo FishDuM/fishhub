@@ -170,6 +170,13 @@
                 <version>${revision}</version>
             </dependency>
 
+            <!-- Redisson 分布式组件 -->
+            <dependency>
+                <groupId>hk.ljx</groupId>
+                <artifactId>fishhub-spring-boot-starter-biz-redisson</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
             <!-- Spring Boot 官方依赖管理 -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>

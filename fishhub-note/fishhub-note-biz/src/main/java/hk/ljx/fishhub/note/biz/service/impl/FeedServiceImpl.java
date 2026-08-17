@@ -28,17 +28,15 @@ import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Service;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.scripting.support.ResourceScriptSource;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.concurrent.TimeUnit;
@@ -52,14 +50,6 @@ public class FeedServiceImpl implements FeedService {
     private static final int CACHE_REBUILD_RETRY_TIMES = 3;
     private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
     private static final long DISCOVER_PAGE_REBUILD_LOCK_SECONDS = 5L;
-    private static DefaultRedisScript<Long> luaScript(String luaPath) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
-        script.setResultType(Long.class);
-        return script;
-    }
-
-    private static final DefaultRedisScript<Long> RELEASE_REBUILD_LOCK_SCRIPT = luaScript("/lua/compare_and_delete.lua");
 
     private static final Cache<String, List<FindTopicRspVO>> TOPIC_LOCAL_CACHE = Caffeine.newBuilder()
             .maximumSize(1)
@@ -80,6 +70,8 @@ public class FeedServiceImpl implements FeedService {
     private CountRpcService countRpcService;
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private RedissonClient redissonClient;
 
     @Override
     public Response<List<FindChannelRspVO>> findChannelList() {
@@ -120,14 +112,14 @@ public class FeedServiceImpl implements FeedService {
             return snapshot;
         }
 
-        String lockToken;
+        RLock lock;
         try {
-            lockToken = tryAcquireRebuildLock(lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS);
+            lock = tryAcquireRebuildLock(lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS);
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页重建锁获取失败，回源 MySQL，key={}", cacheKey, e);
             return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
         }
-        if (lockToken == null) {
+        if (lock == null) {
             try {
                 snapshot = waitForDiscoverPageSnapshot(cacheKey);
             } catch (Exception e) {
@@ -150,7 +142,7 @@ public class FeedServiceImpl implements FeedService {
             cacheDiscoverPageSnapshot(cacheKey, snapshot);
             return snapshot;
         } finally {
-            releaseRebuildLock(lockKey, lockToken);
+            releaseRebuildLock(lock, lockKey);
         }
     }
 
@@ -293,15 +285,23 @@ public class FeedServiceImpl implements FeedService {
         return snapshot != null && snapshot.getNotes() != null;
     }
 
-    private String tryAcquireRebuildLock(String lockKey, long expireSeconds) {
-        String token = UUID.randomUUID().toString();
-        Boolean acquired = stringRedisTemplate.opsForValue().setIfAbsent(lockKey, token, expireSeconds, TimeUnit.SECONDS);
-        return Boolean.TRUE.equals(acquired) ? token : null;
+    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
+        RLock lock = redissonClient.getLock(lockKey);
+        if (lock == null) {
+            return null;
+        }
+        try {
+            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
+        } catch (Exception e) {
+            throw new IllegalStateException("Redis 不可用，发现页重建锁获取失败, lockKey=" + lockKey, e);
+        }
     }
 
-    private void releaseRebuildLock(String lockKey, String token) {
+    private void releaseRebuildLock(RLock lock, String lockKey) {
         try {
-            stringRedisTemplate.execute(RELEASE_REBUILD_LOCK_SCRIPT, Collections.singletonList(lockKey), token);
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页重建锁释放失败，key={}", lockKey, e);
         }

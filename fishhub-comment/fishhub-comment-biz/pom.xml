@@ -57,6 +57,12 @@
             <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
         </dependency>
 
+        <!-- Redisson 分布式组件（布隆过滤器、分布式锁） -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-redisson</artifactId>
+        </dependency>
+
         <!-- Jackson 组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>
