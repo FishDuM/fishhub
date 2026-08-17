@@ -2,6 +2,7 @@ package hk.ljx.fishhub.user.relation.biz.consumer;
 
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
@@ -21,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -37,11 +39,13 @@ class FollowUnfollowConsumerTest {
     private RateLimiter rateLimiter;
     @Mock
     private RocketMQTemplate rocketMQTemplate;
+    @Mock
+    private RelationListCacheService relationListCacheService;
     @InjectMocks
     private FollowUnfollowConsumer consumer;
 
     @Test
-    void shouldSendCountEventWhenFollowCreatesRelation() {
+    void shouldMaintainFansAndSendCountEventWhenFollowCreatesRelation() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
             return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
@@ -55,13 +59,14 @@ class FollowUnfollowConsumerTest {
                         .createTime(LocalDateTime.now())
                         .build())));
 
-        // 关系新建立：发计数事件
+        // 反向粉丝 ZSet 增量维护 + 发计数事件
+        verify(relationListCacheService).addFan(anyLong(), anyLong(), any(LocalDateTime.class));
         verify(rocketMQTemplate).syncSendOrderly(
                 anyString(), any(org.springframework.messaging.Message.class), anyString());
     }
 
     @Test
-    void shouldNotSendCountEventWhenFollowAlreadyExists() {
+    void shouldNotMaintainFansWhenFollowAlreadyExists() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
             return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
@@ -76,12 +81,13 @@ class FollowUnfollowConsumerTest {
                         .createTime(LocalDateTime.now())
                         .build())));
 
-        // 状态未变化：不发计数事件
+        // 状态未变化：不发计数事件，也不动粉丝 ZSet
+        verify(relationListCacheService, never()).addFan(anyLong(), anyLong(), any(LocalDateTime.class));
         verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(org.springframework.messaging.Message.class), anyString());
     }
 
     @Test
-    void shouldSendCountEventWhenUnfollowRemovesRelation() {
+    void shouldMaintainFansAndSendCountEventWhenUnfollowRemovesRelation() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
             return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
@@ -95,12 +101,13 @@ class FollowUnfollowConsumerTest {
                         .createTime(LocalDateTime.now())
                         .build())));
 
+        verify(relationListCacheService).removeFan(anyLong(), anyLong());
         verify(rocketMQTemplate).syncSendOrderly(
                 anyString(), any(org.springframework.messaging.Message.class), anyString());
     }
 
     @Test
-    void shouldNotSendCountEventWhenUnfollowDidNotRemoveRelation() {
+    void shouldNotMaintainFansWhenUnfollowDidNotRemoveRelation() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
             return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
@@ -114,6 +121,7 @@ class FollowUnfollowConsumerTest {
                         .createTime(LocalDateTime.now())
                         .build())));
 
+        verify(relationListCacheService, never()).removeFan(anyLong(), anyLong());
         verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(org.springframework.messaging.Message.class), anyString());
     }
 

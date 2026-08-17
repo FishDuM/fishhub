@@ -2,6 +2,7 @@ package hk.ljx.fishhub.user.relation.biz.consumer;
 
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
@@ -25,7 +26,7 @@ import java.util.Objects;
 
 /**
  * 关注 / 取关消费者。
- * 幂等由唯一键 uk(user_id, following_user_id) 保证；关系写入成功后发统一计数事件。
+ * 幂等由唯一键 uk(user_id, following_user_id) 保证；关系写入成功后维护反向粉丝 ZSet 并发统一计数事件。
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW, // Group 组
@@ -43,6 +44,8 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     private RateLimiter rateLimiter;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
+    @Resource
+    private RelationListCacheService relationListCacheService;
 
     @Override
     public void onMessage(Message message) {
@@ -96,6 +99,8 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         }));
 
         if (applied) {
+            // 反向粉丝列表增量维护（尽力而为，失败由读侧重建兜底）
+            relationListCacheService.addFan(followUserId, userId, createTime);
             sendCountEvent(userId, followUserId, FollowUnfollowTypeEnum.FOLLOW.getCode(), createTime);
         }
         log.info("关注关系落库完成, userId={}, targetUserId={}, applied={}", userId, followUserId, applied);
@@ -127,6 +132,8 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
                 followingDOMapper.deleteByUserIdAndFollowingUserId(userId, unfollowUserId) == 1));
 
         if (applied) {
+            // 反向粉丝列表增量维护（尽力而为，失败由读侧重建兜底）
+            relationListCacheService.removeFan(unfollowUserId, userId);
             sendCountEvent(userId, unfollowUserId, FollowUnfollowTypeEnum.UNFOLLOW.getCode(), createTime);
         }
         log.info("取关关系落库完成, userId={}, targetUserId={}, applied={}", userId, unfollowUserId, applied);

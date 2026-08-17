@@ -2,6 +2,7 @@
 
 local key = KEYS[1] -- 操作的 Redis Key
 local unfollowUserId = ARGV[1] -- 关注的用户ID
+local expireSeconds = ARGV[2] -- 过期时间（秒），每次成功操作续期
 
 -- 使用 EXISTS 命令检查 ZSET 是否存在
 local exists = redis.call('EXISTS', key)
@@ -17,4 +18,6 @@ end
 
 -- ZREM 删除关注关系
 redis.call('ZREM', key, unfollowUserId)
+-- 续期
+redis.call('EXPIRE', key, expireSeconds)
 return 0

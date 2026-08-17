@@ -9,6 +9,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
@@ -63,6 +64,8 @@ public class RelationServiceImpl implements RelationService {
     private RocketMQTemplate rocketMQTemplate;
     @Resource
     private CountRpcService countRpcService;
+    @Resource
+    private RelationListCacheService relationListCacheService;
 
 
     /**
@@ -97,8 +100,11 @@ public class RelationServiceImpl implements RelationService {
         LocalDateTime now = LocalDateTime.now();
         // 当前时间转时间戳
         long timestamp = DateUtils.localDateTime2Timestamp(now);
+        // 缓存随机过期时间：保底7天+随机抖动，成功操作时续期
+        long expireSeconds = CacheTtl.days(7, 1);
 
-        Long result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
+        Long result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey),
+                String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
 
         // 校验 Lua 脚本执行结果
         checkLuaScriptResult(result);
@@ -108,21 +114,22 @@ public class RelationServiceImpl implements RelationService {
             // 从数据库查询当前用户的关注关系记录
             List<FollowingDO> followingDOS = followingDOMapper.selectByUserId(userId);
 
-            // 随机过期时间
-            // 保底1天+随机秒数
-            long expireSeconds = CacheTtl.days(1, 1);
-
             // 若记录为空，直接 ZADD 对象, 并设置过期时间
             if (CollUtil.isEmpty(followingDOS)) {
-                stringRedisTemplate.execute(FOLLOW_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
+                stringRedisTemplate.execute(FOLLOW_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey),
+                        String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
             } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
-                String[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
+                // 只缓存展示上限内的关注记录
+                List<FollowingDO> capped = followingDOS.size() > RelationListCacheService.FOLLOWING_LIST_MAX
+                        ? followingDOS.subList(0, RelationListCacheService.FOLLOWING_LIST_MAX) : followingDOS;
+                String[] luaArgs = buildLuaArgs(capped, expireSeconds);
 
                 // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
-                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), luaArgs);
+                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), (Object[]) luaArgs);
 
                 // 再次调用上面的 Lua 脚本：follow_check_and_add.lua , 将最新的关注关系添加进去
-                result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
+                result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey),
+                        String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
                 checkLuaScriptResult(result);
             }
         }
@@ -183,7 +190,8 @@ public class RelationServiceImpl implements RelationService {
         // 当前用户的关注列表 Redis Key
         String followingRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
 
-        Long result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
+        Long result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
+                String.valueOf(unfollowUserId), String.valueOf(CacheTtl.days(7, 1)));
 
         // 校验 Lua 脚本执行结果
         // 取关的用户不在关注列表中
@@ -196,20 +204,23 @@ public class RelationServiceImpl implements RelationService {
             List<FollowingDO> followingDOS = followingDOMapper.selectByUserId(userId);
 
             // 随机过期时间
-            // 保底1天+随机秒数
-            long expireSeconds = CacheTtl.days(1, 1);
+            // 保底7天+随机秒数
+            long expireSeconds = CacheTtl.days(7, 1);
 
             // 若记录为空，则表示还未关注任何人，提示还未关注对方
             if (CollUtil.isEmpty(followingDOS)) {
                 throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
             } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
-                String[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
+                List<FollowingDO> capped = followingDOS.size() > RelationListCacheService.FOLLOWING_LIST_MAX
+                        ? followingDOS.subList(0, RelationListCacheService.FOLLOWING_LIST_MAX) : followingDOS;
+                String[] luaArgs = buildLuaArgs(capped, expireSeconds);
 
                 // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
-                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), luaArgs);
+                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), (Object[]) luaArgs);
 
                 // 再次调用上面的 Lua 脚本：unfollow_check_and_delete.lua , 将取关的用户删除
-                result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
+                result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
+                        String.valueOf(unfollowUserId), String.valueOf(expireSeconds));
                 // 再次校验结果
                 if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
                     throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
@@ -251,36 +262,36 @@ public class RelationServiceImpl implements RelationService {
     @Override
     public RelationCursorPageResponse<FindFollowingUserRspVO> findFollowingList(FindFollowingListReqVO request) {
         long pageSize = 10L;
-        List<FollowingDO> records = followingDOMapper.selectCursorPageByUserId(
-                request.getUserId(), request.getCursor(), pageSize + 1);
-        if (records.isEmpty()) {
+        long offset = request.getCursor() == null ? 0L : request.getCursor();
+        List<String> memberIds = relationListCacheService.fetchFollowingMembers(request.getUserId(), offset, (int) pageSize + 1);
+        if (memberIds.isEmpty()) {
             return RelationCursorPageResponse.success(Collections.emptyList(), pageSize, null);
         }
-        boolean hasMore = records.size() > pageSize;
-        List<FollowingDO> pageRecords = hasMore ? records.subList(0, (int) pageSize) : records;
-        List<Long> userIds = pageRecords.stream().map(FollowingDO::getFollowingUserId).toList();
+        boolean hasMore = memberIds.size() > pageSize;
+        List<String> pageMembers = hasMore ? memberIds.subList(0, (int) pageSize) : memberIds;
+        List<Long> userIds = pageMembers.stream().map(Long::valueOf).toList();
         List<FindFollowingUserRspVO> users = rpcUserServiceAndDTO2VO(userIds, Collections.emptyList());
-        Long nextCursor = hasMore ? pageRecords.get(pageRecords.size() - 1).getId() : null;
+        Long nextCursor = hasMore ? offset + pageSize : null;
         return RelationCursorPageResponse.success(users, pageSize, nextCursor);
     }
 
     /**
-     * 查询关注列表
+     * 查询粉丝列表
      * @return
      */
     @Override
     public RelationCursorPageResponse<FindFansUserRspVO> findFansList(FindFansListReqVO request) {
         long pageSize = 10L;
-        List<FollowingDO> records = followingDOMapper.selectCursorPageByFollowingUserId(
-                request.getUserId(), request.getCursor(), pageSize + 1);
-        if (records.isEmpty()) {
+        long offset = request.getCursor() == null ? 0L : request.getCursor();
+        List<String> memberIds = relationListCacheService.fetchFansMembers(request.getUserId(), offset, (int) pageSize + 1);
+        if (memberIds.isEmpty()) {
             return RelationCursorPageResponse.success(Collections.emptyList(), pageSize, null);
         }
-        boolean hasMore = records.size() > pageSize;
-        List<FollowingDO> pageRecords = hasMore ? records.subList(0, (int) pageSize) : records;
-        List<Long> userIds = pageRecords.stream().map(FollowingDO::getUserId).toList();
+        boolean hasMore = memberIds.size() > pageSize;
+        List<String> pageMembers = hasMore ? memberIds.subList(0, (int) pageSize) : memberIds;
+        List<Long> userIds = pageMembers.stream().map(Long::valueOf).toList();
         List<FindFansUserRspVO> users = rpcUserServiceAndCountServiceAndDTO2VO(userIds, Collections.emptyList());
-        Long nextCursor = hasMore ? pageRecords.get(pageRecords.size() - 1).getId() : null;
+        Long nextCursor = hasMore ? offset + pageSize : null;
         return RelationCursorPageResponse.success(users, pageSize, nextCursor);
     }
 
@@ -345,10 +356,7 @@ public class RelationServiceImpl implements RelationService {
 
     private Set<Long> findCurrentUserFollowedIds(List<Long> candidateUserIds) {
         Long currentUserId = LoginUserContextHolder.getUserId();
-        if (Objects.isNull(currentUserId) || CollUtil.isEmpty(candidateUserIds)) {
-            return Collections.emptySet();
-        }
-        return new HashSet<>(followingDOMapper.selectFollowingUserIds(currentUserId, candidateUserIds));
+        return relationListCacheService.findFollowedUserIds(currentUserId, candidateUserIds);
     }
 
 
@@ -377,18 +385,7 @@ public class RelationServiceImpl implements RelationService {
      * @return
      */
     private static String[] buildLuaArgs(List<FollowingDO> followingDOS, long expireSeconds) {
-        int argsLength = followingDOS.size() * 2 + 1; // 每个关注关系有 2 个参数（score 和 value），再加一个过期时间
-        String[] luaArgs = new String[argsLength];
-
-        int i = 0;
-        for (FollowingDO following : followingDOS) {
-            luaArgs[i] = String.valueOf(DateUtils.localDateTime2Timestamp(following.getCreateTime())); // 关注时间作为 score
-            luaArgs[i + 1] = String.valueOf(following.getFollowingUserId());          // 关注的用户 ID 作为 ZSet value
-            i += 2;
-        }
-
-        luaArgs[argsLength - 1] = String.valueOf(expireSeconds); // 最后一个参数是 ZSet 的过期时间
-        return luaArgs;
+        return RelationListCacheService.buildMemberArgs(followingDOS, FollowingDO::getFollowingUserId, expireSeconds);
     }
 
     @Override

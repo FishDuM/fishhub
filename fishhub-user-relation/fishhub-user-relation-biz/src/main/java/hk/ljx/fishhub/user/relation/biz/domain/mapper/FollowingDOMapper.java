@@ -38,5 +38,4 @@ public interface FollowingDOMapper {
     int updateByPrimaryKeySelective(FollowingDO record);
 
     int updateByPrimaryKey(FollowingDO record);
-
 }
