@@ -5,10 +5,12 @@ import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.fishhub.auth.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
+import hk.ljx.fishhub.user.dto.req.FindUserRolePermissionReqDTO;
 import hk.ljx.fishhub.user.dto.req.ResolveLoginableUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
+import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
@@ -54,6 +56,23 @@ public class UserRpcService {
             return null;
         }
 
+        return response.getData();
+    }
+
+    /**
+     * 查询用户角色与权限
+     *
+     * @param userId
+     * @return
+     */
+    public UserRolePermissionRspDTO findRoleAndPermissions(Long userId) {
+        FindUserRolePermissionReqDTO request = new FindUserRolePermissionReqDTO();
+        request.setUserId(userId);
+
+        Response<UserRolePermissionRspDTO> response = userFeignApi.findRoleAndPermissions(request);
+        if (response == null || !response.isSuccess()) {
+            return null;
+        }
         return response.getData();
     }
 

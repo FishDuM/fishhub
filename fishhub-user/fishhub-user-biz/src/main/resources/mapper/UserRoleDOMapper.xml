@@ -23,6 +23,11 @@
     from t_user_role_rel
     where is_deleted = 0
   </select>
+  <select id="selectEnabledByUserId" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select <include refid="Base_Column_List" />
+    from t_user_role_rel
+    where user_id = #{userId,jdbcType=BIGINT} and is_deleted = 0
+  </select>
   <insert id="insertDefaultRoleForUsersWithoutRole">
     insert into t_user_role_rel (user_id, role_id, create_time, update_time, is_deleted)
     select u.id, #{roleId}, now(), now(), b'0'

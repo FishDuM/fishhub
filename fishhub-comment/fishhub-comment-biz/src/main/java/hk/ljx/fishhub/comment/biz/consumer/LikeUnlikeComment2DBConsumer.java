@@ -166,7 +166,11 @@ public class LikeUnlikeComment2DBConsumer {
                 for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
                     CommentDO comment = comments.get(operation.getCommentId());
                     if (comment == null) {
-                        // 评论已删除时无需落关系；清空布隆缓存，使下次刷新以数据库状态为准。
+                        if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())) {
+                            stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
+                            throw new IllegalStateException("点赞落库时评论不存在(可能尚未提交)，等待重试, commentId=" + operation.getCommentId());
+                        }
+                        // UNLIKE：评论不存在时本就是无操作，清布隆后丢弃即可
                         stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
                         continue;
                     }

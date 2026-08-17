@@ -17,6 +17,8 @@ public interface UserRoleDOMapper {
 
     List<UserRoleDO> selectEnabledList();
 
+    List<UserRoleDO> selectEnabledByUserId(Long userId);
+
     int updateByPrimaryKeySelective(UserRoleDO record);
 
     int updateByPrimaryKey(UserRoleDO record);

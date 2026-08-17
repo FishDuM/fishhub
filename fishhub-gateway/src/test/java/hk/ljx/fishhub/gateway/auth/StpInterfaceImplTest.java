@@ -1,43 +1,42 @@
 package hk.ljx.fishhub.gateway.auth;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import hk.ljx.fishhub.gateway.constant.RedisKeyConstants;
-import org.junit.jupiter.api.BeforeEach;
+import cn.dev33.satoken.session.SaSession;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 class StpInterfaceImplTest {
 
-    @Mock
-    private StringRedisTemplate stringRedisTemplate;
-    @Mock
-    private ValueOperations<String, String> valueOperations;
+    private final Map<Object, SaSession> sessions = new HashMap<>();
 
-    private StpInterfaceImpl stpInterface;
+    private final StpInterfaceImpl stpInterface = new StpInterfaceImpl() {
+        @Override
+        protected SaSession loadSession(Object loginId) {
+            return sessions.get(loginId);
+        }
+    };
 
-    @BeforeEach
-    void setUp() {
-        stpInterface = new StpInterfaceImpl();
-        ReflectionTestUtils.setField(stpInterface, "stringRedisTemplate", stringRedisTemplate);
-        ReflectionTestUtils.setField(stpInterface, "objectMapper", new ObjectMapper());
+    @Test
+    void shouldReadRolesAndPermissionsFromSession() {
+        SaSession session = new SaSession();
+        session.setId("test-session-100");
+        session.set(SaSession.ROLE_LIST, List.of("common"));
+        session.set(SaSession.PERMISSION_LIST, List.of("note:publish"));
+        sessions.put(100L, session);
+
+        assertEquals(List.of("common"), stpInterface.getRoleList(100L, "login"));
+        assertEquals(List.of("note:publish"), stpInterface.getPermissionList(100L, "login"));
     }
 
     @Test
-    void shouldReadRolesWrittenByRegistrationAsJsonArray() {
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildUserRoleKey(100L))).thenReturn("[\"common\"]");
+    void shouldReturnEmptyWhenSessionHasNoRoleData() {
+        sessions.put(100L, new SaSession());
 
-        assertEquals(List.of("common"), stpInterface.getRoleList(100L, "login"));
+        assertEquals(List.of(), stpInterface.getRoleList(100L, "login"));
+        assertEquals(List.of(), stpInterface.getPermissionList(100L, "login"));
     }
 }

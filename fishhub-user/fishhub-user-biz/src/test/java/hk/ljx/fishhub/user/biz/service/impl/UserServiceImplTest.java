@@ -4,11 +4,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
-import hk.ljx.fishhub.user.biz.domain.dataobject.RoleDO;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
-import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.biz.constant.RoleConstants;
-import hk.ljx.fishhub.user.biz.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
@@ -27,9 +23,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.util.Arrays;
 import java.util.List;
 
@@ -39,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -64,9 +56,6 @@ class UserServiceImplTest {
 
     @Mock
     private UserRoleDOMapper userRoleDOMapper;
-
-    @Mock
-    private RoleDOMapper roleDOMapper;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -159,7 +148,7 @@ class UserServiceImplTest {
     }
 
     @Test
-    void resolveOrRegisterShouldWriteRolesAsGatewayReadableJson() throws Exception {
+    void resolveOrRegisterShouldGrantDefaultRole() {
         ResolveLoginableUserReqDTO request = ResolveLoginableUserReqDTO.builder()
                 .phone("13800138000")
                 .build();
@@ -167,15 +156,10 @@ class UserServiceImplTest {
         when(distributedIdGeneratorRpcService.getFishhubId()).thenReturn("fish100");
         when(distributedIdGeneratorRpcService.getUserId()).thenReturn("100");
         when(userDOMapper.insertIfAbsent(any())).thenReturn(1);
-        when(roleDOMapper.selectByPrimaryKey(RoleConstants.COMMON_USER_ROLE_ID))
-                .thenReturn(RoleDO.builder().roleKey("common").build());
-        when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOperations);
 
         Response<ResolveLoginableUserRspDTO> response = userService.resolveOrRegisterLoginableUser(request);
 
         assertTrue(response.getData().isLoginable());
-        String roleJson = "[\"common\"]";
-        verify(stringValueOperations).set(eq(RedisKeyConstants.buildUserRoleKey(100L)), eq(roleJson));
-        assertEquals(List.of("common"), new ObjectMapper().readValue(roleJson, new TypeReference<List<String>>() {}));
+        verify(userRoleDOMapper).insert(any());
     }
 }

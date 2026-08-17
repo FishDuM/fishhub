@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.auth.service.impl;
 
+import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.dev33.satoken.stp.StpUtil;
 import com.google.common.base.Preconditions;
@@ -15,6 +16,7 @@ import hk.ljx.fishhub.auth.rpc.UserRpcService;
 import hk.ljx.fishhub.auth.service.AuthService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
+import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -105,6 +107,17 @@ public class AuthServiceImpl implements AuthService {
         }
 
         StpUtil.login(userId);
+
+        // 登录时装配角色权限并写入会话，网关鉴权从会话读取，不再维护独立的角色权限缓存。
+        UserRolePermissionRspDTO rolePermission = userRpcService.findRoleAndPermissions(userId);
+        if (rolePermission == null) {
+            log.warn("获取用户角色权限失败，本次登录将无角色权限，userId={}", userId);
+        }
+        SaSession session = StpUtil.getSession();
+        session.set(SaSession.ROLE_LIST, rolePermission == null || rolePermission.getRoles() == null
+                ? Collections.emptyList() : rolePermission.getRoles());
+        session.set(SaSession.PERMISSION_LIST, rolePermission == null || rolePermission.getPermissions() == null
+                ? Collections.emptyList() : rolePermission.getPermissions());
 
         SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
         return Response.success(tokenInfo.tokenValue);

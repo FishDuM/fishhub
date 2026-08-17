@@ -305,15 +305,6 @@ public class UserServiceImpl implements UserService {
                 .build();
         userRoleDOMapper.insert(userRoleDO);
 
-        RoleDO roleDO = roleDOMapper.selectByPrimaryKey(RoleConstants.COMMON_USER_ROLE_ID);
-
-        // 将该用户的角色 ID 存入 Redis 中
-        List<String> roles = new ArrayList<>(1);
-        roles.add(roleDO.getRoleKey());
-
-        String userRolesKey = RedisKeyConstants.buildUserRoleKey(userId);
-        stringRedisTemplate.opsForValue().set(userRolesKey, JsonUtils.toJsonString(roles));
-
         return resolvedLoginableUserResponse(userDO);
     }
 

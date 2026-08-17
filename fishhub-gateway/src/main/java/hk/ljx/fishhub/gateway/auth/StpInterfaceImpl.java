@@ -1,108 +1,44 @@
 package hk.ljx.fishhub.gateway.auth;
 
+import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.stp.StpInterface;
-import cn.hutool.core.collection.CollUtil;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.Lists;
-import hk.ljx.fishhub.gateway.constant.RedisKeyConstants;
-import jakarta.annotation.Resource;
+import cn.dev33.satoken.stp.StpUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
 
-
+/**
+ * 角色/权限读取：数据在登录时由 auth 服务写入 sa-token 会话（会话存 Redis、带 TTL），
+ * 这里只做会话读取，无独立角色权限缓存层。
+ */
 @Component
 @Slf4j
 public class StpInterfaceImpl implements StpInterface {
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private ObjectMapper objectMapper;
-
-    /**
-     * 获取用户权限
-     *
-     * @param loginId
-     * @param loginType
-     * @return
-     */
     @Override
     public List<String> getPermissionList(Object loginId, String loginType) {
-        log.info("## 获取用户权限列表, loginId: {}", loginId);
+        return readSessionList(loginId, SaSession.PERMISSION_LIST);
+    }
 
-        // 构建 用户-角色 Redis Key
-        String userRolesKey = RedisKeyConstants.buildUserRoleKey(Long.valueOf(loginId.toString()));
+    @Override
+    public List<String> getRoleList(Object loginId, String loginType) {
+        return readSessionList(loginId, SaSession.ROLE_LIST);
+    }
 
-        // 根据用户 ID ，从 Redis 中获取该用户的角色集合
-        String useRolesValue = stringRedisTemplate.opsForValue().get(userRolesKey);
-
-        List<String> userRoleKeys = parseStringList(useRolesValue, userRolesKey);
-
-        if (CollUtil.isNotEmpty(userRoleKeys)) {
-            // 查询这些角色对应的权限
-            // 构建 角色-权限 Redis Key 集合
-            List<String> rolePermissionsKeys = userRoleKeys.stream()
-                    .map(RedisKeyConstants::buildRolePermissionsKey)
-                    .toList();
-
-            // 通过 key 集合批量查询权限，提升查询性能。
-            List<String> rolePermissionsValues = stringRedisTemplate.opsForValue().multiGet(rolePermissionsKeys);
-
-            if (CollUtil.isNotEmpty(rolePermissionsValues)) {
-                List<String> permissions = Lists.newArrayList();
-
-                // 遍历所有角色的权限集合，统一添加到 permissions 集合中
-                rolePermissionsValues.forEach(jsonValue -> {
-                    permissions.addAll(parseStringList(jsonValue, "role-permissions"));
-                });
-
-                // 返回此用户所拥有的权限
-                return permissions;
-            }
+    private List<String> readSessionList(Object loginId, String key) {
+        Object value = loadSession(loginId).get(key);
+        if (!(value instanceof List<?> list)) {
+            return Collections.emptyList();
         }
-        return Collections.emptyList();
+        return list.stream().map(String::valueOf).toList();
     }
 
     /**
-     * 获取用户角色
-     *
-     * @param loginId
-     * @param loginType
-     * @return
+     * 会话获取钩子，便于测试替换
      */
-    @Override
-    public List<String> getRoleList(Object loginId, String loginType) {
-        log.info("## 获取用户角色列表, loginId: {}", loginId);
-
-        // 构建 用户-角色 Redis Key
-        String userRolesKey = RedisKeyConstants.buildUserRoleKey(Long.valueOf(loginId.toString()));
-
-        // 根据用户 ID ，从 Redis 中获取该用户的角色集合
-        String useRolesValue = stringRedisTemplate.opsForValue().get(userRolesKey);
-
-        return parseStringList(useRolesValue, userRolesKey);
+    protected SaSession loadSession(Object loginId) {
+        return StpUtil.getSessionByLoginId(loginId);
     }
-
-    private List<String> parseStringList(String jsonValue, String key) {
-        if (StringUtils.isBlank(jsonValue)) {
-            return Collections.emptyList();
-        }
-        try {
-            List<String> values = objectMapper.readValue(jsonValue, new TypeReference<>() {});
-            return values == null ? Collections.emptyList() : values;
-        } catch (JsonProcessingException e) {
-            log.error("==> Redis 权限数据解析失败, key: {}", key, e);
-            return Collections.emptyList();
-        }
-    }
-
 }
-
-
