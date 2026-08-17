@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.note.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheTtl;
+
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.RandomUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.collect.Lists;
@@ -72,6 +73,18 @@ import java.util.stream.Collectors;
 public class NoteServiceImpl implements NoteService {
 
     private static final long ZSET_NOT_INITIALIZED = -1L;
+
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT = luaScript("/lua/note_like_check_and_update_zset.lua");
+    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT = luaScript("/lua/batch_add_note_like_zset_and_expire.lua");
+    private static final DefaultRedisScript<Long> NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT = luaScript("/lua/note_collect_check_and_update_zset.lua");
+    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT = luaScript("/lua/batch_add_note_collect_zset_and_expire.lua");
 
     @Resource
     private NoteDOMapper noteDOMapper;
@@ -408,7 +421,7 @@ public class NoteServiceImpl implements NoteService {
             threadPoolTaskExecutor.execute(() -> {
                 // 防止缓存穿透，将空数据存入 Redis 缓存 (过期时间不宜设置过长)
                 // 保底1分钟 + 随机秒数
-                long expireSeconds = 60 + RandomUtil.randomInt(60);
+                long expireSeconds = CacheTtl.minutes(1, 1);
                 stringRedisTemplate.opsForValue().set(noteDetailRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
             });
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
@@ -473,10 +486,14 @@ public class NoteServiceImpl implements NoteService {
 
         // 异步线程中将笔记详情存入 Redis
         threadPoolTaskExecutor.submit(() -> {
-            String noteDetailJson1 = JsonUtils.toJsonString(findNoteDetailRspVO);
-            // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
-            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-            stringRedisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
+            try {
+                String noteDetailJson1 = JsonUtils.toJsonString(findNoteDetailRspVO);
+                // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
+                long expireSeconds = CacheTtl.days(1, 1);
+                stringRedisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，笔记详情缓存写入失败，响应将继续返回，noteId={}", noteId, e);
+            }
         });
 
         fillNoteCounts(findNoteDetailRspVO);
@@ -854,37 +871,29 @@ public class NoteServiceImpl implements NoteService {
         String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
 
         LocalDateTime now = LocalDateTime.now();
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_like_check_and_update_zset.lua")));
-        script.setResultType(Long.class);
-
-        Long result = stringRedisTemplate.execute(script, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
+        Long result = stringRedisTemplate.execute(NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
 
         // 若 ZSet 列表不存在，需要重新初始化
         if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
             List<NoteLikeDO> noteLikeDOS = noteLikeDOMapper.selectLikedByUserIdAndLimit(userId, 100);
 
-            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-
-            DefaultRedisScript<Long> script2 = new DefaultRedisScript<>();
-            script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/batch_add_note_like_zset_and_expire.lua")));
-            script2.setResultType(Long.class);
+            long expireSeconds = CacheTtl.days(1, 1);
 
             // 若数据库中存在点赞记录，需要批量同步
             if (CollUtil.isNotEmpty(noteLikeDOS)) {
                 String[] luaArgs = buildNoteLikeZSetLuaArgs(noteLikeDOS, expireSeconds);
 
-                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteLikeZSetKey), luaArgs);
+                stringRedisTemplate.execute(BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), luaArgs);
 
                 // 再次调用 note_like_check_and_update_zset.lua 脚本，将点赞的笔记添加到 zset 中
-                stringRedisTemplate.execute(script, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
+                stringRedisTemplate.execute(NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
             } else { // 若数据库中，无点赞的笔记记录，则直接将当前点赞的笔记 ID 添加到 ZSet 中，随机过期时间
                 List<String> luaArgs = Lists.newArrayList();
                 luaArgs.add(String.valueOf(DateUtils.localDateTime2Timestamp(LocalDateTime.now()))); // score
                 luaArgs.add(String.valueOf(noteId)); // 当前点赞的笔记 ID
                 luaArgs.add(String.valueOf(expireSeconds)); // 随机过期时间
 
-                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteLikeZSetKey), luaArgs.toArray());
+                stringRedisTemplate.execute(BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), luaArgs.toArray());
             }
         }
 
@@ -975,37 +984,29 @@ public class NoteServiceImpl implements NoteService {
         String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
 
         LocalDateTime now = LocalDateTime.now();
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/note_collect_check_and_update_zset.lua")));
-        script.setResultType(Long.class);
-
-        Long result = stringRedisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
+        Long result = stringRedisTemplate.execute(NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
 
         // 若 ZSet 列表不存在，需要重新初始化
         if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
             List<NoteCollectionDO> noteCollectionDOS = noteCollectionDOMapper.selectCollectedByUserIdAndLimit(userId, 300);
 
-            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-
-            DefaultRedisScript<Long> script2 = new DefaultRedisScript<>();
-            script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/batch_add_note_collect_zset_and_expire.lua")));
-            script2.setResultType(Long.class);
+            long expireSeconds = CacheTtl.days(1, 1);
 
             // 若数据库中存在已收藏笔记记录，需要批量同步
             if (CollUtil.isNotEmpty(noteCollectionDOS)) {
                 String[] luaArgs = buildNoteCollectZSetLuaArgs(noteCollectionDOS, expireSeconds);
 
-                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs);
+                stringRedisTemplate.execute(BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), luaArgs);
 
                 // 再次调用 note_collect_check_and_update_zset.lua 脚本，将当前收藏的笔记添加到 zset 中
-                stringRedisTemplate.execute(script, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
+                stringRedisTemplate.execute(NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
             } else { // 若数据库中，未收藏任何笔记，则直接将当前收藏的笔记 ID 添加到 ZSet 中，随机过期时间
                 List<String> luaArgs = Lists.newArrayList();
                 luaArgs.add(String.valueOf(DateUtils.localDateTime2Timestamp(LocalDateTime.now()))); // score 收藏时间
                 luaArgs.add(String.valueOf(noteId)); // 当前收藏的笔记 ID
                 luaArgs.add(String.valueOf(expireSeconds)); // 随机过期时间
 
-                stringRedisTemplate.execute(script2, Collections.singletonList(userNoteCollectZSetKey), luaArgs.toArray());
+                stringRedisTemplate.execute(BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), luaArgs.toArray());
             }
         }
 
@@ -1312,10 +1313,14 @@ public class NoteServiceImpl implements NoteService {
         if (CollUtil.isEmpty(noteVOS)) return;
         // 异步同步缓存
         threadPoolTaskExecutor.submit(() -> {
-            // 过期时间，一小时以内（保底30分钟+随机秒数）
-            long expireSeconds = 60*30 + RandomUtil.randomInt(60*30);
-            stringRedisTemplate.opsForValue()
-                    .set(publishedNoteListRedisKey, JsonUtils.toJsonString(noteVOS), expireSeconds, TimeUnit.SECONDS);
+            try {
+                // 过期时间，一小时以内（保底30分钟+随机秒数）
+                long expireSeconds = CacheTtl.minutes(30, 30);
+                stringRedisTemplate.opsForValue()
+                        .set(publishedNoteListRedisKey, JsonUtils.toJsonString(noteVOS), expireSeconds, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，已发布笔记列表缓存写入失败", e);
+            }
         });
     }
 

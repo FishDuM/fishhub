@@ -87,11 +87,15 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
 
         // 异步将 first_reply_comment_id 不为 0 的一级评论 ID 同步到 Redis
         threadPoolTaskExecutor.submit(() -> {
-            List<Long> needSyncCommentIds = commentDOS.stream()
-                    .filter(commentDO -> commentDO.getFirstReplyCommentId() != 0)
-                    .map(CommentDO::getId)
-                    .toList();
-            sync2Redis(needSyncCommentIds);
+            try {
+                List<Long> needSyncCommentIds = commentDOS.stream()
+                        .filter(commentDO -> commentDO.getFirstReplyCommentId() != 0)
+                        .map(CommentDO::getId)
+                        .toList();
+                sync2Redis(needSyncCommentIds);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，评论首回复缓存同步失败", e);
+            }
         });
 
         // first_reply_comment_id 仍为 0 的，回填最早回复
@@ -103,7 +107,13 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
                     if (Objects.nonNull(earliestCommentDO)) {
                         commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
                                 earliestCommentDO.getId(), needUpdateCommentId);
-                        threadPoolTaskExecutor.submit(() -> sync2Redis(Lists.newArrayList(needUpdateCommentId)));
+                        threadPoolTaskExecutor.submit(() -> {
+                            try {
+                                sync2Redis(Lists.newArrayList(needUpdateCommentId));
+                            } catch (Exception e) {
+                                log.warn("Redis 不可用，评论首回复缓存同步失败", e);
+                            }
+                        });
                     }
                 });
     }

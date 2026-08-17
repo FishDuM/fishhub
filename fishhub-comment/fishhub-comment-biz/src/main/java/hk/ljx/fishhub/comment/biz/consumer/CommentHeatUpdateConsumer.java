@@ -36,6 +36,15 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
 
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> UPDATE_HOT_COMMENTS_SCRIPT = luaScript("/lua/update_hot_comments.lua");
+
     @Resource
     private CommentDOMapper commentDOMapper;
     @Resource
@@ -94,16 +103,12 @@ public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
 
         noteIdAndBOListMap.forEach((noteId, commentHeatBOS) -> {
             String key = RedisKeyConstants.buildCommentListKey(noteId);
-            DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-            script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/update_hot_comments.lua")));
-            script.setResultType(Long.class);
-
             List<String> args = Lists.newArrayList();
             commentHeatBOS.forEach(commentHeatBO -> {
                 args.add(String.valueOf(commentHeatBO.getId()));
                 args.add(String.valueOf(commentHeatBO.getHeat()));
             });
-            stringRedisTemplate.execute(script, Collections.singletonList(key), args.toArray());
+            stringRedisTemplate.execute(UPDATE_HOT_COMMENTS_SCRIPT, Collections.singletonList(key), args.toArray());
         });
     }
 }

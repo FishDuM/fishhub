@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.comment.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheTtl;
+
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.RandomUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.base.Preconditions;
@@ -99,12 +100,19 @@ public class CommentServiceImpl implements CommentService {
     private static final int CACHE_REBUILD_RETRY_TIMES = 3;
     private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
     private static final long ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS = 2L;
-    private static final String COMPARE_AND_DELETE_LOCK_SCRIPT = """
-            if redis.call('get', KEYS[1]) == ARGV[1] then
-                return redis.call('del', KEYS[1])
-            end
-            return 0
-            """;
+
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> BLOOM_COMMENT_LIKE_CHECK_SCRIPT = luaScript("/lua/bloom_comment_like_check.lua");
+    private static final DefaultRedisScript<Long> BLOOM_ADD_COMMENT_LIKE_AND_EXPIRE_SCRIPT = luaScript("/lua/bloom_add_comment_like_and_expire.lua");
+    private static final DefaultRedisScript<Long> BLOOM_COMMENT_UNLIKE_CHECK_SCRIPT = luaScript("/lua/bloom_comment_unlike_check.lua");
+    private static final DefaultRedisScript<Long> BLOOM_BATCH_ADD_COMMENT_LIKE_AND_EXPIRE_SCRIPT = luaScript("/lua/bloom_batch_add_comment_like_and_expire.lua");
+    private static final DefaultRedisScript<Long> RELEASE_REBUILD_LOCK_SCRIPT = luaScript("/lua/compare_and_delete.lua");
 
     /**
      * 发布评论
@@ -442,11 +450,7 @@ public class CommentServiceImpl implements CommentService {
         Long userId = LoginUserContextHolder.getUserId();
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_comment_like_check.lua")));
-        script.setResultType(Long.class);
-
-        Long result = stringRedisTemplate.execute(script, Collections.singletonList(bloomUserCommentLikeListKey), String.valueOf(commentId));
+        Long result = stringRedisTemplate.execute(BLOOM_COMMENT_LIKE_CHECK_SCRIPT, Collections.singletonList(bloomUserCommentLikeListKey), String.valueOf(commentId));
 
         CommentLikeLuaResultEnum commentLikeLuaResultEnum = CommentLikeLuaResultEnum.valueOf(result);
 
@@ -460,7 +464,7 @@ public class CommentServiceImpl implements CommentService {
                 // 从数据库中校验评论是否被点赞，并异步初始化布隆过滤器，设置过期时间
                 int count = commentLikeDOMapper.selectCountByUserIdAndCommentId(userId, commentId);
 
-                long expireSeconds = 60*60 + RandomUtil.randomInt(60*60);
+                long expireSeconds = CacheTtl.hours(1, 1);
 
                 // 目标评论已经被点赞
                 if (count > 0) {
@@ -473,9 +477,7 @@ public class CommentServiceImpl implements CommentService {
                 // 若目标评论未被点赞，查询当前用户是否有点赞其他评论，有则同步初始化布隆过滤器
                 batchAddCommentLike2BloomAndExpire(userId, expireSeconds, bloomUserCommentLikeListKey);
 
-                script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_add_comment_like_and_expire.lua")));
-                script.setResultType(Long.class);
-                stringRedisTemplate.execute(script, Collections.singletonList(bloomUserCommentLikeListKey), String.valueOf(commentId), String.valueOf(expireSeconds));
+                stringRedisTemplate.execute(BLOOM_ADD_COMMENT_LIKE_AND_EXPIRE_SCRIPT, Collections.singletonList(bloomUserCommentLikeListKey), String.valueOf(commentId), String.valueOf(expireSeconds));
             }
             // 目标评论已经被点赞 (可能存在误判，需要进一步确认)
             case COMMENT_LIKED -> {
@@ -525,11 +527,7 @@ public class CommentServiceImpl implements CommentService {
         Long userId = LoginUserContextHolder.getUserId();
         String bloomUserCommentLikeListKey = RedisKeyConstants.buildBloomCommentLikesKey(userId);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_comment_unlike_check.lua")));
-        script.setResultType(Long.class);
-
-        Long result = stringRedisTemplate.execute(script, Collections.singletonList(bloomUserCommentLikeListKey), String.valueOf(commentId));
+        Long result = stringRedisTemplate.execute(BLOOM_COMMENT_UNLIKE_CHECK_SCRIPT, Collections.singletonList(bloomUserCommentLikeListKey), String.valueOf(commentId));
 
         CommentUnlikeLuaResultEnum commentUnlikeLuaResultEnum = CommentUnlikeLuaResultEnum.valueOf(result);
 
@@ -542,7 +540,7 @@ public class CommentServiceImpl implements CommentService {
             case NOT_EXIST -> {
                 // 异步初始化布隆过滤器
                 threadPoolTaskExecutor.submit(() -> {
-                    long expireSeconds = 60*60 + RandomUtil.randomInt(60*60);
+                    long expireSeconds = CacheTtl.hours(1, 1);
                     batchAddCommentLike2BloomAndExpire(userId, expireSeconds, bloomUserCommentLikeListKey);
                 });
 
@@ -653,16 +651,11 @@ public class CommentServiceImpl implements CommentService {
 
             // 若不为空，批量添加到布隆过滤器中
             if (CollUtil.isNotEmpty(commentLikeDOS)) {
-                DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-                // Lua 脚本路径
-                script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/bloom_batch_add_comment_like_and_expire.lua")));
-                script.setResultType(Long.class);
-
                 List<String> luaArgs = Lists.newArrayList();
                 commentLikeDOS.forEach(commentLikeDO ->
                         luaArgs.add(String.valueOf(commentLikeDO.getCommentId()))); // 将每个点赞的评论 ID 传入
                 luaArgs.add(String.valueOf(expireSeconds));  // 最后一个参数是过期时间（秒）
-                stringRedisTemplate.execute(script, Collections.singletonList(bloomUserCommentLikeListKey), luaArgs.toArray());
+                stringRedisTemplate.execute(BLOOM_BATCH_ADD_COMMENT_LIKE_AND_EXPIRE_SCRIPT, Collections.singletonList(bloomUserCommentLikeListKey), luaArgs.toArray());
             }
         } catch (Exception e) {
             log.error("## 异步初始化【评论点赞】布隆过滤器异常: ", e);
@@ -807,7 +800,7 @@ public class CommentServiceImpl implements CommentService {
                             operations.opsForHash().putAll(key, fieldsMap);
 
                             // 设置随机过期时间 (5小时以内)
-                            long expireTime = RandomUtil.randomInt(5 * 60 * 60);
+                            long expireTime = CacheTtl.hours(0, 5);
                             operations.expire(key, expireTime, TimeUnit.SECONDS);
                         });
                         return null;
@@ -960,7 +953,7 @@ public class CommentServiceImpl implements CommentService {
                 }
 
                 // 设置随机过期时间，（保底1小时 + 随机时间），单位：秒
-                int randomExpiryTime = 60*60 + RandomUtil.randomInt(4 * 60 * 60); // 5小时以内
+                long randomExpiryTime = CacheTtl.hours(1, 4); // 5小时以内
                 stringRedisTemplate.expire(childCommentZSetKey, randomExpiryTime, TimeUnit.SECONDS);
                 return null; // 无返回值
             });
@@ -984,7 +977,7 @@ public class CommentServiceImpl implements CommentService {
                         .put(countCommentKey, RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(countRecord.getLikeTotal()));
 
                 // 随机过期时间 (保底1小时 + 随机时间)，单位：秒
-                long expireTime = 60*60 + RandomUtil.randomInt(4*60*60);
+                long expireTime = CacheTtl.hours(1, 4);
                 operations.expire(countCommentKey, expireTime, TimeUnit.SECONDS);
                 return null;
             }
@@ -1070,7 +1063,7 @@ public class CommentServiceImpl implements CommentService {
     }
 
     private void cacheOneLevelCommentTotal(String key, long total) {
-        long expireSeconds = 60 * 10 + RandomUtil.randomInt(60 * 5);
+        long expireSeconds = CacheTtl.minutes(10, 5);
         try {
             stringRedisTemplate.opsForValue().set(key, String.valueOf(total), expireSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
@@ -1097,8 +1090,7 @@ public class CommentServiceImpl implements CommentService {
 
     private void releaseRebuildLock(String lockKey, String token) {
         try {
-            DefaultRedisScript<Long> script = new DefaultRedisScript<>(COMPARE_AND_DELETE_LOCK_SCRIPT, Long.class);
-            stringRedisTemplate.execute(script, Collections.singletonList(lockKey), token);
+            stringRedisTemplate.execute(RELEASE_REBUILD_LOCK_SCRIPT, Collections.singletonList(lockKey), token);
         } catch (Exception e) {
             log.warn("Redis 不可用，一级评论总数重建锁释放失败，key={}", lockKey, e);
         }
@@ -1347,7 +1339,7 @@ public class CommentServiceImpl implements CommentService {
                 }
 
                 // 设置随机过期时间，单位：秒
-                int randomExpiryTime = RandomUtil.randomInt(5 * 60 * 60); // 5小时以内
+                long randomExpiryTime = CacheTtl.hours(0, 5); // 5小时以内
                 stringRedisTemplate.expire(key, randomExpiryTime, TimeUnit.SECONDS);
                 return null; // 无返回值
             });

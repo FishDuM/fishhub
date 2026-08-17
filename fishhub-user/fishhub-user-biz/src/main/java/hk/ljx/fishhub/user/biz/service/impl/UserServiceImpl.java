@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.user.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheTtl;
+
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.RandomUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.base.Preconditions;
@@ -423,7 +424,7 @@ public class UserServiceImpl implements UserService {
             threadPoolTaskExecutor.execute(() -> {
                 // 防止缓存穿透，将空数据存入 Redis 缓存 (过期时间不宜设置过长)
                 // 保底1分钟 + 随机秒数
-                long expireSeconds = 60 + RandomUtil.randomInt(60);
+                long expireSeconds = CacheTtl.minutes(1, 1);
                 stringRedisTemplate.opsForValue().set(userInfoRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
             });
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
@@ -438,10 +439,14 @@ public class UserServiceImpl implements UserService {
 
         // 异步将用户信息存入 Redis 缓存，提升响应速度
         threadPoolTaskExecutor.submit(() -> {
-            // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
-            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-            stringRedisTemplate.opsForValue()
-                    .set(userInfoRedisKey, JsonUtils.toJsonString(findUserByIdRspDTO), expireSeconds, TimeUnit.SECONDS);
+            try {
+                // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
+                long expireSeconds = CacheTtl.days(1, 1);
+                stringRedisTemplate.opsForValue()
+                        .set(userInfoRedisKey, JsonUtils.toJsonString(findUserByIdRspDTO), expireSeconds, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，用户信息缓存写入失败，响应将继续返回", e);
+            }
         });
 
         return Response.success(findUserByIdRspDTO);
@@ -534,31 +539,35 @@ public class UserServiceImpl implements UserService {
             List<FindUserByIdRspDTO> finalFindUserByIdRspDTOS = findUserByIdRspDTOS2;
             List<UserDO> finalUserDOS = userDOS;
             threadPoolTaskExecutor.submit(() -> {
-                // DTO 集合转 Map
-                Map<Long, FindUserByIdRspDTO> map = finalFindUserByIdRspDTOS.stream()
-                        .collect(Collectors.toMap(FindUserByIdRspDTO::getId, p -> p));
+                try {
+                    // DTO 集合转 Map
+                    Map<Long, FindUserByIdRspDTO> map = finalFindUserByIdRspDTOS.stream()
+                            .collect(Collectors.toMap(FindUserByIdRspDTO::getId, p -> p));
 
-                // 执行 pipeline 操作
-                stringRedisTemplate.executePipelined(new SessionCallback<>() {
-                    @Override
-                    public Object execute(RedisOperations operations) {
-                        for (UserDO userDO : finalUserDOS) {
-                            Long userId = userDO.getId();
+                    // 执行 pipeline 操作
+                    stringRedisTemplate.executePipelined(new SessionCallback<>() {
+                        @Override
+                        public Object execute(RedisOperations operations) {
+                            for (UserDO userDO : finalUserDOS) {
+                                Long userId = userDO.getId();
 
-                            // 用户信息缓存 Redis Key
-                            String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
+                                // 用户信息缓存 Redis Key
+                                String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
 
-                            // DTO 转 JSON 字符串
-                            FindUserByIdRspDTO findUserInfoByIdRspDTO = map.get(userId);
-                            String value = JsonUtils.toJsonString(findUserInfoByIdRspDTO);
+                                // DTO 转 JSON 字符串
+                                FindUserByIdRspDTO findUserInfoByIdRspDTO = map.get(userId);
+                                String value = JsonUtils.toJsonString(findUserInfoByIdRspDTO);
 
-                            // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
-                            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
-                            operations.opsForValue().set(userInfoRedisKey, value, expireSeconds, TimeUnit.SECONDS);
+                                // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
+                                long expireSeconds = CacheTtl.days(1, 1);
+                                operations.opsForValue().set(userInfoRedisKey, value, expireSeconds, TimeUnit.SECONDS);
+                            }
+                            return null;
                         }
-                        return null;
-                    }
-                });
+                    });
+                } catch (Exception e) {
+                    log.warn("Redis 不可用，用户信息批量缓存写入失败", e);
+                }
             });
         }
 
@@ -709,11 +718,15 @@ public class UserServiceImpl implements UserService {
      */
     private void syncUserProfile2Redis(String userProfileRedisKey, FindUserProfileRspVO findUserProfileRspVO) {
         threadPoolTaskExecutor.submit(() -> {
-            // 设置随机过期时间 (2小时以内)
-            long expireTime = 60*60 + RandomUtil.randomInt(60 * 60);
+            try {
+                // 设置随机过期时间 (2小时以内)
+                long expireTime = CacheTtl.hours(1, 1);
 
-            // 将 VO 转为 Json 字符串写入到 Redis 中
-            stringRedisTemplate.opsForValue().set(userProfileRedisKey, JsonUtils.toJsonString(findUserProfileRspVO), expireTime, TimeUnit.SECONDS);
+                // 将 VO 转为 Json 字符串写入到 Redis 中
+                stringRedisTemplate.opsForValue().set(userProfileRedisKey, JsonUtils.toJsonString(findUserProfileRspVO), expireTime, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，用户主页缓存写入失败", e);
+            }
         });
     }
 }

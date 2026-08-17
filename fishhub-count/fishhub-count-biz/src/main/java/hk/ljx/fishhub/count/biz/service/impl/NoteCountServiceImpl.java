@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.count.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheTtl;
+
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.RandomUtil;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import hk.ljx.framework.common.response.Response;
@@ -177,7 +178,7 @@ public class NoteCountServiceImpl implements NoteCountService {
                     }
 
                     // 设置随机过期时间 (1小时以内)
-                    long expireTime = 60*30 + RandomUtil.randomInt(60 * 30);
+                    long expireTime = CacheTtl.minutes(30, 30);
                     operations.expire(noteCountHashKey, expireTime, TimeUnit.SECONDS);
                 }
 

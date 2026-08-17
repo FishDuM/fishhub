@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.comment.biz.cache;
 
-import cn.hutool.core.util.RandomUtil;
+import hk.ljx.framework.common.util.CacheTtl;
+
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializer;
@@ -39,7 +40,7 @@ public class CommentDetailCache {
         RedisSerializer<String> serializer = stringRedisTemplate.getStringSerializer();
         stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             for (Map.Entry<String, String> entry : data.entrySet()) {
-                int expireSeconds = 60 * 60 + RandomUtil.randomInt(4 * 60 * 60);
+                long expireSeconds = CacheTtl.hours(1, 4);
                 connection.stringCommands().setEx(
                         serializer.serialize(entry.getKey()),
                         expireSeconds,

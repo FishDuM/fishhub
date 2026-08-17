@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.note.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheTtl;
+
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.RandomUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
@@ -28,8 +29,10 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.scripting.support.ResourceScriptSource;
 
 import java.util.Collections;
 import java.util.List;
@@ -49,12 +52,14 @@ public class FeedServiceImpl implements FeedService {
     private static final int CACHE_REBUILD_RETRY_TIMES = 3;
     private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
     private static final long DISCOVER_PAGE_REBUILD_LOCK_SECONDS = 5L;
-    private static final String COMPARE_AND_DELETE_LOCK_SCRIPT = """
-            if redis.call('get', KEYS[1]) == ARGV[1] then
-                return redis.call('del', KEYS[1])
-            end
-            return 0
-            """;
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> RELEASE_REBUILD_LOCK_SCRIPT = luaScript("/lua/compare_and_delete.lua");
 
     private static final Cache<String, List<FindTopicRspVO>> TOPIC_LOCAL_CACHE = Caffeine.newBuilder()
             .maximumSize(1)
@@ -267,7 +272,7 @@ public class FeedServiceImpl implements FeedService {
     private void cacheDiscoverPageSnapshot(String cacheKey, DiscoverPageSnapshot snapshot) {
         try {
             stringRedisTemplate.opsForValue().set(cacheKey, JsonUtils.toJsonString(snapshot),
-                    30 + RandomUtil.randomInt(30), TimeUnit.SECONDS);
+                    CacheTtl.basePlusRandom(30, 30), TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页缓存写入失败，响应将继续返回，key={}", cacheKey, e);
         }
@@ -296,8 +301,7 @@ public class FeedServiceImpl implements FeedService {
 
     private void releaseRebuildLock(String lockKey, String token) {
         try {
-            DefaultRedisScript<Long> script = new DefaultRedisScript<>(COMPARE_AND_DELETE_LOCK_SCRIPT, Long.class);
-            stringRedisTemplate.execute(script, Collections.singletonList(lockKey), token);
+            stringRedisTemplate.execute(RELEASE_REBUILD_LOCK_SCRIPT, Collections.singletonList(lockKey), token);
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页重建锁释放失败，key={}", lockKey, e);
         }

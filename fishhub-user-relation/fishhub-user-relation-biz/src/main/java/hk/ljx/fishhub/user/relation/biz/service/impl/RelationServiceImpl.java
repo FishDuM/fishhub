@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.user.relation.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheTtl;
+
 import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.RandomUtil;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
@@ -41,6 +42,18 @@ import java.util.*;
 @Service
 @Slf4j
 public class RelationServiceImpl implements RelationService {
+
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> FOLLOW_CHECK_AND_ADD_SCRIPT = luaScript("/lua/follow_check_and_add.lua");
+    private static final DefaultRedisScript<Long> FOLLOW_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/follow_add_and_expire.lua");
+    private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/follow_batch_add_and_expire.lua");
+    private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = luaScript("/lua/unfollow_check_and_delete.lua");
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -84,17 +97,12 @@ public class RelationServiceImpl implements RelationService {
         // 构建当前用户关注列表的 Redis Key
         String followingRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        // Lua 脚本路径
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_check_and_add.lua")));
-        script.setResultType(Long.class);
-
         // 当前时间
         LocalDateTime now = LocalDateTime.now();
         // 当前时间转时间戳
         long timestamp = DateUtils.localDateTime2Timestamp(now);
 
-        Long result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
+        Long result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
 
         // 校验 Lua 脚本执行结果
         checkLuaScriptResult(result);
@@ -106,26 +114,19 @@ public class RelationServiceImpl implements RelationService {
 
             // 随机过期时间
             // 保底1天+随机秒数
-            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
+            long expireSeconds = CacheTtl.days(1, 1);
 
             // 若记录为空，直接 ZADD 对象, 并设置过期时间
             if (CollUtil.isEmpty(followingDOS)) {
-                DefaultRedisScript<Long> script2 = new DefaultRedisScript<>();
-                script2.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_add_and_expire.lua")));
-                script2.setResultType(Long.class);
-
-                stringRedisTemplate.execute(script2, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
+                stringRedisTemplate.execute(FOLLOW_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
             } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
                 String[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
 
                 // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
-                DefaultRedisScript<Long> script3 = new DefaultRedisScript<>();
-                script3.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_batch_add_and_expire.lua")));
-                script3.setResultType(Long.class);
-                stringRedisTemplate.execute(script3, Collections.singletonList(followingRedisKey), luaArgs);
+                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), luaArgs);
 
                 // 再次调用上面的 Lua 脚本：follow_check_and_add.lua , 将最新的关注关系添加进去
-                result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
+                result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(followUserId), String.valueOf(timestamp));
                 checkLuaScriptResult(result);
             }
         }
@@ -186,12 +187,7 @@ public class RelationServiceImpl implements RelationService {
         // 当前用户的关注列表 Redis Key
         String followingRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
 
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        // Lua 脚本路径
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/unfollow_check_and_delete.lua")));
-        script.setResultType(Long.class);
-
-        Long result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
+        Long result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
 
         // 校验 Lua 脚本执行结果
         // 取关的用户不在关注列表中
@@ -205,7 +201,7 @@ public class RelationServiceImpl implements RelationService {
 
             // 随机过期时间
             // 保底1天+随机秒数
-            long expireSeconds = 60*60*24 + RandomUtil.randomInt(60*60*24);
+            long expireSeconds = CacheTtl.days(1, 1);
 
             // 若记录为空，则表示还未关注任何人，提示还未关注对方
             if (CollUtil.isEmpty(followingDOS)) {
@@ -214,13 +210,10 @@ public class RelationServiceImpl implements RelationService {
                 String[] luaArgs = buildLuaArgs(followingDOS, expireSeconds);
 
                 // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
-                DefaultRedisScript<Long> script3 = new DefaultRedisScript<>();
-                script3.setScriptSource(new ResourceScriptSource(new ClassPathResource("/lua/follow_batch_add_and_expire.lua")));
-                script3.setResultType(Long.class);
-                stringRedisTemplate.execute(script3, Collections.singletonList(followingRedisKey), luaArgs);
+                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), luaArgs);
 
                 // 再次调用上面的 Lua 脚本：unfollow_check_and_delete.lua , 将取关的用户删除
-                result = stringRedisTemplate.execute(script, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
+                result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey), String.valueOf(unfollowUserId));
                 // 再次校验结果
                 if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
                     throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);

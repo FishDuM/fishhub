@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.count.biz.service.impl;
 
-import cn.hutool.core.util.RandomUtil;
+import hk.ljx.framework.common.util.CacheTtl;
+
 import com.alibaba.csp.sentinel.annotation.SentinelResource;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.google.common.collect.Maps;
@@ -246,36 +247,40 @@ public class UserCountServiceImpl implements UserCountService {
     private void syncHashCount2Redis(String userCountHashKey, UserCountDO userCountDO,
                                      String collectTotal, String fansTotal, String noteTotal, String followingTotal, String likeTotal) {
         threadPoolTaskExecutor.submit(() -> {
-            // 存放计数
-            Map<String, String> userCountMap = Maps.newHashMap();
-            if (Objects.isNull(collectTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal())));
+            try {
+                // 存放计数
+                Map<String, String> userCountMap = Maps.newHashMap();
+                if (Objects.isNull(collectTotal))
+                    userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal())));
 
-            if (Objects.isNull(fansTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal())));
+                if (Objects.isNull(fansTotal))
+                    userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal())));
 
-            if (Objects.isNull(noteTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal())));
+                if (Objects.isNull(noteTotal))
+                    userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal())));
 
-            if (Objects.isNull(followingTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal())));
+                if (Objects.isNull(followingTotal))
+                    userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal())));
 
-            if (Objects.isNull(likeTotal))
-                userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal())));
+                if (Objects.isNull(likeTotal))
+                    userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal())));
 
-            stringRedisTemplate.executePipelined(new SessionCallback<>() {
-                @Override
-                public Object execute(RedisOperations operations) {
-                    // 批量添加 Hash 的计数 Field
-                    operations.opsForHash().putAll(userCountHashKey, userCountMap);
+                stringRedisTemplate.executePipelined(new SessionCallback<>() {
+                    @Override
+                    public Object execute(RedisOperations operations) {
+                        // 批量添加 Hash 的计数 Field
+                        operations.opsForHash().putAll(userCountHashKey, userCountMap);
 
-                    // 设置随机过期时间 (2小时以内)
-                    long expireTime = 60*60 + RandomUtil.randomInt(60 * 60);
-                    operations.expire(userCountHashKey, expireTime, TimeUnit.SECONDS);
+                        // 设置随机过期时间 (2小时以内)
+                        long expireTime = CacheTtl.hours(1, 1);
+                        operations.expire(userCountHashKey, expireTime, TimeUnit.SECONDS);
 
-                    return null;
-                }
-            });
+                        return null;
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Redis 不可用，用户计数 Hash 缓存写入失败", e);
+            }
         });
     }
 }
