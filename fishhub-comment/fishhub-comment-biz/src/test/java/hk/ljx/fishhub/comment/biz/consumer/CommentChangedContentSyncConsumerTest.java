@@ -37,12 +37,24 @@ class CommentChangedContentSyncConsumerTest {
     void shouldSkipImageOnlyCommentAndSyncTextCommentInSameBatch() {
         CommentItemMqDTO imageItem = item(1L, true, null, null);
         CommentItemMqDTO textItem = item(2L, false, "uuid-text", "hello");
-        when(commentDOMapper.selectByPrimaryKey(2L)).thenReturn(CommentDO.builder().contentUuid("uuid-text").build());
+        when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(List.of(
+                CommentDO.builder().id(2L).contentUuid("uuid-text").build()));
 
         consumer.onMessage(body(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH, List.of(imageItem, textItem)));
 
         verify(keyValueRpcService).batchSaveCommentContent(anyList());
         verify(keyValueRpcService, never()).deleteCommentContent(any(), any(), any());
+    }
+
+    @Test
+    void shouldCleanStaleTextCommentInsteadOfSaving() {
+        when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(List.of());
+
+        consumer.onMessage(body(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH,
+                List.of(item(2L, false, "uuid-text", "hello"))));
+
+        verify(keyValueRpcService).deleteCommentContent(10L, LocalDateTime.of(2026, 8, 16, 12, 0), "uuid-text");
+        verify(keyValueRpcService, never()).batchSaveCommentContent(anyList());
     }
 
     @Test

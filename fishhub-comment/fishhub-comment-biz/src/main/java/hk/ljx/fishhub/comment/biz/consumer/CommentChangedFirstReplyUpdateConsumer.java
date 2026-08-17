@@ -9,6 +9,7 @@ import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
+import hk.ljx.fishhub.comment.biz.model.bo.CommentFirstReplyBO;
 import hk.ljx.fishhub.comment.biz.model.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.CommentItemMqDTO;
 import jakarta.annotation.Resource;
@@ -21,12 +22,14 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 消费评论发布事件，为首次收到回复的一级评论回填 first_reply_comment_id。
- * Redis haveFirstReply 标记 + 数据库事实双重判定，重复投递安全。
+ * Redis haveFirstReply 标记 + 数据库事实双重判定，重复投递安全；批量回填减少单条 UPDATE。
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_first_reply_comment_id",
@@ -53,69 +56,78 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
             return;
         }
 
-        // 过滤出二级评论的 parent_id（即一级评论 ID），并去重
         List<Long> parentIds = event.getItems().stream()
                 .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
                 .map(CommentItemMqDTO::getParentId)
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-
         if (CollUtil.isEmpty(parentIds)) {
             return;
         }
 
-        // 批量查询 Redis 中已标记"拥有首条回复"的一级评论
+        // 过滤 Redis 中已标记拥有首条回复的一级评论
         List<String> keys = parentIds.stream()
                 .map(RedisKeyConstants::buildHaveFirstReplyCommentKey)
                 .toList();
         List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
-
-        // 提取 Redis 中不存在的评论 ID，需要进一步核对数据库
         List<Long> missingCommentIds = Lists.newArrayList();
         for (int i = 0; i < values.size(); i++) {
             if (Objects.isNull(values.get(i))) {
                 missingCommentIds.add(parentIds.get(i));
             }
         }
-
         if (CollUtil.isEmpty(missingCommentIds)) {
             return;
         }
 
         List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(missingCommentIds);
 
-        // 异步将 first_reply_comment_id 不为 0 的一级评论 ID 同步到 Redis
+        // 既有首回复的一级评论直接同步 Redis 标记
+        List<Long> alreadyHasReplyIds = commentDOS.stream()
+                .filter(commentDO -> commentDO.getFirstReplyCommentId() != 0)
+                .map(CommentDO::getId)
+                .toList();
+        if (CollUtil.isNotEmpty(alreadyHasReplyIds)) {
+            threadPoolTaskExecutor.submit(() -> {
+                try {
+                    sync2Redis(alreadyHasReplyIds);
+                } catch (Exception e) {
+                    log.warn("Redis 不可用，评论首回复缓存同步失败", e);
+                }
+            });
+        }
+
+        // 尚未回填的一级评论：一次批量查各自最早回复，再一次批量回填
+        List<Long> needUpdateCommentIds = commentDOS.stream()
+                .filter(commentDO -> commentDO.getFirstReplyCommentId() == 0)
+                .map(CommentDO::getId)
+                .toList();
+        if (CollUtil.isEmpty(needUpdateCommentIds)) {
+            return;
+        }
+
+        List<CommentDO> earliestReplies = commentDOMapper.selectEarliestFirstReplyByParentIds(needUpdateCommentIds);
+        if (CollUtil.isEmpty(earliestReplies)) {
+            return;
+        }
+
+        List<CommentFirstReplyBO> replyBOS = earliestReplies.stream()
+                .map(reply -> CommentFirstReplyBO.builder()
+                        .id(reply.getParentId())
+                        .firstReplyCommentId(reply.getId())
+                        .build())
+                .toList();
+        commentDOMapper.batchUpdateFirstReplyCommentIds(replyBOS);
+
+        List<Long> updatedCommentIds = replyBOS.stream().map(CommentFirstReplyBO::getId).toList();
         threadPoolTaskExecutor.submit(() -> {
             try {
-                List<Long> needSyncCommentIds = commentDOS.stream()
-                        .filter(commentDO -> commentDO.getFirstReplyCommentId() != 0)
-                        .map(CommentDO::getId)
-                        .toList();
-                sync2Redis(needSyncCommentIds);
+                sync2Redis(updatedCommentIds);
             } catch (Exception e) {
                 log.warn("Redis 不可用，评论首回复缓存同步失败", e);
             }
         });
-
-        // first_reply_comment_id 仍为 0 的，回填最早回复
-        commentDOS.stream()
-                .filter(commentDO -> commentDO.getFirstReplyCommentId() == 0)
-                .forEach(needUpdateCommentDO -> {
-                    Long needUpdateCommentId = needUpdateCommentDO.getId();
-                    CommentDO earliestCommentDO = commentDOMapper.selectEarliestByParentId(needUpdateCommentId);
-                    if (Objects.nonNull(earliestCommentDO)) {
-                        commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
-                                earliestCommentDO.getId(), needUpdateCommentId);
-                        threadPoolTaskExecutor.submit(() -> {
-                            try {
-                                sync2Redis(Lists.newArrayList(needUpdateCommentId));
-                            } catch (Exception e) {
-                                log.warn("Redis 不可用，评论首回复缓存同步失败", e);
-                            }
-                        });
-                    }
-                });
     }
 
     /**
@@ -132,7 +144,6 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
             try {
                 rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(commentId));
             } catch (Exception e) {
-                // 本地缓存失效尽力而为，节点本地缓存由 TTL 兜底
                 log.warn("评论本地缓存失效消息发送失败, commentId={}", commentId, e);
             }
         });

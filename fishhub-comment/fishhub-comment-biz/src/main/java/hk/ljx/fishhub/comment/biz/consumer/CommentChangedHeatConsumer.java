@@ -6,7 +6,7 @@ import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.CommentItemMqDTO;
-import hk.ljx.fishhub.comment.biz.service.CommentHeatService;
+import hk.ljx.fishhub.comment.biz.service.CommentHeatAggregator;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -17,7 +17,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 消费评论变更事件，提取受影响的一级评论 ID 并委托 CommentHeatService 重算热度。
+ * 消费评论变更事件，提取受影响的一级评论 ID 交给聚合器合并重算热度。
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_heat",
@@ -26,7 +26,7 @@ import java.util.Set;
 public class CommentChangedHeatConsumer implements RocketMQListener<String> {
 
     @Resource
-    private CommentHeatService commentHeatService;
+    private CommentHeatAggregator commentHeatAggregator;
 
     @Override
     public void onMessage(String body) {
@@ -42,10 +42,6 @@ public class CommentChangedHeatConsumer implements RocketMQListener<String> {
                 .map(CommentItemMqDTO::getParentId)
                 .filter(Objects::nonNull)
                 .forEach(commentIds::add);
-        if (commentIds.isEmpty()) {
-            return;
-        }
-
-        commentHeatService.recomputeHeat(commentIds);
+        commentHeatAggregator.submit(commentIds);
     }
 }

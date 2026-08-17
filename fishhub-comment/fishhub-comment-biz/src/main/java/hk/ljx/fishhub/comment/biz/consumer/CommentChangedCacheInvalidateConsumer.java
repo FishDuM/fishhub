@@ -1,6 +1,7 @@
 package hk.ljx.fishhub.comment.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
+import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
@@ -13,23 +14,31 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
- * 消费评论变更事件，失效 Redis 中的评论列表与详情缓存。
- * 发布：一级评论所在笔记的一级评论列表 + 二级评论所属父评论的子列表；
- * 删除：上述列表 + 被删评论与其父评论的详情/计数缓存。重复删除安全。
+ * 消费评论变更事件，增量维护 Redis 中的评论列表与详情缓存。
+ * 列表 ZSET 增量入榜/出榜（发布 ZADD、删除 ZREM），取代整表删除重建，
+ * 热点笔记高并发下不再边写边删边重建；计数与详情缓存按删除处理。
  */
 @Component
 @Slf4j
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_cache",
         topic = MQConstants.TOPIC_COMMENT_CHANGED)
 public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<String> {
+
+    private static final long COMMENT_LIST_MAX_SIZE = 500;
+    private static final long CHILD_COMMENT_LIST_MAX_SIZE = 60;
+    private static final long COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
+    private static final long CHILD_COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -45,22 +54,33 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
 
         boolean isDelete = Objects.equals(event.getChangeType(), MQConstants.COMMENT_CHANGE_TYPE_DELETE);
 
-        // 一级评论所在笔记的一级评论列表缓存（发布与删除都需要失效）
-        event.getItems().stream()
+        // 一级评论：维护笔记评论列表 ZSET + 一级评论计数版本
+        Map<Long, List<Long>> oneLevelByNote = event.getItems().stream()
                 .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.ONE.getCode()))
-                .map(CommentItemMqDTO::getNoteId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .forEach(this::invalidateOneLevelList);
+                .filter(item -> item.getNoteId() != null && item.getId() != null)
+                .collect(Collectors.groupingBy(CommentItemMqDTO::getNoteId,
+                        Collectors.mapping(CommentItemMqDTO::getId, Collectors.toList())));
+        oneLevelByNote.forEach((noteId, commentIds) -> {
+            if (isDelete) {
+                deleteOneLevelComments(noteId, commentIds);
+            } else {
+                publishOneLevelComments(noteId, commentIds);
+            }
+        });
 
-        // 二级评论所属父评论的子列表缓存
+        // 二级评论：增量维护父评论的子列表 ZSET
         event.getItems().stream()
                 .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
-                .map(CommentItemMqDTO::getParentId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .forEach(parentId ->
-                        stringRedisTemplate.delete(RedisKeyConstants.buildChildCommentListKey(parentId)));
+                .filter(item -> item.getParentId() != null && item.getId() != null)
+                .forEach(item -> {
+                    if (isDelete) {
+                        stringRedisTemplate.opsForZSet().remove(
+                                RedisKeyConstants.buildChildCommentListKey(item.getParentId()),
+                                String.valueOf(item.getId()));
+                    } else {
+                        publishChildComment(item);
+                    }
+                });
 
         if (!isDelete) {
             return;
@@ -93,10 +113,48 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
         log.info("评论删除后的缓存已失效, deletedCommentCount={}", commentIds.size());
     }
 
-    /**
-     * 一级评论列表缓存按版本键失效；新评论可能进入热点 ZSet，直接删除使下次读取以 MySQL 重建。
-     */
-    private void invalidateOneLevelList(Long noteId) {
+    private void publishOneLevelComments(Long noteId, List<Long> commentIds) {
+        bumpOneLevelCommentTotalVersion(noteId);
+        String key = RedisKeyConstants.buildCommentListKey(noteId);
+        // 列表 ZSET 不存在（TTL 过期/冷启动）时不增量创建，交读取侧全量重建，避免只含新评论的空壳覆盖全量。
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+            return;
+        }
+        ZSetOperations<String, String> zSet = stringRedisTemplate.opsForZSet();
+        // 新评论以 0 热度入榜，由热度重算脚本接管后续分值
+        commentIds.forEach(commentId -> zSet.add(key, String.valueOf(commentId), 0D));
+        trimZSet(zSet, key, COMMENT_LIST_MAX_SIZE);
+        stringRedisTemplate.expire(key, COMMENT_LIST_EXPIRE_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private void deleteOneLevelComments(Long noteId, List<Long> commentIds) {
+        bumpOneLevelCommentTotalVersion(noteId);
+        String key = RedisKeyConstants.buildCommentListKey(noteId);
+        ZSetOperations<String, String> zSet = stringRedisTemplate.opsForZSet();
+        commentIds.forEach(commentId -> zSet.remove(key, String.valueOf(commentId)));
+    }
+
+    private void publishChildComment(CommentItemMqDTO item) {
+        String key = RedisKeyConstants.buildChildCommentListKey(item.getParentId());
+        // 与一级列表同理：ZSET 不存在时跳过增量，交读取侧全量重建。
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+            return;
+        }
+        ZSetOperations<String, String> zSet = stringRedisTemplate.opsForZSet();
+        // 与重建语义一致：子列表按 create_time 时间戳升序
+        zSet.add(key, String.valueOf(item.getId()), DateUtils.localDateTime2Timestamp(item.getCreateTime()));
+        trimZSet(zSet, key, CHILD_COMMENT_LIST_MAX_SIZE);
+        stringRedisTemplate.expire(key, CHILD_COMMENT_LIST_EXPIRE_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private void trimZSet(ZSetOperations<String, String> zSet, String key, long maxSize) {
+        Long size = zSet.zCard(key);
+        if (size != null && size > maxSize) {
+            zSet.removeRange(key, 0, -(maxSize + 1));
+        }
+    }
+
+    private void bumpOneLevelCommentTotalVersion(Long noteId) {
         String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
         Long version = stringRedisTemplate.opsForValue().increment(versionKey);
         if (version != null && version > 0) {
@@ -105,6 +163,5 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
             stringRedisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId,
                     String.valueOf(version - 1)));
         }
-        stringRedisTemplate.delete(List.of(RedisKeyConstants.buildCommentListKey(noteId)));
     }
 }

@@ -86,6 +86,18 @@ public interface CommentDOMapper {
     CommentDO selectEarliestByParentId(Long parentId);
 
     /**
+     * 批量查询一批一级评论下各自最早回复（level=2 且 create_time 最早）
+     * @param parentIds 一级评论 ID
+     * @return 每条最早回复的行（parentId 即所属一级评论）
+     */
+    List<CommentDO> selectEarliestFirstReplyByParentIds(@Param("parentIds") List<Long> parentIds);
+
+    /**
+     * 批量回填一级评论的 first_reply_comment_id（key=一级评论ID, value=最早回复ID）
+     */
+    int batchUpdateFirstReplyCommentIds(@Param("commentFirstReplyBOS") List<hk.ljx.fishhub.comment.biz.model.bo.CommentFirstReplyBO> commentFirstReplyBOS);
+
+    /**
      * 查询评论分页数据
      * @param noteId
      * @param offset

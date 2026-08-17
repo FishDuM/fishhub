@@ -91,6 +91,19 @@
     where parent_id = #{parentId} and level = 2 order by create_time asc limit 1
   </select>
 
+  <select id="selectEarliestFirstReplyByParentIds" resultMap="BaseResultMap" parameterType="list">
+    select id, parent_id, create_time from (
+        select id, parent_id, create_time,
+               row_number() over (partition by parent_id order by create_time asc, id asc) rn
+        from t_comment
+        where parent_id in
+        <foreach collection="parentIds" item="parentId" open="(" separator="," close=")">
+            #{parentId}
+        </foreach>
+        and level = 2
+    ) t where t.rn = 1
+  </select>
+
   <select id="selectPageList" resultMap="BaseResultMap" parameterType="map">
     select id, user_id, content_uuid, is_content_empty, image_url, like_total,
            is_top, create_time, first_reply_comment_id, child_comment_total, heat
@@ -348,6 +361,19 @@
     update t_comment
     set first_reply_comment_id = #{firstReplyCommentId}
     where id = #{id}
+  </update>
+
+    <update id="batchUpdateFirstReplyCommentIds" parameterType="map">
+    update t_comment
+    set first_reply_comment_id = case id
+    <foreach collection="commentFirstReplyBOS" item="bo">
+        when #{bo.id} then #{bo.firstReplyCommentId}
+    </foreach>
+    else first_reply_comment_id end
+    where id in
+    <foreach collection="commentFirstReplyBOS" item="bo" open="(" close=")" separator=",">
+        #{bo.id}
+    </foreach>
   </update>
 
   <!-- 增量为纯可交换累加，不做零点钳制：须与 count 模块的发布侧增量保持同一规则，混用钳制会重新引入乱序漂移。 -->

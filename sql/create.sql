@@ -112,12 +112,7 @@ CREATE TABLE `t_comment`  (
   `heat` decimal(10, 2) NOT NULL DEFAULT 0.00 COMMENT '评论热度',
   `first_reply_comment_id` bigint UNSIGNED NULL DEFAULT 0 COMMENT '最早回复的评论ID (只有一级评论需要)',
   PRIMARY KEY (`id`) USING BTREE,
-  INDEX `idx_note_id`(`note_id` ASC) USING BTREE,
-  INDEX `idx_user_id`(`user_id` ASC) USING BTREE,
-  INDEX `idx_parent_id`(`parent_id` ASC) USING BTREE,
-  INDEX `idx_create_time`(`create_time` ASC) USING BTREE,
   INDEX `idx_reply_comment_id`(`reply_comment_id` ASC) USING BTREE,
-  INDEX `idx_reply_user_id`(`reply_user_id` ASC) USING BTREE,
   INDEX `idx_comment_note_level_heat_id`(`note_id` ASC, `level` ASC, `heat` DESC, `id` DESC) USING BTREE,
   INDEX `idx_comment_parent_level_id`(`parent_id` ASC, `level` ASC, `id` ASC) USING BTREE,
   INDEX `idx_comment_parent_level_create_time_id`(`parent_id` ASC, `level` ASC, `create_time` ASC, `id` ASC) USING BTREE
