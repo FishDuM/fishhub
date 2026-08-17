@@ -4,11 +4,11 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxLocalTransaction;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
+import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
-import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
-import hk.ljx.fishhub.note.biz.enums.LikeUnlikeNoteTypeEnum;
-import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
+import hk.ljx.fishhub.note.biz.enums.CollectUnCollectNoteTypeEnum;
+import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class LikeUnlikeNoteConsumerTest {
+class CollectUnCollectNoteConsumerTest {
 
     @Mock
     private NoteDOMapper noteDOMapper;
@@ -43,58 +43,56 @@ class LikeUnlikeNoteConsumerTest {
     @Mock
     private TransactionalMqSender transactionalMqSender;
     @InjectMocks
-    private LikeUnlikeNoteConsumer consumer;
+    private CollectUnCollectNoteConsumer consumer;
 
     private final LocalDateTime now = LocalDateTime.of(2026, 8, 16, 12, 0);
 
     @Test
-    void shouldBatchSelectNotesAndSendOneAggregatedTransactionMessage() {
+    void shouldBatchCollectAndCarryNoteCreatorIdInPayload() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L, 20L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(0).status(1).build(),
-                NoteDO.builder().id(20L).creatorId(99L).visible(0).status(1).build()));
-
+                NoteDO.builder().id(20L).creatorId(88L).visible(0).status(1).build()));
         runLocalTx();
-        consumer.consumeEventBodies(List.of(
-                body(1L, 10L, LikeUnlikeNoteTypeEnum.LIKE.getCode()),
-                body(2L, 20L, LikeUnlikeNoteTypeEnum.LIKE.getCode())));
 
-        ArgumentCaptor<List<NoteLikeDO>> doCaptor = ArgumentCaptor.forClass(List.class);
+        consumer.consumeEventBodies(List.of(
+                body(1L, 10L, CollectUnCollectNoteTypeEnum.COLLECT.getCode()),
+                body(2L, 20L, CollectUnCollectNoteTypeEnum.COLLECT.getCode())));
+
+        ArgumentCaptor<List<NoteCollectionDO>> doCaptor = ArgumentCaptor.forClass(List.class);
         ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
-        verify(persistenceService).saveNoteLikeBatch(doCaptor.capture(), anyString(), anyString(), anyString());
+        verify(persistenceService).saveNoteCollectBatch(doCaptor.capture(), anyString(), anyString(), anyString());
         assertEquals(2, doCaptor.getValue().size());
         verify(noteDOMapper).selectInteractionInfosByNoteIds(List.of(10L, 20L));
         verify(transactionalMqSender).sendInTransaction(
-                eq(MQConstants.TOPIC_COUNT_NOTE_LIKE), payloadCaptor.capture(), any());
+                eq(MQConstants.TOPIC_COUNT_NOTE_COLLECT), payloadCaptor.capture(), any());
         assertTrue(payloadCaptor.getValue().startsWith("["));
-        // 计数端强校验 noteCreatorId，缺失会导致整批重投死循环
         assertTrue(payloadCaptor.getValue().contains("\"noteCreatorId\":99"));
+        assertTrue(payloadCaptor.getValue().contains("\"noteCreatorId\":88"));
     }
 
     @Test
-    void shouldDropLikeOnPrivateNoteAndEvictOptimisticCache() {
+    void shouldDropCollectOnPrivateNoteAndEvictOptimisticCache() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(1).build()));
 
         consumer.consumeEventBodies(List.of(
-                body(1L, 10L, LikeUnlikeNoteTypeEnum.LIKE.getCode())));
+                body(1L, 10L, CollectUnCollectNoteTypeEnum.COLLECT.getCode())));
 
-        verify(noteInteractionCacheService).evictLikeCaches(1L);
-        verify(persistenceService, never()).saveNoteLikeBatch(anyList(), anyString(), anyString(), anyString());
-        verify(transactionalMqSender, never()).sendInTransaction(any(), any(), any());
+        verify(noteInteractionCacheService).evictCollectCaches(1L);
+        verify(persistenceService, never()).saveNoteCollectBatch(anyList(), anyString(), anyString(), anyString());
     }
 
     @Test
-    void shouldAllowUnlikeOnMissingLikeRowAndCountNegativeDelta() {
-        // 未点赞过的取消事件：允许入批（upsert 时间守卫兜底乱序），计数 -1 由聚合端累加
+    void shouldAllowUncollectOnExistingNote() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(1).build()));
-
         runLocalTx();
-        consumer.consumeEventBodies(List.of(
-                body(1L, 10L, LikeUnlikeNoteTypeEnum.UNLIKE.getCode())));
 
-        verify(noteInteractionCacheService, never()).evictLikeCaches(1L);
-        verify(persistenceService).saveNoteLikeBatch(anyList(), anyString(), anyString(), anyString());
+        consumer.consumeEventBodies(List.of(
+                body(1L, 10L, CollectUnCollectNoteTypeEnum.UN_COLLECT.getCode())));
+
+        verify(noteInteractionCacheService, never()).evictCollectCaches(1L);
+        verify(persistenceService).saveNoteCollectBatch(anyList(), anyString(), anyString(), anyString());
     }
 
     private void runLocalTx() {
@@ -106,7 +104,7 @@ class LikeUnlikeNoteConsumerTest {
     }
 
     private String body(Long userId, Long noteId, Integer type) {
-        return JsonUtils.toJsonString(LikeUnlikeNoteMqDTO.builder()
+        return JsonUtils.toJsonString(CollectUnCollectNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
                 .type(type)

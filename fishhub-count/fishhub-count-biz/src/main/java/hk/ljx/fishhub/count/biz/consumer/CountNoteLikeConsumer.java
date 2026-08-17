@@ -81,9 +81,10 @@ public class CountNoteLikeConsumer {
         // 聚合批次标识：同批重投时内容不变
         String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(String.join("|", bodys));
 
-        // List<String> 转 List<CountLikeUnlikeNoteMqDTO>
+        // 兼容批量数组与旧版单条消息
         List<CountLikeUnlikeNoteMqDTO> countLikeUnlikeNoteMqDTOS = bodys.stream()
-                .map(body -> JsonUtils.parseObject(body, CountLikeUnlikeNoteMqDTO.class)).toList();
+                .flatMap(body -> parseEvents(body).stream())
+                .toList();
         if (countLikeUnlikeNoteMqDTOS.stream().anyMatch(item -> item == null || item.getNoteId() == null
                 || item.getNoteCreatorId() == null
                 || LikeUnlikeNoteTypeEnum.valueOf(item.getType()) == null)) {
@@ -135,6 +136,18 @@ public class CountNoteLikeConsumer {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(countList))
                 .build();
         rocketMQTemplate.syncSend(MQConstants.TOPIC_COUNT_NOTE_LIKE_2_DB, message);
+    }
+
+    private List<CountLikeUnlikeNoteMqDTO> parseEvents(String body) {
+        String trimmed = body.trim();
+        if (trimmed.startsWith("[")) {
+            try {
+            return JsonUtils.parseList(trimmed, CountLikeUnlikeNoteMqDTO.class);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("笔记点赞计数消息格式错误", e);
+            }
+        }
+        return List.of(JsonUtils.parseObject(trimmed, CountLikeUnlikeNoteMqDTO.class));
     }
 
     @PreDestroy

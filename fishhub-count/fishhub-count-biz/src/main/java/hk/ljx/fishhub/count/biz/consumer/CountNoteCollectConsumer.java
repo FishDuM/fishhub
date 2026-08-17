@@ -43,9 +43,10 @@ public class CountNoteCollectConsumer implements RocketMQListener<String> {
         // 聚合批次标识：同批重投时内容不变，不同批次的相同聚合结果可区分
         String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(String.join("|", bodys));
 
-        // List<String> 转 List<CountCollectUnCollectNoteMqDTO>
+        // 兼容批量数组与旧版单条消息
         List<CountCollectUnCollectNoteMqDTO> countCollectUnCollectNoteMqDTOS = bodys.stream()
-                .map(body -> JsonUtils.parseObject(body, CountCollectUnCollectNoteMqDTO.class)).toList();
+                .flatMap(body -> parseEvents(body).stream())
+                .toList();
         if (countCollectUnCollectNoteMqDTOS.stream().anyMatch(item -> item == null || item.getNoteId() == null
                 || item.getNoteCreatorId() == null
                 || CollectUnCollectNoteTypeEnum.valueOf(item.getType()) == null)) {
@@ -100,5 +101,17 @@ public class CountNoteCollectConsumer implements RocketMQListener<String> {
 
         // 第一阶段不修改缓存；数据库消费者提交后统一失效缓存。
         rocketMQTemplate.syncSend(MQConstants.TOPIC_COUNT_NOTE_COLLECT_2_DB, message);
+    }
+
+    private List<CountCollectUnCollectNoteMqDTO> parseEvents(String body) {
+        String trimmed = body.trim();
+        if (trimmed.startsWith("[")) {
+            try {
+            return JsonUtils.parseList(trimmed, CountCollectUnCollectNoteMqDTO.class);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("笔记收藏计数消息格式错误", e);
+            }
+        }
+        return List.of(JsonUtils.parseObject(trimmed, CountCollectUnCollectNoteMqDTO.class));
     }
 }

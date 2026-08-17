@@ -19,6 +19,11 @@ public interface NoteLikeDOMapper {
      */
     int insertOrUpdate(NoteLikeDO noteLikeDO);
 
+    /**
+     * 批量新增/更新点赞关系（时间守卫：旧事件不覆盖新事件）
+     */
+    int insertOrUpdateBatch(@Param("noteLikes") List<NoteLikeDO> noteLikes);
+
     NoteLikeDO selectByPrimaryKey(Long id);
 
     int selectCountByUserIdAndNoteId(@Param("userId") Long userId, @Param("noteId") Long noteId);
@@ -42,10 +47,4 @@ public interface NoteLikeDOMapper {
 
     int updateByPrimaryKey(NoteLikeDO record);
 
-    /**
-     * 取消点赞
-     * @param noteLikeDO
-     * @return
-     */
-    int update2UnlikeByUserIdAndNoteId(NoteLikeDO noteLikeDO);
 }

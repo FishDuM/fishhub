@@ -3,6 +3,7 @@ package hk.ljx.fishhub.note.biz.service;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
+import hk.ljx.fishhub.note.biz.domain.mapper.MqConsumeRecordMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import org.junit.jupiter.api.Test;
@@ -10,11 +11,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 
+import java.util.List;
+
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class NoteInteractionPersistenceServiceTest {
@@ -24,61 +30,57 @@ class NoteInteractionPersistenceServiceTest {
     @Mock
     private NoteCollectionDOMapper noteCollectionDOMapper;
     @Mock
+    private MqConsumeRecordMapper mqConsumeRecordMapper;
+    @Mock
     private TxJournalStore txJournalStore;
     @InjectMocks
     private NoteInteractionPersistenceService service;
 
     @Test
-    void shouldPersistLikeThenRecordJournal() {
-        NoteLikeDO like = NoteLikeDO.builder().userId(1L).noteId(2L).build();
-        when(noteLikeDOMapper.insertOrUpdate(like)).thenReturn(1);
+    void shouldPersistLikeBatchThenRecordJournal() {
+        List<NoteLikeDO> likes = List.of(
+                NoteLikeDO.builder().userId(1L).noteId(2L).build(),
+                NoteLikeDO.builder().userId(1L).noteId(3L).build());
 
-        service.saveLike(like, "tx-1");
+        boolean applied = service.saveNoteLikeBatch(likes, "group", "key-1", "tx-1");
 
-        var ordered = inOrder(noteLikeDOMapper, txJournalStore);
-        ordered.verify(noteLikeDOMapper).insertOrUpdate(like);
+        var ordered = inOrder(mqConsumeRecordMapper, noteLikeDOMapper, txJournalStore);
+        ordered.verify(mqConsumeRecordMapper).insert("group", "key-1");
+        ordered.verify(noteLikeDOMapper).insertOrUpdateBatch(likes);
         ordered.verify(txJournalStore).record("tx-1");
+        org.junit.jupiter.api.Assertions.assertTrue(applied);
     }
 
     @Test
-    void shouldNotRecordJournalWhenLikeStateDidNotChange() {
-        NoteLikeDO like = NoteLikeDO.builder().userId(1L).noteId(2L).build();
-        when(noteLikeDOMapper.insertOrUpdate(like)).thenReturn(0);
+    void shouldSkipBatchWhenConsumeRecordAlreadyExists() {
+        doThrow(new DuplicateKeyException("dup")).when(mqConsumeRecordMapper).insert("group", "key-1");
 
-        service.saveLike(like, "tx-1");
+        boolean applied = service.saveNoteLikeBatch(
+                List.of(NoteLikeDO.builder().userId(1L).noteId(2L).build()), "group", "key-1", "tx-1");
 
+        org.junit.jupiter.api.Assertions.assertFalse(applied);
+        verify(noteLikeDOMapper, never()).insertOrUpdateBatch(anyList());
         verify(txJournalStore, never()).record("tx-1");
     }
 
     @Test
-    void shouldNotRecordJournalWhenUnlikeStateDidNotChange() {
-        NoteLikeDO like = NoteLikeDO.builder().userId(1L).noteId(2L).build();
-        when(noteLikeDOMapper.update2UnlikeByUserIdAndNoteId(like)).thenReturn(0);
+    void shouldPersistCollectBatchThenRecordJournal() {
+        List<NoteCollectionDO> collections = List.of(
+                NoteCollectionDO.builder().userId(1L).noteId(2L).build());
 
-        service.saveUnlike(like, "tx-1");
+        boolean applied = service.saveNoteCollectBatch(collections, "group", "key-1", "tx-1");
 
-        verify(txJournalStore, never()).record("tx-1");
-    }
-
-    @Test
-    void shouldPersistCollectThenRecordJournal() {
-        NoteCollectionDO collection = NoteCollectionDO.builder().userId(1L).noteId(2L).build();
-        when(noteCollectionDOMapper.insertOrUpdate(collection)).thenReturn(1);
-
-        service.saveCollect(collection, "tx-1");
-
-        var ordered = inOrder(noteCollectionDOMapper, txJournalStore);
-        ordered.verify(noteCollectionDOMapper).insertOrUpdate(collection);
+        var ordered = inOrder(mqConsumeRecordMapper, noteCollectionDOMapper, txJournalStore);
+        ordered.verify(mqConsumeRecordMapper).insert("group", "key-1");
+        ordered.verify(noteCollectionDOMapper).insertOrUpdateBatch(collections);
         ordered.verify(txJournalStore).record("tx-1");
+        org.junit.jupiter.api.Assertions.assertTrue(applied);
     }
 
     @Test
-    void shouldNotRecordJournalWhenUncollectStateDidNotChange() {
-        NoteCollectionDO collection = NoteCollectionDO.builder().userId(1L).noteId(2L).build();
-        when(noteCollectionDOMapper.update2UnCollectByUserIdAndNoteId(collection)).thenReturn(0);
-
-        service.saveUncollect(collection, "tx-1");
-
-        verify(txJournalStore, never()).record("tx-1");
+    void shouldSkipEmptyBatch() {
+        org.junit.jupiter.api.Assertions.assertFalse(
+                service.saveNoteLikeBatch(List.of(), "group", "key-1", "tx-1"));
+        verify(mqConsumeRecordMapper, never()).insert(anyString(), anyString());
     }
 }

@@ -37,6 +37,11 @@ public interface NoteDOMapper {
      */
     NoteDO selectInteractionInfoByNoteId(Long noteId);
 
+    /**
+     * 批量读取互动消费所需的笔记状态与发布者（含逻辑删除）
+     */
+    List<NoteDO> selectInteractionInfosByNoteIds(@Param("noteIds") List<Long> noteIds);
+
     List<NoteDO> selectAccessInfosByNoteIds(@Param("noteIds") List<Long> noteIds);
 
     /**

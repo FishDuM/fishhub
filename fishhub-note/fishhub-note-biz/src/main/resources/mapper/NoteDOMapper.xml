@@ -53,6 +53,15 @@
     where id = #{noteId}
   </select>
 
+  <select id="selectInteractionInfosByNoteIds" resultMap="BaseResultMap">
+    select id, creator_id, visible, status
+    from t_note
+    where id in
+    <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
+      #{noteId}
+    </foreach>
+  </select>
+
   <select id="selectAccessInfosByNoteIds" resultMap="BaseResultMap">
     select id, creator_id, visible, revision
     from t_note

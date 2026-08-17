@@ -1,35 +1,52 @@
 package hk.ljx.fishhub.note.biz.consumer;
 
 import com.google.common.util.concurrent.RateLimiter;
+import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
-import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
+import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
+import hk.ljx.fishhub.note.biz.enums.CollectUnCollectNoteTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
+import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.common.message.Message;
-import org.apache.rocketmq.spring.annotation.ConsumeMode;
-import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-
+/**
+ * 笔记收藏/取消收藏事件的批量消费（30/批，非顺序），与点赞链同款。
+ */
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COLLECT_OR_UN_COLLECT, // Group 组
-        topic = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT, // 消费的主题 Topic
-        consumeMode = ConsumeMode.ORDERLY // 设置为顺序消费模式
-)
 @Slf4j
-public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
+public class CollectUnCollectNoteConsumer {
+
+    private static final int CONSUME_BATCH_MAX_SIZE = 30;
+    private static final String CONSUME_GROUP = "fishhub_group_" + MQConstants.TOPIC_COLLECT_OR_UN_COLLECT;
+
+    @Value("${rocketmq.name-server}")
+    private String namesrvAddr;
 
     @Resource
     private TransactionalMqSender transactionalMqSender;
@@ -40,119 +57,83 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
     @Resource
     private NoteInteractionCacheService noteInteractionCacheService;
 
-    // 每秒创建 5000 个令牌
-    private RateLimiter rateLimiter = RateLimiter.create(5000);
+    // 每秒 5000 令牌，批级限速兜底
+    private final RateLimiter rateLimiter = RateLimiter.create(5000);
 
-    @Override
-    public void onMessage(Message message) {
-        // 流量削峰：通过获取令牌，如果没有令牌可用，将阻塞，直到获得
-        rateLimiter.acquire();
+    private DefaultMQPushConsumer consumer;
 
-        // 幂等性: 通过联合唯一索引保证
-
-        // 消息体
-        String bodyJsonStr = new String(message.getBody());
-        // 标签
-        String tags = message.getTags();
-
-        log.info("==> CollectUnCollectNoteConsumer 消费了消息 {}, tags: {}", bodyJsonStr, tags);
-
-        // 根据 MQ 标签，判断操作类型
-        if (Objects.equals(tags, MQConstants.TAG_COLLECT)) { // 收藏笔记
-            handleCollectNoteTagMessage(bodyJsonStr);
-        } else if (Objects.equals(tags, MQConstants.TAG_UN_COLLECT)) { // 取消收藏笔记
-            handleUnCollectNoteTagMessage(bodyJsonStr);
-        }
+    @Bean
+    public DefaultMQPushConsumer collectUnCollectPushConsumer() throws MQClientException {
+        consumer = new DefaultMQPushConsumer(CONSUME_GROUP);
+        consumer.setNamesrvAddr(namesrvAddr);
+        consumer.subscribe(MQConstants.TOPIC_COLLECT_OR_UN_COLLECT,
+                MQConstants.TAG_COLLECT + "||" + MQConstants.TAG_UN_COLLECT);
+        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
+        consumer.setMessageModel(MessageModel.CLUSTERING);
+        consumer.setConsumeMessageBatchMaxSize(CONSUME_BATCH_MAX_SIZE);
+        consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
+            try {
+                rateLimiter.acquire();
+                List<String> bodys = msgs.stream()
+                        .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
+                        .toList();
+                consumeEventBodies(bodys);
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            } catch (Exception e) {
+                log.error("笔记收藏批量消费失败，整批稍后重投", e);
+                return ConsumeConcurrentlyStatus.RECONSUME_LATER;
+            }
+        });
+        consumer.start();
+        return consumer;
     }
 
-    /**
-     * 笔记收藏
-     * @param bodyJsonStr
-     */
-    private void handleCollectNoteTagMessage(String bodyJsonStr) {
-        // 消息体 JSON 字符串转 DTO
-        CollectUnCollectNoteMqDTO collectUnCollectNoteMqDTO = JsonUtils.parseObject(bodyJsonStr, CollectUnCollectNoteMqDTO.class);
-
-        if (Objects.isNull(collectUnCollectNoteMqDTO)) return;
-
-        // 用户ID
-        Long userId = collectUnCollectNoteMqDTO.getUserId();
-        // 收藏的笔记ID
-        Long noteId = collectUnCollectNoteMqDTO.getNoteId();
-        // 操作类型
-        Integer type = collectUnCollectNoteMqDTO.getType();
-        // 收藏时间
-        LocalDateTime createTime = collectUnCollectNoteMqDTO.getCreateTime();
-
-        if (userId == null || noteId == null || type == null || createTime == null) {
-            log.error("丢弃无法恢复的收藏消息，必要字段缺失: {}", bodyJsonStr);
+    void consumeEventBodies(List<String> bodys) {
+        List<CollectUnCollectNoteMqDTO> events = new ArrayList<>();
+        for (String body : bodys) {
+            CollectUnCollectNoteMqDTO event = JsonUtils.parseObject(body, CollectUnCollectNoteMqDTO.class);
+            if (event == null || event.getUserId() == null || event.getNoteId() == null
+                    || event.getType() == null || event.getCreateTime() == null) {
+                log.error("丢弃无法恢复的收藏消息，必要字段缺失: {}", body);
+                continue;
+            }
+            events.add(event);
+        }
+        if (events.isEmpty()) {
             return;
         }
-        NoteDO note = noteDOMapper.selectInteractionInfoByNoteId(noteId);
-        if (!isWritable(note, userId)) {
-            noteInteractionCacheService.evictCollectCaches(userId);
-            log.info("丢弃不可写笔记的收藏消息，noteId={}, userId={}", noteId, userId);
+
+        List<Long> noteIds = events.stream().map(CollectUnCollectNoteMqDTO::getNoteId).distinct().toList();
+        Map<Long, NoteDO> noteById = noteDOMapper.selectInteractionInfosByNoteIds(noteIds).stream()
+                .collect(Collectors.toMap(NoteDO::getId, Function.identity(), (left, right) -> left));
+
+        List<CollectUnCollectNoteMqDTO> validEvents = new ArrayList<>();
+        List<NoteCollectionDO> noteCollections = new ArrayList<>();
+        for (CollectUnCollectNoteMqDTO event : events) {
+            NoteDO note = noteById.get(event.getNoteId());
+            boolean collect = Objects.equals(event.getType(), CollectUnCollectNoteTypeEnum.COLLECT.getCode());
+            if (collect ? !isWritable(note, event.getUserId()) : note == null) {
+                noteInteractionCacheService.evictCollectCaches(event.getUserId());
+                log.info("丢弃不可处理的笔记收藏消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
+                continue;
+            }
+            event.setNoteCreatorId(note.getCreatorId());
+            validEvents.add(event);
+            noteCollections.add(NoteCollectionDO.builder()
+                    .userId(event.getUserId())
+                    .noteId(event.getNoteId())
+                    .createTime(event.getCreateTime())
+                    .status(event.getType())
+                    .build());
+        }
+        if (validEvents.isEmpty()) {
             return;
         }
-        collectUnCollectNoteMqDTO.setNoteCreatorId(note.getCreatorId());
 
-        // 构建 DO 对象
-        NoteCollectionDO noteCollectionDO = NoteCollectionDO.builder()
-                .userId(userId)
-                .noteId(noteId)
-                .createTime(createTime)
-                .status(type)
-                .build();
-
-        // 计数事件与收藏落库经由事务消息原子绑定；联合唯一索引判定重复消费时不登记 journal，
-        // 半消息随之回滚丢弃。
-        String resolvedBody = JsonUtils.toJsonString(collectUnCollectNoteMqDTO);
-        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_COLLECT, resolvedBody,
-                txId -> persistenceService.saveCollect(noteCollectionDO, txId));
-    }
-
-    /**
-     * 笔记取消收藏
-     * @param bodyJsonStr
-     */
-    private void handleUnCollectNoteTagMessage(String bodyJsonStr) {
-        // 消息体 JSON 字符串转 DTO
-        CollectUnCollectNoteMqDTO unCollectNoteMqDTO = JsonUtils.parseObject(bodyJsonStr, CollectUnCollectNoteMqDTO.class);
-
-        if (Objects.isNull(unCollectNoteMqDTO)) return;
-
-        // 用户ID
-        Long userId = unCollectNoteMqDTO.getUserId();
-        // 收藏的笔记ID
-        Long noteId = unCollectNoteMqDTO.getNoteId();
-        // 操作类型
-        Integer type = unCollectNoteMqDTO.getType();
-        // 收藏时间
-        LocalDateTime createTime = unCollectNoteMqDTO.getCreateTime();
-
-        if (userId == null || noteId == null || type == null || createTime == null) {
-            log.error("丢弃无法恢复的取消收藏消息，必要字段缺失: {}", bodyJsonStr);
-            return;
-        }
-        NoteDO note = noteDOMapper.selectInteractionInfoByNoteId(noteId);
-        if (note == null) {
-            noteInteractionCacheService.evictCollectCaches(userId);
-            log.info("丢弃不存在笔记的取消收藏消息，noteId={}, userId={}", noteId, userId);
-            return;
-        }
-        unCollectNoteMqDTO.setNoteCreatorId(note.getCreatorId());
-
-        // 构建 DO 对象
-        NoteCollectionDO noteCollectionDO = NoteCollectionDO.builder()
-                .userId(userId)
-                .noteId(noteId)
-                .createTime(createTime)
-                .status(type)
-                .build();
-
-        String resolvedBody = JsonUtils.toJsonString(unCollectNoteMqDTO);
-        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_COLLECT, resolvedBody,
-                txId -> persistenceService.saveUncollect(noteCollectionDO, txId));
+        String batchKey = DigestUtil.sha256Hex(String.join("|", bodys));
+        String payload = JsonUtils.toJsonString(validEvents);
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_COLLECT, payload,
+                txId -> persistenceService.saveNoteCollectBatch(noteCollections, CONSUME_GROUP, batchKey, txId));
     }
 
     private boolean isWritable(NoteDO note, Long userId) {
@@ -161,4 +142,14 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<Message> {
                 || Objects.equals(note.getCreatorId(), userId));
     }
 
+    @PreDestroy
+    public void destroy() {
+        if (Objects.nonNull(consumer)) {
+            try {
+                consumer.shutdown();
+            } catch (Exception e) {
+                log.error("笔记收藏消费者关闭失败", e);
+            }
+        }
+    }
 }

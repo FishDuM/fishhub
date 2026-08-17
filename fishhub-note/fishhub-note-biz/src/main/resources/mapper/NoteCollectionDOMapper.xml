@@ -119,8 +119,14 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
-  <update id="update2UnCollectByUserIdAndNoteId" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO">
-    update t_note_collection set status = #{status}, create_time = #{createTime}
-    where user_id = #{userId} and note_id = #{noteId} and status = 1
-  </update>
+  <insert id="insertOrUpdateBatch" parameterType="list">
+    INSERT INTO t_note_collection (user_id, note_id, create_time, status)
+    VALUES
+    <foreach collection="noteCollections" item="collection" separator=",">
+      (#{collection.userId}, #{collection.noteId}, #{collection.createTime}, #{collection.status})
+    </foreach>
+    ON DUPLICATE KEY UPDATE
+        create_time = IF(VALUES(create_time) >= create_time, VALUES(create_time), create_time),
+        status = IF(VALUES(create_time) >= create_time, VALUES(status), status)
+  </insert>
 </mapper>

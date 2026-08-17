@@ -20,6 +20,11 @@ public interface NoteCollectionDOMapper {
      */
     int insertOrUpdate(NoteCollectionDO noteCollectionDO);
 
+    /**
+     * 批量新增/更新收藏关系（时间守卫：旧事件不覆盖新事件）
+     */
+    int insertOrUpdateBatch(@Param("noteCollections") List<NoteCollectionDO> noteCollections);
+
     NoteCollectionDO selectByPrimaryKey(Long id);
 
     /**
@@ -56,12 +61,5 @@ public interface NoteCollectionDOMapper {
     int updateByPrimaryKeySelective(NoteCollectionDO record);
 
     int updateByPrimaryKey(NoteCollectionDO record);
-
-    /**
-     * 取消点赞
-     * @param noteCollectionDO
-     * @return
-     */
-    int update2UnCollectByUserIdAndNoteId(NoteCollectionDO noteCollectionDO);
 
 }
