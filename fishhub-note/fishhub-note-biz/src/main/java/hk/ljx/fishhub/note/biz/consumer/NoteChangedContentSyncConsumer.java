@@ -14,6 +14,8 @@ import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -34,46 +36,61 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
     @Override
     public void onMessage(String body) {
         NoteChangedEventMqDTO event = JsonUtils.parseObject(body, NoteChangedEventMqDTO.class);
-        if (event == null || event.getNoteId() == null) {
+        if (event == null || event.getNoteId() == null || event.getContentTasks() == null
+                || event.getContentTasks().isEmpty()) {
             throw new IllegalArgumentException("笔记变更消息缺少必要字段");
         }
-        if (event.getContentTasks() == null || event.getContentTasks().isEmpty()) {
-            return;
-        }
         for (NoteContentTaskMqDTO task : event.getContentTasks()) {
-            if (task == null || task.getNoteId() == null || StringUtils.isBlank(task.getContentUuid()) || task.getType() == null) {
+            if (task == null || task.getNoteId() == null || StringUtils.isBlank(task.getContentUuid())
+                    || task.getType() == null) {
                 throw new IllegalArgumentException("笔记正文同步任务缺少必要字段");
             }
-            NoteContentTaskTypeEnum type;
             try {
-                type = NoteContentTaskTypeEnum.valueOf(task.getType());
+                NoteContentTaskTypeEnum.valueOf(task.getType());
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("笔记正文同步任务类型不合法", e);
             }
-            boolean succeeded = switch (type) {
-                case UPSERT -> syncCurrentContent(task);
-                case DELETE -> keyValueRpcService.deleteNoteContent(task.getContentUuid());
-            };
-            if (!succeeded) {
+        }
+        syncCurrentContents(event.getContentTasks());
+    }
+
+    private void syncCurrentContents(List<NoteContentTaskMqDTO> tasks) {
+        List<NoteContentTaskMqDTO> upsertTasks = new ArrayList<>();
+        for (NoteContentTaskMqDTO task : tasks) {
+            if (Objects.equals(task.getType(), NoteContentTaskTypeEnum.DELETE.name())) {
+                if (!keyValueRpcService.deleteNoteContent(task.getContentUuid())) {
+                    throw new IllegalStateException("笔记正文删除到 KV 失败");
+                }
+            } else {
+                upsertTasks.add(task);
+            }
+        }
+        if (upsertTasks.isEmpty()) {
+            return;
+        }
+
+        // 事件内任务归属同一笔记，写前校验共享一次查询
+        NoteDO current = noteDOMapper.selectByPrimaryKey(upsertTasks.get(0).getNoteId());
+        List<NoteContentTaskMqDTO> toSaveTasks = new ArrayList<>();
+        for (NoteContentTaskMqDTO task : upsertTasks) {
+            if (matchesCurrentContent(current, task)) {
+                toSaveTasks.add(task);
+            } else {
+                keyValueRpcService.deleteNoteContent(task.getContentUuid());
+            }
+        }
+        for (NoteContentTaskMqDTO task : toSaveTasks) {
+            if (StringUtils.isBlank(task.getContent())
+                    || !keyValueRpcService.saveNoteContent(task.getContentUuid(), task.getContent())) {
                 throw new IllegalStateException("笔记正文同步到 KV 失败");
             }
         }
-    }
 
-    private boolean syncCurrentContent(NoteContentTaskMqDTO task) {
-        NoteDO current = noteDOMapper.selectByPrimaryKey(task.getNoteId());
-        // 笔记被删除或正文已更新时，旧任务不再具有写入资格，直接确认即可。
-        if (!matchesCurrentContent(current, task)) {
-            return keyValueRpcService.deleteNoteContent(task.getContentUuid());
-        }
-        boolean saved = StringUtils.isNotBlank(task.getContent())
-                && keyValueRpcService.saveNoteContent(task.getContentUuid(), task.getContent());
-        if (!saved) {
-            return false;
-        }
-        // 删除或替换可能发生在写前校验和 KV 写入之间；写后再核验一次并清理刚写入的旧正文。
-        return matchesCurrentContent(noteDOMapper.selectByPrimaryKey(task.getNoteId()), task)
-                || keyValueRpcService.deleteNoteContent(task.getContentUuid());
+        // 删除可能发生在写前校验和 KV 写入之间；写后复核并清理刚写入的旧正文。
+        NoteDO after = noteDOMapper.selectByPrimaryKey(upsertTasks.get(0).getNoteId());
+        toSaveTasks.stream()
+                .filter(task -> !matchesCurrentContent(after, task))
+                .forEach(task -> keyValueRpcService.deleteNoteContent(task.getContentUuid()));
     }
 
     private boolean matchesCurrentContent(NoteDO note, NoteContentTaskMqDTO task) {

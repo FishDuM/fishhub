@@ -366,10 +366,9 @@ public class CommentServiceImpl implements CommentService {
 
         // 若不存在
         if (!hasKey) {
-            // 异步将子评论同步到 Redis 中（最多同步 6*10 条）
-            threadPoolTaskExecutor.execute(() -> {
-                syncChildComments2Redis(parentCommentId, childCommentZSetKey);
-            });
+            // 异步单飞重建子评论 ZSET，防止并发读取重复查库
+            threadPoolTaskExecutor.execute(() ->
+                    rebuildChildCommentListZSetWithLock(parentCommentId, childCommentZSetKey));
         }
 
         // 若子评论 ZSET 缓存存在, 并且查询的是前 10 页的子评论
@@ -1344,6 +1343,35 @@ public class CommentServiceImpl implements CommentService {
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
                 return;
             }
+        }
+    }
+
+    /** 子评论列表 ZSET 单飞重建：抢锁者二次检查后重建，未抢锁者轮询等待，锁在任务内释放 */
+    private void rebuildChildCommentListZSetWithLock(Long parentCommentId, String key) {
+        String lockKey = RedisKeyConstants.buildChildCommentListRebuildLockKey(parentCommentId);
+        RLock lock;
+        try {
+            lock = tryAcquireRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS);
+        } catch (Exception e) {
+            log.warn("Redis 不可用，子评论列表 ZSET 重建锁获取失败，跳过重建，parentCommentId={}", parentCommentId, e);
+            return;
+        }
+        if (lock == null) {
+            try {
+                waitForCommentListZSet(key);
+            } catch (Exception e) {
+                log.warn("Redis 不可用，子评论列表 ZSET 重建等待失败，parentCommentId={}", parentCommentId, e);
+            }
+            return;
+        }
+        try {
+            // 二次检查：抢锁期间其他节点可能已完成重建
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                return;
+            }
+            syncChildComments2Redis(parentCommentId, key);
+        } finally {
+            releaseRebuildLock(lock, lockKey);
         }
     }
 
