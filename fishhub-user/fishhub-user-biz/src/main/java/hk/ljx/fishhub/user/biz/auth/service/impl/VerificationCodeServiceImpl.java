@@ -11,12 +11,13 @@ import hk.ljx.fishhub.user.biz.auth.sms.AliyunSmsHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
-
 
 @Service
 @Slf4j
@@ -29,11 +30,15 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     private static final int PHONE_RATE_LIMIT_PER_MINUTE = 100;
     private static final int IP_RATE_LIMIT_PER_MINUTE = 500;
-    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = new DefaultRedisScript<>(
-            "local current = redis.call('incr', KEYS[1]); "
-                    + "if current == 1 then redis.call('expire', KEYS[1], ARGV[1]); end; "
-                    + "return current;",
-            Long.class);
+
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = luaScript("/lua/rate_limit.lua");
 
     /**
      * 发送短信验证码

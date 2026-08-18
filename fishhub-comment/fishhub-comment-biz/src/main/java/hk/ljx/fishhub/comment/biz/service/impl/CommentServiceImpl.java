@@ -433,7 +433,7 @@ public class CommentServiceImpl implements CommentService {
         Long commentId = likeCommentReqVO.getCommentId();
 
         Long userId = LoginUserContextHolder.getUserId();
-        // 实时门卫：已赞状态以 Redis Set 为准（冷缓存自动回源数据库重建），重复点赞直接拒绝
+        // 校验是否已点赞
         if (commentLikeRealtimeService.containsLiked(userId, commentId)) {
             throw new BizException(ResponseCodeEnum.COMMENT_ALREADY_LIKED);
         }
@@ -441,7 +441,7 @@ public class CommentServiceImpl implements CommentService {
         LikeUnlikeCommentMqDTO likeUnlikeCommentMqDTO = LikeUnlikeCommentMqDTO.builder()
                 .userId(userId)
                 .commentId(commentId)
-                .type(LikeUnlikeCommentTypeEnum.LIKE.getCode()) // 点赞评论
+                .type(LikeUnlikeCommentTypeEnum.LIKE.getCode())
                 .createTime(LocalDateTime.now())
                 .build();
 
@@ -458,7 +458,7 @@ public class CommentServiceImpl implements CommentService {
             throw new IllegalStateException("评论点赞消息发送失败", e);
         }
 
-        // 实时链路：计数 +1、已赞集合 SADD（读侧 Redis 优先，立即可见）
+        // 实时更新点赞状态及计数
         commentLikeRealtimeService.markLiked(userId, commentId);
 
         return Response.success();
@@ -475,7 +475,7 @@ public class CommentServiceImpl implements CommentService {
         Long commentId = unLikeCommentReqVO.getCommentId();
 
         Long userId = LoginUserContextHolder.getUserId();
-        // 实时门卫：只有真正点过赞才允许取消（Redis Set 精确判断，冷缓存自动回源数据库重建）
+        // 校验是否已点赞
         if (!commentLikeRealtimeService.containsLiked(userId, commentId)) {
             throw new BizException(ResponseCodeEnum.COMMENT_NOT_LIKED);
         }
@@ -483,7 +483,7 @@ public class CommentServiceImpl implements CommentService {
         LikeUnlikeCommentMqDTO likeUnlikeCommentMqDTO = LikeUnlikeCommentMqDTO.builder()
                 .userId(userId)
                 .commentId(commentId)
-                .type(LikeUnlikeCommentTypeEnum.UNLIKE.getCode()) // 取消点赞评论
+                .type(LikeUnlikeCommentTypeEnum.UNLIKE.getCode())
                 .createTime(LocalDateTime.now())
                 .build();
 
@@ -500,7 +500,7 @@ public class CommentServiceImpl implements CommentService {
             throw new IllegalStateException("评论取消点赞消息发送失败", e);
         }
 
-        // 实时链路：计数 -1（clamp 不小于 0）、已赞集合 SREM
+        // 实时更新点赞状态及计数
         commentLikeRealtimeService.markUnliked(userId, commentId);
 
         return Response.success();
@@ -517,13 +517,11 @@ public class CommentServiceImpl implements CommentService {
             return Response.success(Collections.emptyList());
         }
         ensureCommentsAccessible(commentIds);
-        // 读侧 Redis 优先（已赞 Set），冷缓存回源 t_comment_like 重建，保证点赞记录的实时性
         return Response.success(commentLikeRealtimeService.filterLikedCommentIds(userId, commentIds));
     }
 
     /**
-     * 我的点赞足迹分页：Redis ZSet 倒序分页（冷缓存回源数据库重建），
-     * 过滤已删除评论/不可访问笔记，批量回填正文（kv）与作者信息（user）。
+     * 查询点赞足迹分页
      */
     @Override
     public PageResponse<FindLikedCommentItemRspVO> findLikedCommentPage(FindLikedCommentPageReqVO reqVO) {
@@ -542,7 +540,7 @@ public class CommentServiceImpl implements CommentService {
             return PageResponse.success(Collections.emptyList(), pageNo, page.total());
         }
 
-        // 过滤已删除评论 / 不可访问笔记（逐条静默过滤，不让整页报错）
+        // 过滤不可访问笔记的评论
         List<Long> noteIds = comments.stream().map(CommentDO::getNoteId).distinct().toList();
         Set<Long> accessibleNoteIds = new HashSet<>(noteRpcService.findAccessibleNoteIds(noteIds));
         List<CommentDO> accessibleComments = comments.stream()
@@ -552,7 +550,7 @@ public class CommentServiceImpl implements CommentService {
             return PageResponse.success(Collections.emptyList(), pageNo, page.total());
         }
 
-        // 按笔记分组批量取正文（kv），返回 contentUuid -> content
+        // 批量获取评论正文
         Map<String, String> contentByUuid = batchFindCommentContents(accessibleComments);
 
         // 批量取作者信息

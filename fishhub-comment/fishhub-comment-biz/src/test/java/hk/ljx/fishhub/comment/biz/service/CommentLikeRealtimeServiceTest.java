@@ -25,8 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 点赞/取消入口「实时门卫」测试：Set 已初始化时用 SISMEMBER 精确判断，
- * 未初始化则回源数据库重建 Set+ZSet 后再判断（避免取消被误挡）。
+ * 评论点赞实时服务测试
  */
 @ExtendWith(MockitoExtension.class)
 class CommentLikeRealtimeServiceTest {

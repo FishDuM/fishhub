@@ -142,7 +142,7 @@ class CommentServiceImplTest {
         assertThrows(BizException.class, () -> service.likeComment(
                 LikeCommentReqVO.builder().commentId(100L).build()));
 
-        // 门卫拒绝后不应再发 MQ、也不应更新实时状态
+        // 已点赞拒绝后不发 MQ 且不更新状态
         verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(Message.class), anyString());
         verify(commentLikeRealtimeService, never()).markLiked(anyLong(), anyLong());
     }

@@ -16,10 +16,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 评论点赞关系落库 + like_total 计数批量事务（t_comment.like_total 的唯一 DB 写入口）。
- *
- * <p>一次性提交一个批（≤30 条）：关系行批量 INSERT/DELETE，like_total 以「真实影响行数」计算增量，
- * 因此重复消费/同批重投天然幂等（重复行的 affected=0），且与 Redis 实时计数最终一致。</p>
+ * 评论点赞持久化服务
  */
 @Service
 public class CommentLikePersistenceService {
@@ -30,11 +27,7 @@ public class CommentLikePersistenceService {
     private CommentDOMapper commentDOMapper;
 
     /**
-     * 批量落库：按评论分组，同一评论内的 LIKE/UNLIKE 分别批量写关系行，
-     * 并按 {@code inserted - deleted} 的真实影响行数更新 like_total。
-     *
-     * @param operations 一批点赞/取消点赞操作（已由外层完成同用户同评论的 last-op 合并）
-     * @return 实际发生关系变化的评论 ID 集合
+     * 批量持久化点赞与取消点赞数据并更新计数
      */
     @Transactional(rollbackFor = Exception.class)
     public List<Long> applyBatch(List<LikeUnlikeCommentMqDTO> operations) {

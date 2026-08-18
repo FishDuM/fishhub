@@ -20,22 +20,27 @@ import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
-
 @Service
 @Slf4j
 public class AuthServiceImpl implements AuthService {
 
-    private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CODE_SCRIPT = new DefaultRedisScript<>(
-            "local value = redis.call('get', KEYS[1]); "
-                    + "if value == ARGV[1] then redis.call('del', KEYS[1]); return 1; end; "
-                    + "return 0;", Long.class);
+    private static DefaultRedisScript<Long> luaScript(String luaPath) {
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
+        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
+        script.setResultType(Long.class);
+        return script;
+    }
+
+    private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CODE_SCRIPT = luaScript("/lua/verify_and_consume_code.lua");
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;

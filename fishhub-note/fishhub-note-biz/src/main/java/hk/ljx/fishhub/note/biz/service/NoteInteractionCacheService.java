@@ -18,11 +18,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 用户笔记互动状态缓存。MySQL 关系表是数据源，Redis Set 只负责加速查询。
+ * 用户笔记互动状态缓存
  */
 @Slf4j
 @Service
@@ -83,13 +84,18 @@ public class NoteInteractionCacheService {
             return Collections.emptySet();
         }
         String key = ensureLikeCache(userId);
-        Set<Long> likedNoteIds = new HashSet<>();
+        Object[] members = noteIds.stream().map(String::valueOf).toArray();
+        Map<Object, Boolean> memberMap = stringRedisTemplate.opsForSet().isMember(key, members);
+        if (CollUtil.isEmpty(memberMap)) {
+            return Collections.emptySet();
+        }
+        Set<Long> liked = new HashSet<>();
         for (Long noteId : noteIds) {
-            if (Boolean.TRUE.equals(stringRedisTemplate.opsForSet().isMember(key, String.valueOf(noteId)))) {
-                likedNoteIds.add(noteId);
+            if (Boolean.TRUE.equals(memberMap.get(String.valueOf(noteId)))) {
+                liked.add(noteId);
             }
         }
-        return likedNoteIds;
+        return liked;
     }
 
     public void evictLikeCache(Long userId) {
@@ -97,7 +103,7 @@ public class NoteInteractionCacheService {
     }
 
     /**
-     * 异步消费者拒绝乐观点赞时清空该用户的相关读缓存；下次刷新从 MySQL 重建真实状态。
+     * 清理用户点赞缓存
      */
     public void evictLikeCaches(Long userId) {
         evictLikeCache(userId);
@@ -109,7 +115,7 @@ public class NoteInteractionCacheService {
     }
 
     /**
-     * 异步消费者拒绝乐观收藏时清空该用户的相关读缓存；下次刷新从 MySQL 重建真实状态。
+     * 清理用户收藏缓存
      */
     public void evictCollectCaches(Long userId) {
         evictCollectCache(userId);
