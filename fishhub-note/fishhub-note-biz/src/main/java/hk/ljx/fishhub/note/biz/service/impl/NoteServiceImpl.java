@@ -1479,14 +1479,33 @@ public class NoteServiceImpl implements NoteService {
     }
 
     private void fillNoteCounts(FindNoteDetailRspVO noteDetail) {
+        if (noteDetail == null || noteDetail.getId() == null) {
+            return;
+        }
+        Long noteId = noteDetail.getId();
         try {
-            List<FindNoteCountsByIdRspDTO> counts = countRpcService.findByNoteIds(List.of(noteDetail.getId()));
+            String countKey = "count:note:" + noteId;
+            List<Object> hashValues = stringRedisTemplate.opsForHash().multiGet(countKey,
+                    List.of("likeTotal", "collectTotal", "commentTotal"));
+            if (CollUtil.isNotEmpty(hashValues) && hashValues.size() >= 3
+                    && hashValues.get(0) != null && hashValues.get(1) != null && hashValues.get(2) != null) {
+                noteDetail.setLikeTotal(Long.parseLong(String.valueOf(hashValues.get(0))));
+                noteDetail.setCollectTotal(Long.parseLong(String.valueOf(hashValues.get(1))));
+                noteDetail.setCommentTotal(Long.parseLong(String.valueOf(hashValues.get(2))));
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("从 Redis 读取笔记计数失败，降级调用 count RPC, noteId={}", noteId, e);
+        }
+
+        try {
+            List<FindNoteCountsByIdRspDTO> counts = countRpcService.findByNoteIds(List.of(noteId));
             FindNoteCountsByIdRspDTO count = CollUtil.isEmpty(counts) ? null : counts.get(0);
             noteDetail.setLikeTotal(count == null || count.getLikeTotal() == null ? 0L : count.getLikeTotal());
             noteDetail.setCollectTotal(count == null || count.getCollectTotal() == null ? 0L : count.getCollectTotal());
             noteDetail.setCommentTotal(count == null || count.getCommentTotal() == null ? 0L : count.getCommentTotal());
         } catch (Exception e) {
-            log.warn("查询笔记计数失败，noteId={}", noteDetail.getId(), e);
+            log.warn("查询笔记计数失败，noteId={}", noteId, e);
             noteDetail.setLikeTotal(0L);
             noteDetail.setCollectTotal(0L);
             noteDetail.setCommentTotal(0L);

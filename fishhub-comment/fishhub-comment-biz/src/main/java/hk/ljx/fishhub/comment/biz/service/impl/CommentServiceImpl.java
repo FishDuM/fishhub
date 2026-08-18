@@ -226,8 +226,8 @@ public class CommentServiceImpl implements CommentService {
 
                 // 若 localCacheExpiredCommentIds 大小等于 0，说明评论详情数据都在本地缓存中，直接响应返参
                 if (CollUtil.size(localCacheExpiredCommentIds) == 0) {
-                    // 计数数据需要从 Redis 中查
-                    if (CollUtil.isNotEmpty(commentRspVOS)) {
+                    boolean missingCount = commentRspVOS.stream().anyMatch(vo -> vo.getLikeTotal() == null);
+                    if (missingCount && CollUtil.isNotEmpty(commentRspVOS)) {
                         setCommentCountData(commentRspVOS, localCacheExpiredCommentIds);
                     }
 
