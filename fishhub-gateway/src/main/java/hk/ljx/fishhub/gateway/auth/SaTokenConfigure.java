@@ -36,6 +36,7 @@ public class SaTokenConfigure {
             "/auth/verification/code/send",
             "/user/user/profile",
             "/note/channel/list",
+            "/note/topic/list",
             "/note/discover/note/list",
             "/note/note/detail",
             "/note/note/published/list",

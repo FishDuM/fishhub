@@ -51,6 +51,13 @@ public interface CommentLikeDOMapper {
      */
     List<CommentLikeDO> selectByUserId(@Param("userId") Long userId);
 
+    /**
+     * 查询用户点赞过的全部评论（含点赞时间，用于 ZSet 足迹重建）
+     * @param userId
+     * @return
+     */
+    List<CommentLikeDO> selectLikedCommentsByUserId(@Param("userId") Long userId);
+
     List<Long> selectLikedCommentIds(@Param("userId") Long userId,
                                      @Param("commentIds") List<Long> commentIds);
 

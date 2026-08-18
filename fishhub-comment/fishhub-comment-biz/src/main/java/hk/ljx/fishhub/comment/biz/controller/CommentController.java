@@ -59,6 +59,13 @@ public class CommentController {
         return commentService.findLikedCommentIds(reqVO);
     }
 
+    @PostMapping("/liked/page")
+    @ApiOperationLog(description = "我的点赞足迹分页")
+    public PageResponse<FindLikedCommentItemRspVO> findLikedCommentPage(
+            @Validated @RequestBody FindLikedCommentPageReqVO reqVO) {
+        return commentService.findLikedCommentPage(reqVO);
+    }
+
     @PostMapping("/delete")
     @ApiOperationLog(description = "删除评论")
     public Response<?> deleteComment(@Validated @RequestBody DeleteCommentReqVO deleteCommentReqVO) {

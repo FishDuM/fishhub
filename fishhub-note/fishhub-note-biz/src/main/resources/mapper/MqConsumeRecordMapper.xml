@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="hk.ljx.fishhub.note.biz.domain.mapper.MqConsumeRecordMapper">
-    <insert id="insert">
-        insert into t_mq_consume_record (consumer_group, message_key, create_time)
-        values (#{consumerGroup}, #{messageKey}, now())
-    </insert>
-</mapper>

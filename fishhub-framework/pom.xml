@@ -31,6 +31,8 @@
         <module>fishhub-spring-boot-starter-biz-mq</module>
         <!-- Redisson 分布式组件 -->
         <module>fishhub-spring-boot-starter-biz-redisson</module>
+        <!-- Web 通用组件 -->
+        <module>fishhub-spring-boot-starter-web</module>
     </modules>
 
 </project>

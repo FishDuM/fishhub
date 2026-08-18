@@ -1,17 +1,15 @@
 package hk.ljx.fishhub.comment.biz.consumer;
 
-import cn.hutool.crypto.digest.DigestUtil;
 import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
-import hk.ljx.fishhub.comment.biz.domain.mapper.MqConsumeRecordMapper;
-import hk.ljx.fishhub.comment.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
-import hk.ljx.fishhub.comment.biz.model.dto.CommentChangedEventMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.CommentItemMqDTO;
+import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
+import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
+import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import jakarta.annotation.Resource;
@@ -20,7 +18,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -31,7 +28,6 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DuplicateKeyException;
 
 @Component
 @Slf4j
@@ -44,15 +40,11 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     @Resource
     private CommentLikeDOMapper commentLikeDOMapper;
     @Resource
-    private NoteCountDOMapper noteCountDOMapper;
-    @Resource
-    private MqConsumeRecordMapper mqConsumeRecordMapper;
-    @Resource
     private TransactionalMqSender transactionalMqSender;
     @Resource
     private TxJournalStore txJournalStore;
     @Resource
-    private TransactionTemplate transactionTemplate;
+    private MqIdempotentExecutor mqIdempotentExecutor;
 
     private final RateLimiter rateLimiter = RateLimiter.create(1000);
 
@@ -92,34 +84,22 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                 .build());
 
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COMMENT_CHANGED, eventBody, txId -> {
-            boolean deleted = transactionTemplate.execute(status -> {
-                // 消费幂等：并发重投时只允许一个消费者执行扣减；未生效则不登记 journal，半消息随之回滚
-                String messageKey = DigestUtil.sha256Hex(MQConstants.TOPIC_DELETE_COMMENT + ":" + body);
-                if (mqConsumeRecordMapper.exists(
-                        "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT, messageKey) > 0) {
-                    return false;
-                }
-                try {
-                    mqConsumeRecordMapper.insert(
-                            "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT, messageKey);
-                } catch (DuplicateKeyException e) {
-                    return false;
-                }
+            boolean deleted = mqIdempotentExecutor.execute(
+                    "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT,
+                    MQConstants.TOPIC_DELETE_COMMENT + ":" + body,
+                    () -> {
+                        commentLikeDOMapper.deleteByCommentIds(targetIds);
+                        commentDOMapper.deleteByIds(targetIds);
 
-                commentLikeDOMapper.deleteByCommentIds(targetIds);
-                commentDOMapper.deleteByIds(targetIds);
-                noteCountDOMapper.insertOrUpdateCommentTotalByNoteId(root.getNoteId(), -targetIds.size());
-
-                if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
-                    Long parentId = root.getParentId();
-                    commentDOMapper.updateChildCommentTotal(parentId, -targetIds.size());
-                    CommentDO earliest = commentDOMapper.selectEarliestByParentId(parentId);
-                    commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
-                            earliest == null ? 0L : earliest.getId(), parentId);
-                }
-                txJournalStore.record(txId);
-                return true;
-            });
+                        if (Objects.equals(root.getLevel(), CommentLevelEnum.TWO.getCode())) {
+                            Long parentId = root.getParentId();
+                            commentDOMapper.updateChildCommentTotal(parentId, -targetIds.size());
+                            CommentDO earliest = commentDOMapper.selectEarliestByParentId(parentId);
+                            commentDOMapper.updateFirstReplyCommentIdByPrimaryKey(
+                                    earliest == null ? 0L : earliest.getId(), parentId);
+                        }
+                        txJournalStore.record(txId);
+                    });
             log.info("评论删除事务完成, rootId={}, applied={}", root.getId(), deleted);
             return deleted;
         });

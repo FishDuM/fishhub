@@ -159,4 +159,10 @@ public interface CommentDOMapper {
 
     int updateChildCommentTotal(@Param("id") Long id, @Param("delta") long delta);
 
+    /**
+     * 更新评论点赞数（count 聚合后投递，本服务落库；t_comment 的唯一写入口）
+     */
+    int updateLikeTotalByCommentId(@Param("count") Integer count,
+                                   @Param("commentId") Long commentId);
+
 }

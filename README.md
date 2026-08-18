@@ -16,7 +16,7 @@ FishHub 是一个基于 Spring Boot 3、Spring Cloud Alibaba 和 Vue 3 的社区
 
 ## 初始化数据库
 
-`sql/create.sql` 可直接初始化 `fishhub`、`xxl_job` 和 `leaf` 三个数据库：
+`sql/create.sql` 是**单文件全量**脚本，按顺序包含：5 个业务库 `fishhub_user/note/comment/relation/count`（含全部业务表）、旧共享库 `fishhub`（历史遗留，全新安装可跳过）、`xxl_job`（调度中心）、`leaf`（发号）、存量数据迁移与对账校验（全新安装自动空跑）以及测试账号数据（可选）。直接整文件执行即可：
 
 ```bash
 mysql -h 192.168.0.100 -u root -p < sql/create.sql
@@ -26,23 +26,20 @@ mysql -h 192.168.0.100 -u root -p < sql/create.sql
 
 ## 服务端口
 
-| 服务 | 端口 |
-|---|---:|
-| Gateway | 8000 |
-| Auth | 8080 |
-| OSS | 8081 |
-| User | 8082 |
-| KV | 8084 |
-| Distributed ID | 8085 |
-| Note | 8086 |
-| User Relation | 8087 |
-| Count | 8090 |
-| Data Align | 8091 |
-| Search | 8092 |
-| Comment | 8093 |
-| XXL-JOB Admin | 7777 |
-
-除 Gateway 外，这些端口都属于内部服务，不应直接暴露到公网。
+| 服务 | 端口 | 说明 |
+|---|---:|---|
+| Gateway | 8000 | 网关（/auth、/user、/note、/relation、/comment、/oss、/search 路由） |
+| User | 8082 | 用户/认证/角色权限（auth 已并入） |
+| OSS | 8081 | 对象存储（MinIO 上传/访问） |
+| Note | 8086 | 笔记/话题/点赞/收藏 |
+| Comment | 8093 | 评论/评论点赞/热度 |
+| User Relation | 8087 | 关注/粉丝 |
+| Count | 8090 | 计数 + XXL-JOB executor（data-align 已删除，对账职责归 count） |
+| KV | 8084 | Cassandra 正文存储（独立扩容） |
+| Search | 8092 | ES 搜索（Canal 增量，跨库只读 JOIN 组装索引） |
+| Distributed ID | 8085 | Leaf 发号（segment + snowflake，保留） |
+| XXL-JOB Admin | 7777 | 调度中心 |
+除 Gateway 外，这些端口都属于内部服务，不应直接暴露到公网。各业务库（fishhub_user/note/comment/relation/count）相互独立，跨服务数据一律经 Feign / RocketMQ 访问。
 
 ## 构建和启动
 
@@ -64,7 +61,7 @@ zsh ops/fishhubctl.sh stop
 
 ## 测试
 
-普通单元测试随 Maven 执行。依赖 Redis、Cassandra 等共享中间件的集成测试默认关闭，需要显式开启：
+普通单元测试随 Maven 执行。本机（Windows + JDK 21）Surefire fork 启动偶发崩溃，如遇 `forked VM terminated` 请用 `mvn test -DforkCount=0` 进程内运行。依赖 Redis、Cassandra 等共享中间件的集成测试默认关闭，需要显式开启：
 
 ```bash
 FISHHUB_RUN_INTEGRATION_TESTS=true mvn test

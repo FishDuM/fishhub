@@ -15,7 +15,6 @@
     <description>搜索服务</description>
 
     <modules>
-        <module>fishhub-search-api</module>
         <module>fishhub-search-biz</module>
     </modules>
 </project>

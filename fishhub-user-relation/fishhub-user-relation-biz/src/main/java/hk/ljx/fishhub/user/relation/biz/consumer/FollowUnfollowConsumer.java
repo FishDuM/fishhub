@@ -7,7 +7,7 @@ import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.fishhub.user.relation.biz.enums.FollowUnfollowTypeEnum;
-import hk.ljx.fishhub.user.relation.biz.model.dto.CountFollowUnfollowMqDTO;
+import hk.ljx.fishhub.count.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.UnfollowUserMqDTO;
 import jakarta.annotation.Resource;

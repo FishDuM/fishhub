@@ -14,12 +14,6 @@ public class RedisKeyConstants {
     private static final String HAVE_FIRST_REPLY_COMMENT_KEY_PREFIX = "comment:havaFirstReplyCommentId:";
 
     /**
-     * Key 前缀：布隆过滤器 - 用户点赞的评论。
-     * v2：由 Redisson RBloomFilter 管理
-     */
-    private static final String BLOOM_COMMENT_LIKES_KEY_PREFIX = "bloom:comment:likes:v2:";
-
-    /**
      * 一级评论分页总数缓存。不能复用 count:note:*，后者由计数服务作为 Hash 使用。
      */
     private static final String ONE_LEVEL_COMMENT_TOTAL_CACHE_KEY_PREFIX = "cache:comment:one-level-total:";
@@ -32,6 +26,21 @@ public class RedisKeyConstants {
      * 评论维度计数 Key 前缀
      */
     private static final String COUNT_COMMENT_KEY_PREFIX = "count:comment:";
+
+    /**
+     * 已点赞状态缓存：用户已点赞的评论 ID Set（实时交互态，冷缓存时回源数据库重建）
+     */
+    private static final String USER_COMMENT_LIKE_SET_KEY = "set:comment:likes:";
+
+    /**
+     * 我的点赞足迹：用户已点赞的评论 ID ZSet（member=commentId，score=点赞时间；分页倒序）
+     */
+    private static final String USER_COMMENT_LIKE_ZSET_KEY = "zset:comment:likes:";
+
+    /**
+     * 用户已赞评论 Set 的初始化哨兵：用于区分「未初始化」与「空集合」；与笔记侧约定一致
+     */
+    public static final String COMMENT_LIKE_SET_INITIALIZED = "__initialized__";
 
     /**
      * Key 前缀：评论分页 ZSET
@@ -75,15 +84,6 @@ public class RedisKeyConstants {
      */
     public static String buildHaveFirstReplyCommentKey(Long commentId) {
         return HAVE_FIRST_REPLY_COMMENT_KEY_PREFIX + commentId;
-    }
-
-    /**
-     * 构建 布隆过滤器 - 用户点赞的评论 完整 KEY
-     * @param userId
-     * @return
-     */
-    public static String buildBloomCommentLikesKey(Long userId) {
-        return BLOOM_COMMENT_LIKES_KEY_PREFIX + userId;
     }
 
     public static String buildOneLevelCommentTotalCacheKey(Long noteId, String version) {
@@ -142,6 +142,24 @@ public class RedisKeyConstants {
      */
     public static String buildCountCommentKey(Long commentId) {
         return COUNT_COMMENT_KEY_PREFIX + commentId;
+    }
+
+    /**
+     * 构建用户已点赞的评论 ID Set 完整 KEY
+     * @param userId
+     * @return
+     */
+    public static String buildUserCommentLikeSetKey(Long userId) {
+        return USER_COMMENT_LIKE_SET_KEY + userId;
+    }
+
+    /**
+     * 构建我的点赞足迹 ZSet 完整 KEY
+     * @param userId
+     * @return
+     */
+    public static String buildUserCommentLikeZSetKey(Long userId) {
+        return USER_COMMENT_LIKE_ZSET_KEY + userId;
     }
 
 }

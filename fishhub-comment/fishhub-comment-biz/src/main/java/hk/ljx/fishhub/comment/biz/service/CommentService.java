@@ -45,6 +45,13 @@ public interface CommentService {
     Response<java.util.List<Long>> findLikedCommentIds(FindLikedCommentIdsReqVO reqVO);
 
     /**
+     * 我的点赞足迹分页
+     * @param reqVO
+     * @return
+     */
+    PageResponse<FindLikedCommentItemRspVO> findLikedCommentPage(FindLikedCommentPageReqVO reqVO);
+
+    /**
      * 删除评论
      * @param deleteCommentReqVO
      * @return

@@ -26,6 +26,17 @@
             <artifactId>fishhub-count-api</artifactId>
         </dependency>
 
+        <!-- MQ 幂等/事务消息组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-note-api</artifactId>
+        </dependency>
+
         <!-- 业务接口日志组件 -->
         <dependency>
             <groupId>hk.ljx</groupId>
@@ -47,6 +58,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-web</artifactId>
         </dependency>
 
         <dependency>

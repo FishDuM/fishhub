@@ -2,6 +2,9 @@ package hk.ljx.framework.mq.config;
 
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalPurgeJob;
+import hk.ljx.framework.mq.idempotent.MqConsumeRecordPurgeJob;
+import hk.ljx.framework.mq.idempotent.MqConsumeRecordStore;
+import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.framework.mq.tx.TxMqLocalTransactionListener;
 import org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration;
@@ -15,6 +18,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 
@@ -44,7 +48,29 @@ public class TxMqAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(TxJournalStore.class)
+    @ConditionalOnBean(DataSource.class)
+    @ConditionalOnMissingBean
+    public MqConsumeRecordStore mqConsumeRecordStore(DataSource dataSource) {
+        return new MqConsumeRecordStore(new JdbcTemplate(dataSource));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public MqIdempotentExecutor mqIdempotentExecutor(MqConsumeRecordStore mqConsumeRecordStore, DataSource dataSource) {
+        return new MqIdempotentExecutor(mqConsumeRecordStore,
+                new TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource)));
+    }
+
+    @Bean
+    @ConditionalOnBean(MqConsumeRecordStore.class)
+    @ConditionalOnMissingBean
+    public MqConsumeRecordPurgeJob mqConsumeRecordPurgeJob(MqConsumeRecordStore mqConsumeRecordStore,
+            @Value("${mq.consume-record.retention-days:7}") int retentionDays) {
+        return new MqConsumeRecordPurgeJob(mqConsumeRecordStore, retentionDays);
+    }
+
+    @Bean
+    @ConditionalOnBean(DataSource.class)
     @ConditionalOnMissingBean
     public TxJournalPurgeJob txJournalPurgeJob(DataSource dataSource,
             @Value("${mq.tx-journal.retention-hours:24}") int retentionHours) {

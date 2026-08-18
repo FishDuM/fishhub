@@ -10,8 +10,8 @@ import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
-import hk.ljx.fishhub.comment.biz.model.dto.CommentChangedEventMqDTO;
-import hk.ljx.fishhub.comment.biz.model.dto.CommentItemMqDTO;
+import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
+import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
@@ -260,6 +260,12 @@ public class Comment2DBConsumer {
                             // 部分认领属于真并发冲突：回滚本批已认领行，整体重投重试
                             throw new IllegalStateException("评论批次并发冲突，整体重试");
                         }
+                        // 子评论总数归属 t_comment：发布路径按父评论聚合累加（与删除侧同规则，纯增量可交换）
+                        finalCommentBOS.stream()
+                                .filter(comment -> Objects.equals(comment.getLevel(), CommentLevelEnum.TWO.getCode()))
+                                .collect(Collectors.groupingBy(CommentBO::getParentId))
+                                .forEach((parentId, children) ->
+                                        commentDOMapper.updateChildCommentTotal(parentId, children.size()));
                         txJournalStore.record(txId);
                         return count;
                     } catch (Exception ex) {

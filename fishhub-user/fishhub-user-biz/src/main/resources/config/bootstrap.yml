@@ -5,6 +5,13 @@ spring:
     active: dev # 默认激活 dev 本地开发环境
   cloud:
     nacos:
+      config:
+        server-addr: http://192.168.0.100:8848 # 指定 Nacos 配置中心地址
+        prefix: ${spring.application.name}
+        group: DEFAULT_GROUP
+        namespace: fishhub
+        file-extension: yaml
+        refresh-enabled: true
       discovery:
         enabled: true # 启用服务发现
         group: DEFAULT_GROUP # 所属组

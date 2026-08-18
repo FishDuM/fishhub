@@ -4,7 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
-import hk.ljx.fishhub.note.biz.domain.mapper.MqConsumeRecordMapper;
+import hk.ljx.framework.mq.idempotent.MqConsumeRecordStore;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import jakarta.annotation.Resource;
@@ -23,7 +23,7 @@ public class NoteInteractionPersistenceService {
     @Resource
     private NoteCollectionDOMapper noteCollectionDOMapper;
     @Resource
-    private MqConsumeRecordMapper mqConsumeRecordMapper;
+    private MqConsumeRecordStore mqConsumeRecordStore;
     @Resource
     private TxJournalStore txJournalStore;
 
@@ -33,7 +33,7 @@ public class NoteInteractionPersistenceService {
             return false;
         }
         try {
-            mqConsumeRecordMapper.insert(consumeGroup, batchKey);
+            mqConsumeRecordStore.insert(consumeGroup, batchKey);
         } catch (DuplicateKeyException e) {
             return false;
         }
@@ -48,7 +48,7 @@ public class NoteInteractionPersistenceService {
             return false;
         }
         try {
-            mqConsumeRecordMapper.insert(consumeGroup, batchKey);
+            mqConsumeRecordStore.insert(consumeGroup, batchKey);
         } catch (DuplicateKeyException e) {
             return false;
         }

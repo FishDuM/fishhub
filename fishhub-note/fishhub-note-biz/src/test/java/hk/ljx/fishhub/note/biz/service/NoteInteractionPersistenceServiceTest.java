@@ -3,7 +3,7 @@ package hk.ljx.fishhub.note.biz.service;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO;
-import hk.ljx.fishhub.note.biz.domain.mapper.MqConsumeRecordMapper;
+import hk.ljx.framework.mq.idempotent.MqConsumeRecordStore;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ class NoteInteractionPersistenceServiceTest {
     @Mock
     private NoteCollectionDOMapper noteCollectionDOMapper;
     @Mock
-    private MqConsumeRecordMapper mqConsumeRecordMapper;
+    private MqConsumeRecordStore mqConsumeRecordStore;
     @Mock
     private TxJournalStore txJournalStore;
     @InjectMocks
@@ -44,8 +44,8 @@ class NoteInteractionPersistenceServiceTest {
 
         boolean applied = service.saveNoteLikeBatch(likes, "group", "key-1", "tx-1");
 
-        var ordered = inOrder(mqConsumeRecordMapper, noteLikeDOMapper, txJournalStore);
-        ordered.verify(mqConsumeRecordMapper).insert("group", "key-1");
+        var ordered = inOrder(mqConsumeRecordStore, noteLikeDOMapper, txJournalStore);
+        ordered.verify(mqConsumeRecordStore).insert("group", "key-1");
         ordered.verify(noteLikeDOMapper).insertOrUpdateBatch(likes);
         ordered.verify(txJournalStore).record("tx-1");
         org.junit.jupiter.api.Assertions.assertTrue(applied);
@@ -53,7 +53,7 @@ class NoteInteractionPersistenceServiceTest {
 
     @Test
     void shouldSkipBatchWhenConsumeRecordAlreadyExists() {
-        doThrow(new DuplicateKeyException("dup")).when(mqConsumeRecordMapper).insert("group", "key-1");
+        doThrow(new DuplicateKeyException("dup")).when(mqConsumeRecordStore).insert("group", "key-1");
 
         boolean applied = service.saveNoteLikeBatch(
                 List.of(NoteLikeDO.builder().userId(1L).noteId(2L).build()), "group", "key-1", "tx-1");
@@ -70,8 +70,8 @@ class NoteInteractionPersistenceServiceTest {
 
         boolean applied = service.saveNoteCollectBatch(collections, "group", "key-1", "tx-1");
 
-        var ordered = inOrder(mqConsumeRecordMapper, noteCollectionDOMapper, txJournalStore);
-        ordered.verify(mqConsumeRecordMapper).insert("group", "key-1");
+        var ordered = inOrder(mqConsumeRecordStore, noteCollectionDOMapper, txJournalStore);
+        ordered.verify(mqConsumeRecordStore).insert("group", "key-1");
         ordered.verify(noteCollectionDOMapper).insertOrUpdateBatch(collections);
         ordered.verify(txJournalStore).record("tx-1");
         org.junit.jupiter.api.Assertions.assertTrue(applied);
@@ -81,6 +81,6 @@ class NoteInteractionPersistenceServiceTest {
     void shouldSkipEmptyBatch() {
         org.junit.jupiter.api.Assertions.assertFalse(
                 service.saveNoteLikeBatch(List.of(), "group", "key-1", "tx-1"));
-        verify(mqConsumeRecordMapper, never()).insert(anyString(), anyString());
+        verify(mqConsumeRecordStore, never()).insert(anyString(), anyString());
     }
 }

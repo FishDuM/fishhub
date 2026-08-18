@@ -22,8 +22,6 @@
         <module>fishhub-framework</module>
         <!-- Gateway 网关服务 -->
         <module>fishhub-gateway</module>
-        <!-- 认证服务 -->
-        <module>fishhub-auth</module>
         <!-- 对象存储服务 -->
         <module>fishhub-oss</module>
         <!-- 用户服务 -->
@@ -38,8 +36,6 @@
         <module>fishhub-user-relation</module>
         <!-- 计数服务 -->
         <module>fishhub-count</module>
-        <!-- 数据对齐服务 -->
-        <module>fishhub-data-align</module>
         <!-- 搜索服务 -->
         <module>fishhub-search</module>
         <!-- 评论服务 -->
@@ -127,12 +123,6 @@
 
             <dependency>
                 <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-search-api</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-count-api</artifactId>
                 <version>${revision}</version>
             </dependency>
@@ -167,6 +157,13 @@
             <dependency>
                 <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- Web 通用组件 -->
+            <dependency>
+                <groupId>hk.ljx</groupId>
+                <artifactId>fishhub-spring-boot-starter-web</artifactId>
                 <version>${revision}</version>
             </dependency>
 
@@ -426,6 +423,15 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <!-- 全局 provided 依赖（继承到所有子模块；确保 flatten 重写 pom 后 lombok 处理器仍可被 javac 发现） -->
+    <dependencies>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
 
     <build>
         <!-- 统一插件管理 -->

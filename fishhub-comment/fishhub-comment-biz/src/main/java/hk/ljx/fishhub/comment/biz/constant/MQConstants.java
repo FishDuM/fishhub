@@ -19,11 +19,6 @@ public interface MQConstants {
     String TOPIC_COMMENT_LIKE_OR_UNLIKE = "CommentLikeUnlikeTopic";
 
     /**
-     * 评论点赞关系实际变化后产生的计数事件
-     */
-    String TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE = "AppliedCommentLikeUnlikeTopic";
-
-    /**
      * Topic: 删除本地缓存 —— 评论详情（模块内广播）
      */
     String TOPIC_DELETE_COMMENT_LOCAL_CACHE = "DeleteCommentDetailLocalCacheTopic";

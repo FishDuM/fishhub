@@ -20,10 +20,7 @@ import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
-import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentLikeDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
-import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
-import hk.ljx.fishhub.comment.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.*;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
@@ -32,6 +29,7 @@ import hk.ljx.fishhub.comment.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
 import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
@@ -43,10 +41,8 @@ import org.apache.logging.log4j.util.Strings;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.redisson.api.RBloomFilter;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.redisson.client.codec.LongCodec;
 import org.springframework.data.redis.core.*;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
@@ -75,8 +71,6 @@ public class CommentServiceImpl implements CommentService {
     @Resource
     private CommentDOMapper commentDOMapper;
     @Resource
-    private NoteCountDOMapper noteCountDOMapper;
-    @Resource
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private CommentDetailCache commentDetailCache;
@@ -85,11 +79,11 @@ public class CommentServiceImpl implements CommentService {
     @Resource
     private RocketMQTemplate rocketMQTemplate;
     @Resource
-    private CommentLikeDOMapper commentLikeDOMapper;
-    @Resource
     private TransactionTemplate transactionTemplate;
     @Resource
     private RedissonClient redissonClient;
+    @Resource
+    private CommentLikeRealtimeService commentLikeRealtimeService;
 
     /**
      * 评论详情本地缓存
@@ -105,13 +99,6 @@ public class CommentServiceImpl implements CommentService {
     private static final long ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS = 2L;
     private static final long COMMENT_LIST_REBUILD_LOCK_SECONDS = 5L;
 
-    /**
-     * 评论点赞布隆过滤器：由 Redisson RBloomFilter 实现，不依赖 RedisBloom 模块。
-     * 容量按单个用户点赞评论数的安全上限估算；键按 1~2 小时 TTL 定期重建，
-     * 超出容量仅导致误判率上升，且误判路径有数据库复核兜底。
-     */
-    private static final long BLOOM_EXPECTED_INSERTIONS = 16384L;
-    private static final double BLOOM_FALSE_PROBABILITY = 0.01D;
 
     /**
      * 发布评论
@@ -446,36 +433,9 @@ public class CommentServiceImpl implements CommentService {
         Long commentId = likeCommentReqVO.getCommentId();
 
         Long userId = LoginUserContextHolder.getUserId();
-        RBloomFilter<Long> bloomFilter = commentLikeBloomFilter(userId);
-
-        if (!bloomFilter.isExists()) {
-            // Redis 中布隆过滤器不存在：从数据库中校验评论是否被点赞，并初始化布隆过滤器
-            int count = commentLikeDOMapper.selectCountByUserIdAndCommentId(userId, commentId);
-
-            long expireSeconds = CacheTtl.hours(1, 1);
-
-            // 目标评论已经被点赞
-            if (count > 0) {
-                // 异步初始化布隆过滤器
-                threadPoolTaskExecutor.submit(() ->
-                        batchAddCommentLike2BloomAndExpire(userId, expireSeconds));
-                throw new BizException(ResponseCodeEnum.COMMENT_ALREADY_LIKED);
-            }
-
-            // 若目标评论未被点赞，查询当前用户是否有点赞其他评论，有则同步初始化布隆过滤器
-            batchAddCommentLike2BloomAndExpire(userId, expireSeconds);
-
-            // 确保已初始化后，将当前评论加入布隆过滤器并设置过期时间
-            bloomFilter.tryInit(BLOOM_EXPECTED_INSERTIONS, BLOOM_FALSE_PROBABILITY);
-            bloomFilter.add(commentId);
-            bloomFilter.expire(expireSeconds, TimeUnit.SECONDS);
-        } else if (bloomFilter.contains(commentId)) {
-            // 目标评论可能已被点赞（布隆存在误判，需要进一步确认）
-            int count = commentLikeDOMapper.selectCountByUserIdAndCommentId(userId, commentId);
-
-            if (count > 0) {
-                throw new BizException(ResponseCodeEnum.COMMENT_ALREADY_LIKED);
-            }
+        // 实时门卫：已赞状态以 Redis Set 为准（冷缓存自动回源数据库重建），重复点赞直接拒绝
+        if (commentLikeRealtimeService.containsLiked(userId, commentId)) {
+            throw new BizException(ResponseCodeEnum.COMMENT_ALREADY_LIKED);
         }
 
         LikeUnlikeCommentMqDTO likeUnlikeCommentMqDTO = LikeUnlikeCommentMqDTO.builder()
@@ -495,9 +455,11 @@ public class CommentServiceImpl implements CommentService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (RuntimeException e) {
-            stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(userId));
             throw new IllegalStateException("评论点赞消息发送失败", e);
         }
+
+        // 实时链路：计数 +1、已赞集合 SADD（读侧 Redis 优先，立即可见）
+        commentLikeRealtimeService.markLiked(userId, commentId);
 
         return Response.success();
     }
@@ -513,22 +475,8 @@ public class CommentServiceImpl implements CommentService {
         Long commentId = unLikeCommentReqVO.getCommentId();
 
         Long userId = LoginUserContextHolder.getUserId();
-        RBloomFilter<Long> bloomFilter = commentLikeBloomFilter(userId);
-
-        if (!bloomFilter.isExists()) {
-            // 布隆过滤器不存在：异步初始化布隆过滤器
-            threadPoolTaskExecutor.submit(() -> {
-                long expireSeconds = CacheTtl.hours(1, 1);
-                batchAddCommentLike2BloomAndExpire(userId, expireSeconds);
-            });
-
-            // 从数据库中校验评论是否被点赞
-            int count = commentLikeDOMapper.selectCountByUserIdAndCommentId(userId, commentId);
-
-            // 未点赞，无法取消点赞操作，抛出业务异常
-            if (count == 0) throw new BizException(ResponseCodeEnum.COMMENT_NOT_LIKED);
-        } else if (!bloomFilter.contains(commentId)) {
-            // 布隆过滤器校验目标评论未被点赞（布隆无假阴性，判定绝对正确）
+        // 实时门卫：只有真正点过赞才允许取消（Redis Set 精确判断，冷缓存自动回源数据库重建）
+        if (!commentLikeRealtimeService.containsLiked(userId, commentId)) {
             throw new BizException(ResponseCodeEnum.COMMENT_NOT_LIKED);
         }
 
@@ -549,9 +497,11 @@ public class CommentServiceImpl implements CommentService {
         try {
             rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
         } catch (RuntimeException e) {
-            stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(userId));
             throw new IllegalStateException("评论取消点赞消息发送失败", e);
         }
+
+        // 实时链路：计数 -1（clamp 不小于 0）、已赞集合 SREM
+        commentLikeRealtimeService.markUnliked(userId, commentId);
 
         return Response.success();
     }
@@ -567,7 +517,109 @@ public class CommentServiceImpl implements CommentService {
             return Response.success(Collections.emptyList());
         }
         ensureCommentsAccessible(commentIds);
-        return Response.success(commentLikeDOMapper.selectLikedCommentIds(userId, commentIds));
+        // 读侧 Redis 优先（已赞 Set），冷缓存回源 t_comment_like 重建，保证点赞记录的实时性
+        return Response.success(commentLikeRealtimeService.filterLikedCommentIds(userId, commentIds));
+    }
+
+    /**
+     * 我的点赞足迹分页：Redis ZSet 倒序分页（冷缓存回源数据库重建），
+     * 过滤已删除评论/不可访问笔记，批量回填正文（kv）与作者信息（user）。
+     */
+    @Override
+    public PageResponse<FindLikedCommentItemRspVO> findLikedCommentPage(FindLikedCommentPageReqVO reqVO) {
+        Long userId = LoginUserContextHolder.getUserId();
+        int pageNo = reqVO.getPageNo();
+        int pageSize = reqVO.getPageSize() == null ? 10 : Math.min(Math.max(reqVO.getPageSize(), 1), 50);
+
+        CommentLikeRealtimeService.LikedCommentPage page =
+                commentLikeRealtimeService.pageLikedCommentIds(userId, pageNo, pageSize);
+        if (CollUtil.isEmpty(page.commentIds())) {
+            return PageResponse.success(Collections.emptyList(), pageNo, page.total());
+        }
+
+        List<CommentDO> comments = commentDOMapper.selectByCommentIds(page.commentIds());
+        if (CollUtil.isEmpty(comments)) {
+            return PageResponse.success(Collections.emptyList(), pageNo, page.total());
+        }
+
+        // 过滤已删除评论 / 不可访问笔记（逐条静默过滤，不让整页报错）
+        List<Long> noteIds = comments.stream().map(CommentDO::getNoteId).distinct().toList();
+        Set<Long> accessibleNoteIds = new HashSet<>(noteRpcService.findAccessibleNoteIds(noteIds));
+        List<CommentDO> accessibleComments = comments.stream()
+                .filter(comment -> accessibleNoteIds.contains(comment.getNoteId()))
+                .toList();
+        if (CollUtil.isEmpty(accessibleComments)) {
+            return PageResponse.success(Collections.emptyList(), pageNo, page.total());
+        }
+
+        // 按笔记分组批量取正文（kv），返回 contentUuid -> content
+        Map<String, String> contentByUuid = batchFindCommentContents(accessibleComments);
+
+        // 批量取作者信息
+        List<Long> authorIds = accessibleComments.stream()
+                .map(CommentDO::getUserId)
+                .distinct()
+                .toList();
+        Map<Long, FindUserByIdRspDTO> userIdAndDTOMap;
+        if (CollUtil.isNotEmpty(authorIds)) {
+            List<FindUserByIdRspDTO> users = userRpcService.findByIds(authorIds);
+            userIdAndDTOMap = CollUtil.isNotEmpty(users)
+                    ? users.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto))
+                    : Collections.emptyMap();
+        } else {
+            userIdAndDTOMap = Collections.emptyMap();
+        }
+
+        List<FindLikedCommentItemRspVO> items = accessibleComments.stream().map(comment -> {
+            FindUserByIdRspDTO author = userIdAndDTOMap.get(comment.getUserId());
+            String content = null;
+            if (!Boolean.TRUE.equals(comment.getIsContentEmpty()) && StringUtils.isNotBlank(comment.getContentUuid())) {
+                content = contentByUuid.get(comment.getContentUuid());
+            }
+            return FindLikedCommentItemRspVO.builder()
+                    .commentId(comment.getId())
+                    .noteId(comment.getNoteId())
+                    .userId(comment.getUserId())
+                    .avatar(author == null ? null : author.getAvatar())
+                    .nickname(author == null ? null : author.getNickName())
+                    .content(content)
+                    .imageUrl(comment.getImageUrl())
+                    .likeTime(DateUtils.formatRelativeTime(comment.getCreateTime()))
+                    .likeTotal(comment.getLikeTotal())
+                    .build();
+        }).toList();
+
+        return PageResponse.success(items, pageNo, page.total());
+    }
+
+    /**
+     * 按笔记分组批量从 KV 取评论正文，返回 contentUuid -> content
+     */
+    private Map<String, String> batchFindCommentContents(List<CommentDO> comments) {
+        Map<String, String> contentByUuid = Maps.newHashMap();
+        Map<Long, List<CommentDO>> byNote = comments.stream()
+                .collect(Collectors.groupingBy(CommentDO::getNoteId));
+        byNote.forEach((noteId, noteComments) -> {
+            List<FindCommentContentReqDTO> reqs = Lists.newArrayList();
+            noteComments.forEach(comment -> {
+                if (!Boolean.TRUE.equals(comment.getIsContentEmpty())
+                        && StringUtils.isNotBlank(comment.getContentUuid())
+                        && comment.getCreateTime() != null) {
+                    reqs.add(FindCommentContentReqDTO.builder()
+                            .contentId(comment.getContentUuid())
+                            .yearMonth(DateConstants.DATE_FORMAT_Y_M.format(comment.getCreateTime()))
+                            .build());
+                }
+            });
+            if (CollUtil.isNotEmpty(reqs)) {
+                List<FindCommentContentRspDTO> rsps =
+                        keyValueRpcService.batchFindCommentContent(noteId, reqs);
+                if (CollUtil.isNotEmpty(rsps)) {
+                    rsps.forEach(rsp -> contentByUuid.put(rsp.getContentId(), rsp.getContent()));
+                }
+            }
+        });
+        return contentByUuid;
     }
 
     /**
@@ -613,34 +665,6 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public void deleteCommentLocalCache(Long commentId) {
         LOCAL_CACHE.invalidate(commentId);
-    }
-
-    /**
-     * 初始化评论点赞布隆过滤器（从数据库加载全部点赞记录并设置过期时间）
-     * @param userId
-     * @param expireSeconds
-     */
-    private void batchAddCommentLike2BloomAndExpire(Long userId, long expireSeconds) {
-        try {
-            RBloomFilter<Long> bloomFilter = commentLikeBloomFilter(userId);
-            bloomFilter.tryInit(BLOOM_EXPECTED_INSERTIONS, BLOOM_FALSE_PROBABILITY);
-
-            // 查询该用户点赞的所有评论
-            List<CommentLikeDO> commentLikeDOS = commentLikeDOMapper.selectByUserId(userId);
-
-            // 若不为空，批量添加到布隆过滤器中
-            if (CollUtil.isNotEmpty(commentLikeDOS)) {
-                bloomFilter.add(commentLikeDOS.stream().map(CommentLikeDO::getCommentId).toList());
-            }
-
-            bloomFilter.expire(expireSeconds, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.error("## 异步初始化【评论点赞】布隆过滤器异常: ", e);
-        }
-    }
-
-    private RBloomFilter<Long> commentLikeBloomFilter(Long userId) {
-        return redissonClient.getBloomFilter(RedisKeyConstants.buildBloomCommentLikesKey(userId), new LongCodec());
     }
 
     private void ensureNoteAccessible(Long noteId) {

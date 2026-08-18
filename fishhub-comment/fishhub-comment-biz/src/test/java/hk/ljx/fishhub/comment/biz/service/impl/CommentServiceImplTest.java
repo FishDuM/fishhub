@@ -1,9 +1,16 @@
 package hk.ljx.fishhub.comment.biz.service.impl;
 
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.vo.FindCommentPageListReqVO;
+import hk.ljx.fishhub.comment.biz.model.vo.LikeCommentReqVO;
+import hk.ljx.fishhub.comment.biz.model.vo.UnLikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
+import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.Message;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -21,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -42,6 +51,10 @@ class CommentServiceImplTest {
     private RedissonClient redissonClient;
     @Mock
     private RLock rebuildLock;
+    @Mock
+    private CommentLikeRealtimeService commentLikeRealtimeService;
+    @Mock
+    private RocketMQTemplate rocketMQTemplate;
     @InjectMocks
     private CommentServiceImpl service;
 
@@ -114,5 +127,35 @@ class CommentServiceImplTest {
         assertThrows(IllegalStateException.class, () -> service.findCommentPageList(request));
 
         verify(commentDOMapper, times(1)).selectOneLevelCountByNoteId(noteId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        LoginUserContextHolder.remove();
+    }
+
+    @Test
+    void likeCommentShouldRejectWhenAlreadyLiked() {
+        LoginUserContextHolder.setUserId(2L);
+        when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(true);
+
+        assertThrows(BizException.class, () -> service.likeComment(
+                LikeCommentReqVO.builder().commentId(100L).build()));
+
+        // 门卫拒绝后不应再发 MQ、也不应更新实时状态
+        verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(Message.class), anyString());
+        verify(commentLikeRealtimeService, never()).markLiked(anyLong(), anyLong());
+    }
+
+    @Test
+    void unlikeCommentShouldRejectWhenNotLiked() {
+        LoginUserContextHolder.setUserId(2L);
+        when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(false);
+
+        assertThrows(BizException.class, () -> service.unlikeComment(
+                UnLikeCommentReqVO.builder().commentId(100L).build()));
+
+        verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(Message.class), anyString());
+        verify(commentLikeRealtimeService, never()).markUnliked(anyLong(), anyLong());
     }
 }

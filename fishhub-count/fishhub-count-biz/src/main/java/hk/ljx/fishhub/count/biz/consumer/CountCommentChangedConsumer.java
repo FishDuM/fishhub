@@ -4,12 +4,11 @@ import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.count.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.CommentLevelEnum;
-import hk.ljx.fishhub.count.biz.model.dto.CommentChangedEventMqDTO;
-import hk.ljx.fishhub.count.biz.model.dto.CommentItemMqDTO;
-import hk.ljx.fishhub.count.biz.service.MqIdempotentExecutor;
+import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
+import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
+import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -23,9 +22,9 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 消费评论变更统一事件，维护评论相关计数：
+ * 消费评论变更统一事件，维护评论相关计数（t_note_count 的唯一写入口，归属 fishhub_count）：
  * 发布 —— 笔记评论总数（按笔记聚合）与一级评论的二级评论总数（按父评论聚合）；
- * 删除 —— 计数扣减已在评论模块的删除事务内直接完成，本消费者只负责失效对应缓存。
+ * 删除 —— 笔记评论总数扣减（按笔记聚合取负），child_comment_total 由评论模块在其事务内维护。
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED, // Group 组
@@ -36,8 +35,6 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
 
     @Resource
     private NoteCountDOMapper noteCountDOMapper;
-    @Resource
-    private CommentDOMapper commentDOMapper;
     @Resource
     private MqIdempotentExecutor mqIdempotentExecutor;
     @Resource
@@ -58,6 +55,8 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
         boolean isPublish = Objects.equals(event.getChangeType(), MQConstants.COMMENT_CHANGE_TYPE_PUBLISH);
         if (isPublish) {
             applyPublishCounts(event, body);
+        } else {
+            applyDeleteCounts(event, body);
         }
         invalidateCountCaches(event, isPublish);
     }
@@ -71,16 +70,19 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
                 groupByNoteId.forEach((noteId, comments) ->
                         noteCountDOMapper.insertOrUpdateCommentTotalByNoteId(comments.size(), noteId)));
 
-        // 二级评论按 parent_id 聚合，更新一级评论的 child_comment_total
-        Map<Long, List<CommentItemMqDTO>> groupByParentId = event.getItems().stream()
-                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
-                .collect(Collectors.groupingBy(CommentItemMqDTO::getParentId));
+    }
 
-        if (CollUtil.isNotEmpty(groupByParentId)) {
-            mqIdempotentExecutor.execute("count-child-comment", body, () ->
-                    groupByParentId.forEach((parentId, comments) ->
-                            commentDOMapper.updateChildCommentTotal(parentId, comments.size())));
-        }
+    /**
+     * 删除事件：按笔记聚合取负，扣减 t_note_count（幂等）。
+     * 子评论总数（child_comment_total）与首条回复由评论模块在自己的删除事务内维护。
+     */
+    private void applyDeleteCounts(CommentChangedEventMqDTO event, String body) {
+        Map<Long, List<CommentItemMqDTO>> groupByNoteId = event.getItems().stream()
+                .collect(Collectors.groupingBy(CommentItemMqDTO::getNoteId));
+
+        mqIdempotentExecutor.execute("count-note-comment-delete", body, () ->
+                groupByNoteId.forEach((noteId, comments) ->
+                        noteCountDOMapper.insertOrUpdateCommentTotalByNoteId(-comments.size(), noteId)));
     }
 
     private void invalidateCountCaches(CommentChangedEventMqDTO event, boolean isPublish) {
@@ -90,7 +92,7 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
                 .map(RedisKeyConstants::buildCountNoteKey)
                 .collect(Collectors.toList());
 
-        // 删除流程的笔记评论总数扣减在评论模块事务内完成，此处只需清缓存
+        // 删除流程的笔记评论总数扣减由 applyDeleteCounts 完成，此处只清缓存
         stringRedisTemplate.delete(noteCountKeys);
         if (!isPublish) {
             List<String> commentCountKeys = event.getItems().stream()

@@ -12,8 +12,9 @@
                 IFNULL(nc.like_total, 0) as like_total,
                 IFNULL(nc.collect_total, 0) as collect_total,
                 IFNULL(nc.comment_total, 0) as comment_total
-        from t_note n left join t_user u on n.creator_id = u.id
-                      left join t_note_count nc on n.id = nc.note_id
+        from fishhub_note.t_note n
+                      left join fishhub_user.t_user u on n.creator_id = u.id
+                      left join fishhub_count.t_note_count nc on n.id = nc.note_id
         where n.visible = 0 and n.`status` = 1
           <if test="noteId != null">
               and n.id = #{noteId} limit 1
@@ -27,7 +28,8 @@
         select u.id, u.nickname, u.avatar, u.fishhub_id,
         IFNULL(uc.note_total, 0) as note_total,
         IFNULL(uc.fans_total, 0) as fans_total
-        from t_user u left join t_user_count uc on u.id = uc.user_id
+        from fishhub_user.t_user u
+        left join fishhub_count.t_user_count uc on u.id = uc.user_id
         where u.`status` = 0 and u.is_deleted = 0
         <if test="userId != null">
             and u.id = #{userId}

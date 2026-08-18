@@ -12,7 +12,6 @@ import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
-import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
@@ -22,10 +21,12 @@ import org.apache.rocketmq.client.consumer.listener.ConsumeOrderlyStatus;
 import org.apache.rocketmq.client.consumer.listener.MessageListenerOrderly;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -48,13 +50,11 @@ public class LikeUnlikeComment2DBConsumer {
     @Resource
     private CommentLikePersistenceService persistenceService;
     @Resource
-    private TransactionalMqSender transactionalMqSender;
-    @Resource
     private CommentDOMapper commentDOMapper;
     @Resource
     private NoteRpcService noteRpcService;
     @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private RocketMQTemplate rocketMQTemplate;
 
     private DefaultMQPushConsumer consumer;
 
@@ -163,15 +163,15 @@ public class LikeUnlikeComment2DBConsumer {
                 Set<NoteWriteAccessCheckReqDTO> writableAccesses = new HashSet<>(
                         noteRpcService.findWritableNoteAccesses(writeChecks));
 
+                Set<Long> appliedCommentIds = new LinkedHashSet<>();
+                List<LikeUnlikeCommentMqDTO> persistOps = Lists.newArrayList();
                 for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
                     CommentDO comment = comments.get(operation.getCommentId());
                     if (comment == null) {
                         if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())) {
-                            stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
                             throw new IllegalStateException("点赞落库时评论不存在(可能尚未提交)，等待重试, commentId=" + operation.getCommentId());
                         }
-                        // UNLIKE：评论不存在时本就是无操作，清布隆后丢弃即可
-                        stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
+                        // UNLIKE：评论不存在时本就是无操作，丢弃即可
                         continue;
                     }
                     if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())
@@ -179,16 +179,22 @@ public class LikeUnlikeComment2DBConsumer {
                             .noteId(comment.getNoteId())
                             .userId(operation.getUserId())
                             .build())) {
-                        // 点赞请求已乐观写入布隆过滤器；拒绝时清空用户缓存，后续刷新自动恢复真实状态。
-                        stringRedisTemplate.delete(RedisKeyConstants.buildBloomCommentLikesKey(operation.getUserId()));
                         log.info("丢弃不可写笔记上的评论点赞，commentId={}, userId={}",
                                 operation.getCommentId(), operation.getUserId());
                         continue;
                     }
-                    String eventBody = JsonUtils.toJsonString(operation);
-                    // 计数事件与点赞关系落库经由事务消息原子绑定；关系未变化时不登记 journal，半消息回滚丢弃
-                    transactionalMqSender.sendInTransaction(MQConstants.TOPIC_APPLIED_COMMENT_LIKE_OR_UNLIKE,
-                            eventBody, txId -> persistenceService.apply(operation, txId));
+                    persistOps.add(operation);
+                }
+
+                // 批量落库（≤30 一批，单事务）：关系行 + like_total 按真实影响行数累加，重复消费天然幂等
+                if (CollUtil.isNotEmpty(persistOps)) {
+                    appliedCommentIds.addAll(persistenceService.applyBatch(persistOps));
+                }
+
+                // 批末触发热度重算（点赞计数已由请求侧实时写入 Redis，无需再删 count:comment 缓存）
+                if (CollUtil.isNotEmpty(appliedCommentIds)) {
+                    Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(appliedCommentIds)).build();
+                    rocketMQTemplate.syncSend(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage);
                 }
 
                 // 手动 ACK，告诉 RocketMQ 这批次消息消费成功

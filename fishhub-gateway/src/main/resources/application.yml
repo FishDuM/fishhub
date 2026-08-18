@@ -8,7 +8,7 @@ spring:
         response-timeout: 8s
       routes:
         - id: auth
-          uri: lb://fishhub-auth
+          uri: lb://fishhub-user
           predicates:
             - Path=/auth/**
           filters:
