@@ -93,9 +93,12 @@ public class SaTokenConfigure {
                     SaRouter.match("/user/user/password/update", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/user/user/findById", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/user/user/findByIds", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/user/user/findRoleAndPermissions", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/note/note/exists", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/note/note/accessible", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/note/note/accessible/batch", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/note/note/writable/batch", r -> StpUtil.checkPermission("internal:service"));
+                    SaRouter.match("/count/count/notes/data", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/oss/file/delete", r -> StpUtil.checkPermission("internal:service"));
                     SaRouter.match("/search/search/note/document/rebuild",
                             r -> StpUtil.checkPermission("internal:service"));

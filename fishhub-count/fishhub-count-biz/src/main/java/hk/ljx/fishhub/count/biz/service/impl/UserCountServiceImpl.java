@@ -277,8 +277,10 @@ public class UserCountServiceImpl implements UserCountService {
                 stringRedisTemplate.executePipelined(new SessionCallback<>() {
                     @Override
                     public Object execute(RedisOperations operations) {
-                        // 批量添加 Hash 的计数 Field
-                        operations.opsForHash().putAll(userCountHashKey, userCountMap);
+                        // 批量添加 Hash 的计数 Field，使用 putIfAbsent 防止覆盖并发产生的增量数据
+                        for (Map.Entry<String, String> entry : userCountMap.entrySet()) {
+                            operations.opsForHash().putIfAbsent(userCountHashKey, entry.getKey(), entry.getValue());
+                        }
 
                         // 设置随机过期时间 (2小时以内)
                         long expireTime = CacheTtl.hours(1, 1);

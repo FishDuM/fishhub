@@ -53,7 +53,8 @@ public class SnowflakeZookeeperHolder {
             if (stat == null) {
                 //不存在根节点,机器第一次启动,创建/snowflake/ip:port-000000000,并上传数据
                 zk_AddressNode = createNode(curator);
-                //worker id 默认是0
+                String[] nodeKey = zk_AddressNode.split("-");
+                workerID = Integer.parseInt(nodeKey[1]);
                 updateLocalWorkerID(workerID);
                 //定时上报本机时间给forever节点
                 ScheduledUploadData(curator, zk_AddressNode);
@@ -92,6 +93,10 @@ public class SnowflakeZookeeperHolder {
                 }
             }
         } catch (Exception e) {
+            if (e instanceof CheckLastTimeException) {
+                LOGGER.error("Start node ERROR: System clock was turned back! Stop starting node.", e);
+                throw new IllegalStateException("System clock was turned back! Stop starting node.", e);
+            }
             LOGGER.error("Start node ERROR {}", e);
             try {
                 Properties properties = new Properties();

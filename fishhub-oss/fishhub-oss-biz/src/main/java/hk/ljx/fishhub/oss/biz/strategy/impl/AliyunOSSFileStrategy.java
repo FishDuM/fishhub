@@ -50,8 +50,10 @@ public class AliyunOSSFileStrategy implements FileStrategy  {
         log.info("==> 开始上传文件至阿里云 OSS, ObjectName: {}", objectName);
 
         // 上传文件至阿里云 OSS
-        // 直接流式上传，避免大文件整体读入 JVM 堆。
-        ossClient.putObject(bucketName, objectName, file.getInputStream());
+        // 直接流式上传，避免大文件整体读入 JVM 堆，使用 try-with-resources 确保输入流正确关闭。
+        try (java.io.InputStream inputStream = file.getInputStream()) {
+            ossClient.putObject(bucketName, objectName, inputStream);
+        }
 
         // 返回文件的访问链接
         String url = String.format("https://%s.%s/%s", bucketName, aliyunOSSProperties.getEndpoint(), objectName);

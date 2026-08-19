@@ -7,10 +7,14 @@ import hk.ljx.fishhub.kv.biz.domain.dataobject.CommentContentDO;
 import hk.ljx.fishhub.kv.biz.domain.dataobject.CommentContentPrimaryKey;
 import hk.ljx.fishhub.kv.biz.domain.repository.CommentContentRepository;
 import hk.ljx.fishhub.kv.biz.service.CommentContentService;
-import hk.ljx.fishhub.kv.dto.req.*;
+import hk.ljx.fishhub.kv.dto.req.BatchAddCommentContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.BatchFindCommentContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.DeleteCommentContentReqDTO;
+import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.cassandra.core.CassandraTemplate;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -39,12 +44,10 @@ public class CommentContentServiceImpl implements CommentContentService {
      */
     @Override
     public Response<?> batchAddCommentContent(BatchAddCommentContentReqDTO batchAddCommentContentReqDTO) {
-        List<CommentContentReqDTO> comments = batchAddCommentContentReqDTO.getComments();
-
-        // DTO 转 DO
-        List<CommentContentDO> contentDOS = comments.stream()
+        List<CommentContentDO> contentDOS = batchAddCommentContentReqDTO.getComments()
+                .stream()
                 .map(commentContentReqDTO -> {
-                    // 构建主键类
+                    // 主键
                     CommentContentPrimaryKey commentContentPrimaryKey = CommentContentPrimaryKey.builder()
                             .noteId(commentContentReqDTO.getNoteId())
                             .yearMonth(commentContentReqDTO.getYearMonth())
@@ -84,15 +87,26 @@ public class CommentContentServiceImpl implements CommentContentService {
 
         List<FindCommentContentRspDTO> findCommentContentRspDTOS = Lists.newArrayList();
         if (CollUtil.isNotEmpty(commentContentKeys)) {
-            // 按 yearMonth 分组批量查询（IN×IN 组合交叉风险高，按月份拆最安全）
+            // 按 yearMonth 分组批量查询（过滤非法空值，防止 List.of(null) NPE）
             Map<String, List<FindCommentContentReqDTO>> byMonth = commentContentKeys.stream()
+                    .filter(k -> k != null && StringUtils.isNotBlank(k.getYearMonth()) && StringUtils.isNotBlank(k.getContentId()))
                     .collect(Collectors.groupingBy(FindCommentContentReqDTO::getYearMonth));
 
             Map<String, CommentContentDO> foundById = new HashMap<>();
             for (Map.Entry<String, List<FindCommentContentReqDTO>> entry : byMonth.entrySet()) {
                 List<UUID> contentIds = entry.getValue().stream()
-                        .map(key -> UUID.fromString(key.getContentId()))
+                        .map(key -> {
+                            try {
+                                return UUID.fromString(key.getContentId().trim());
+                            } catch (Exception e) {
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
                         .toList();
+                if (CollUtil.isEmpty(contentIds)) {
+                    continue;
+                }
                 List<CommentContentDO> commentContentDOS = commentContentRepository
                         .findByPrimaryKeyNoteIdAndPrimaryKeyYearMonthInAndPrimaryKeyContentIdIn(
                                 noteId, List.of(entry.getKey()), contentIds);
@@ -106,6 +120,7 @@ public class CommentContentServiceImpl implements CommentContentService {
 
             // 按入参顺序组装，缺失 key 跳过
             for (FindCommentContentReqDTO key : commentContentKeys) {
+                if (key == null || key.getContentId() == null) continue;
                 CommentContentDO commentContentDO = foundById.get(normalizeContentId(key.getContentId()));
                 if (commentContentDO != null) {
                     findCommentContentRspDTOS.add(FindCommentContentRspDTO.builder()

@@ -39,11 +39,23 @@ public abstract class AbstractGlobalExceptionHandler {
 
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
-            BindException.class
+            BindException.class,
+            jakarta.validation.ConstraintViolationException.class,
+            org.springframework.http.converter.HttpMessageNotReadableException.class
     })
     @ResponseBody
     public Response<Object> handleControllerException(HttpServletRequest request, Throwable e) {
         String errorCode = paramNotValidCode();
+        if (e instanceof jakarta.validation.ConstraintViolationException cve) {
+            String errorMessage = cve.getMessage();
+            log.warn("{} request error, errorCode: {}, errorMessage: {}", request.getRequestURI(), errorCode, errorMessage);
+            return Response.fail(errorCode, errorMessage);
+        }
+        if (e instanceof org.springframework.http.converter.HttpMessageNotReadableException) {
+            String errorMessage = "请求体 JSON 格式非法或不可解析";
+            log.warn("{} request error, errorCode: {}, errorMessage: {}", request.getRequestURI(), errorCode, errorMessage);
+            return Response.fail(errorCode, errorMessage);
+        }
         BindingResult bindingResult = null;
         if (e instanceof MethodArgumentNotValidException) {
             bindingResult = ((MethodArgumentNotValidException) e).getBindingResult();
@@ -51,17 +63,27 @@ public abstract class AbstractGlobalExceptionHandler {
             bindingResult = ((BindException) e).getBindingResult();
         }
         StringBuilder sb = new StringBuilder();
-        Optional.ofNullable(bindingResult.getFieldErrors()).ifPresent(errors ->
-                errors.forEach(error ->
-                        sb.append(error.getField())
-                                .append(" ")
-                                .append(error.getDefaultMessage())
-                                .append(", 当前值: '")
-                                .append(error.getRejectedValue())
-                                .append("'; ")
-                )
-        );
-        String errorMessage = sb.toString();
+        if (bindingResult != null) {
+            Optional.ofNullable(bindingResult.getFieldErrors()).ifPresent(errors ->
+                    errors.forEach(error ->
+                            sb.append(error.getField())
+                                    .append(" ")
+                                    .append(error.getDefaultMessage())
+                                    .append(", 当前值: '")
+                                    .append(error.getRejectedValue())
+                                    .append("'; ")
+                    )
+            );
+            Optional.ofNullable(bindingResult.getGlobalErrors()).ifPresent(errors ->
+                    errors.forEach(error ->
+                            sb.append(error.getObjectName())
+                                    .append(" ")
+                                    .append(error.getDefaultMessage())
+                                    .append("; ")
+                    )
+            );
+        }
+        String errorMessage = sb.length() > 0 ? sb.toString() : "参数校验失败";
         log.warn("{} request error, errorCode: {}, errorMessage: {}", request.getRequestURI(), errorCode, errorMessage);
         return Response.fail(errorCode, errorMessage);
     }

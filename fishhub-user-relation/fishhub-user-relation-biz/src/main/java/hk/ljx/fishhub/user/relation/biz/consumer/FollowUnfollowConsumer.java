@@ -149,13 +149,20 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
                 .type(type)
                 .createTime(createTime)
                 .build();
-        try {
-            rocketMQTemplate.syncSendOrderly(MQConstants.TOPIC_COUNT_FOLLOWING,
-                    MessageBuilder.withPayload(JsonUtils.toJsonString(countEvent)).build(),
-                    String.valueOf(userId));
-        } catch (Exception e) {
-            log.error("关注/取关计数事件发送失败，交由对账兜底, userId={}, targetUserId={}", userId, targetUserId, e);
+        Exception lastEx = null;
+        for (int i = 0; i < 3; i++) {
+            try {
+                rocketMQTemplate.syncSendOrderly(MQConstants.TOPIC_COUNT_FOLLOWING,
+                        MessageBuilder.withPayload(JsonUtils.toJsonString(countEvent)).build(),
+                        String.valueOf(userId));
+                return;
+            } catch (Exception e) {
+                lastEx = e;
+                log.warn("关注/取关计数事件发送失败，正在进行第 {} 次重试, userId={}, targetUserId={}",
+                        i + 1, userId, targetUserId, e);
+            }
         }
+        log.error("关注/取关计数事件重试 3 次仍发送失败, userId={}, targetUserId={}", userId, targetUserId, lastEx);
     }
 
 }

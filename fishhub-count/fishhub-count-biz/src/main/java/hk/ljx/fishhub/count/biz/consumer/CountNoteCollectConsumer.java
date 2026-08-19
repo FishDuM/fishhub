@@ -40,8 +40,9 @@ public class CountNoteCollectConsumer implements RocketMQListener<String> {
         log.info("==> 【笔记收藏数】聚合消息, size: {}", bodys.size());
         log.info("==> 【笔记收藏数】聚合消息, {}", JsonUtils.toJsonString(bodys));
 
-        // 聚合批次标识：同批重投时内容不变，不同批次的相同聚合结果可区分
-        String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(String.join("|", bodys));
+        // 聚合批次标识：同批重投时内容不变，不同批次的相同聚合结果可区分（对输入消息排序保证确定性）
+        String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(
+                bodys.stream().sorted().collect(Collectors.joining("|")));
 
         // 兼容批量数组与旧版单条消息
         List<CountCollectUnCollectNoteMqDTO> countCollectUnCollectNoteMqDTOS = bodys.stream()

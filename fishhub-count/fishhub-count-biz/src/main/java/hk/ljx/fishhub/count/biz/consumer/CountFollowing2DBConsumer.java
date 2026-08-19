@@ -11,6 +11,7 @@ import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,8 @@ import java.util.Objects;
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING, // Group 组
-        topic = MQConstants.TOPIC_COUNT_FOLLOWING // 主题 Topic
+        topic = MQConstants.TOPIC_COUNT_FOLLOWING, // 主题 Topic
+        consumeMode = ConsumeMode.ORDERLY
         )
 @Slf4j
 public class CountFollowing2DBConsumer implements RocketMQListener<String> {

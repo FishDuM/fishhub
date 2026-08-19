@@ -381,13 +381,12 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
-    // 发现页版本限频 bump：SET NX EX 30，窗口内不重复 bump，靠快照 TTL 兜底。
+    // 发现页版本 bump：实时写入最新时间戳推进版本，使旧快照立即失效。
     private void bumpDiscoverFeedVersion(Long channelId) {
         try {
-            stringRedisTemplate.opsForValue().setIfAbsent(
+            stringRedisTemplate.opsForValue().set(
                     RedisKeyConstants.buildDiscoverFeedVersionKey(channelId),
-                    String.valueOf(System.currentTimeMillis()),
-                    30, TimeUnit.SECONDS);
+                    String.valueOf(System.currentTimeMillis()));
         } catch (Exception e) {
             log.warn("Redis 不可用，发现页版本 bump 失败，等待缓存过期兜底, channelId={}", channelId, e);
         }
@@ -1210,12 +1209,6 @@ public class NoteServiceImpl implements NoteService {
                     // 过滤出最早发布的笔记 ID，充当下一页的游标
                     Optional<Long> earliestNoteId = noteItemRspVOS.stream().map(NoteItemRspVO::getNoteId).min(Long::compareTo);
 
-                    // 如果是博主本人，需要调用计数服务，获取最新的点赞数据
-                    getAndSetLatestLikeTotalIfAuthor(userId, sortedList);
-
-                    // 批量获取笔记的点赞状态
-                    batchGetAndSetNoteIsLiked(sortedList);
-
                     findPublishedNoteListRspVO = FindPublishedNoteListRspVO.builder()
                             .notes(sortedList)
                             .nextCursor(earliestNoteId.orElse(null))
@@ -1297,6 +1290,11 @@ public class NoteServiceImpl implements NoteService {
             if (!includePrivate && Objects.isNull(cursor)) {
                 syncFirstPagePublishedNoteList2Redis(noteVOS, publishedNoteListRedisKey);
             }
+        } else {
+            findPublishedNoteListRspVO = FindPublishedNoteListRspVO.builder()
+                    .notes(Collections.emptyList())
+                    .nextCursor(null)
+                    .build();
         }
 
         return Response.success(findPublishedNoteListRspVO);

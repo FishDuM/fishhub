@@ -35,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -174,9 +175,16 @@ public class Comment2DBConsumer {
             }
 
             // DO 集合转 <评论 ID - 评论 DO> 字典, 以方便后续查找
-            Map<Long, CommentDO> commentIdAndCommentDOMap = Maps.newHashMap();
-            if (CollUtil.isNotEmpty(replyCommentDOS)) {
-                commentIdAndCommentDOMap = replyCommentDOS.stream().collect(Collectors.toMap(CommentDO::getId, commentDO -> commentDO));
+            final Map<Long, CommentDO> commentIdAndCommentDOMap = CollUtil.isEmpty(replyCommentDOS)
+                    ? Collections.emptyMap()
+                    : replyCommentDOS.stream().collect(Collectors.toMap(CommentDO::getId, Function.identity(), (l, r) -> l));
+
+            // 检查是否有回复的父评论尚未落库，若未超过最大重试次数则稍后重试，避免并发回复时子评论被静默丢弃
+            int maxReconsumeTimes = msgs.stream().mapToInt(MessageExt::getReconsumeTimes).max().orElse(0);
+            boolean hasMissingReplyTarget = replyCommentIds.stream().anyMatch(id -> !commentIdAndCommentDOMap.containsKey(id));
+            if (hasMissingReplyTarget && maxReconsumeTimes < 3) {
+                log.info("检测到部分回复目标父评论尚未落库，稍后重试消费, reconsumeTimes={}", maxReconsumeTimes);
+                return ConsumeConcurrentlyStatus.RECONSUME_LATER;
             }
 
             // DTO 转 BO

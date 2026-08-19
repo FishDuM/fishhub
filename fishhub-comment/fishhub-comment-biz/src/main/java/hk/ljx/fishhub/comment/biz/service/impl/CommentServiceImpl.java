@@ -203,24 +203,23 @@ public class CommentServiceImpl implements CommentService {
                         .map(Long::valueOf)
                         .toList();
 
-                // 批量查询本地缓存
-                Map<Long, String> commentIdAndDetailJsonMap = LOCAL_CACHE.getAll(localCacheKeys, missingKeys -> {
-                    // 对于本地缓存中缺失的 key，返回空字符串
-                    Map<Long, String> missingData = Maps.newHashMap();
-                    missingKeys.forEach(key -> {
+                // 批量查询本地缓存已存在的条目
+                Map<Long, String> commentIdAndDetailJsonMap = LOCAL_CACHE.getAllPresent(localCacheKeys);
+                Set<Long> hitKeys = commentIdAndDetailJsonMap.keySet();
+                for (Long key : localCacheKeys) {
+                    if (!hitKeys.contains(key)) {
                         localCacheExpiredCommentIds.add(key);
-                        missingData.put(key, Strings.EMPTY);
-                    });
-                    return missingData;
-                });
+                    }
+                }
 
-                // 若 localCacheExpiredCommentIds 的大小不等于 commentIdList 的大小，说明本地缓存中有数据
-                if (CollUtil.size(localCacheExpiredCommentIds) != commentIdList.size()) {
-                    // 将本地缓存中的评论详情 Json, 转换为实体类，添加到 VO 返参集合中
+                // 若存在已命中的本地缓存数据，转换为实体类添加到 VO 返参集合中
+                if (CollUtil.isNotEmpty(commentIdAndDetailJsonMap)) {
                     for (String value : commentIdAndDetailJsonMap.values()) {
                         if (StringUtils.isBlank(value)) continue;
                         FindCommentItemRspVO commentRspVO = JsonUtils.parseObject(value, FindCommentItemRspVO.class);
-                        commentRspVOS.add(commentRspVO);
+                        if (commentRspVO != null) {
+                            commentRspVOS.add(commentRspVO);
+                        }
                     }
                 }
 

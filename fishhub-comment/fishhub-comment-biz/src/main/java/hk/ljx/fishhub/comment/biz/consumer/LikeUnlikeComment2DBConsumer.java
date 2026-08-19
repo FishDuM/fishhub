@@ -168,10 +168,8 @@ public class LikeUnlikeComment2DBConsumer {
                 for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
                     CommentDO comment = comments.get(operation.getCommentId());
                     if (comment == null) {
-                        if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())) {
-                            throw new IllegalStateException("点赞落库时评论不存在(可能尚未提交)，等待重试, commentId=" + operation.getCommentId());
-                        }
-                        // UNLIKE：评论不存在时本就是无操作，丢弃即可
+                        log.info("点赞/取消点赞落库时评论不存在或已被删除，丢弃消息, commentId={}, userId={}, type={}",
+                                operation.getCommentId(), operation.getUserId(), operation.getType());
                         continue;
                     }
                     if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())

@@ -111,7 +111,7 @@ public class FeedServiceImpl implements FeedService {
 
     @Override
     public DiscoverNotePageResponse<NoteItemRspVO> findDiscoverNoteList(FindDiscoverNoteListReqVO request) {
-        Long cursor = request.getCursor() > 0 ? request.getCursor() : null;
+        Long cursor = (request.getCursor() != null && request.getCursor() > 0) ? request.getCursor() : null;
         return findDiscoverNoteListByCursor(request.getChannelId(), cursor);
     }
 
