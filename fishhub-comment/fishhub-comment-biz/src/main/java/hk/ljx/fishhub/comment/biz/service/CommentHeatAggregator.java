@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.comment.biz.service;
 
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -15,13 +15,13 @@ import java.util.Set;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class CommentHeatAggregator {
 
     private static final long WINDOW_MS = 5000;
     private static final int MAX_PENDING = 500;
 
-    @Resource
-    private CommentHeatService commentHeatService;
+    private final CommentHeatService commentHeatService;
 
     private final Set<Long> pending = new HashSet<>();
 

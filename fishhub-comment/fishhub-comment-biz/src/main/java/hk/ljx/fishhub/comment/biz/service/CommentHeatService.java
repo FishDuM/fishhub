@@ -6,7 +6,7 @@ import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentHeatBO;
 import hk.ljx.fishhub.comment.biz.util.HeatCalculator;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class CommentHeatService {
 
     private static DefaultRedisScript<Long> luaScript(String luaPath) {
@@ -38,10 +39,8 @@ public class CommentHeatService {
 
     private static final DefaultRedisScript<Long> UPDATE_HOT_COMMENTS_SCRIPT = luaScript("/lua/update_hot_comments.lua");
 
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final CommentDOMapper commentDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
 
     /**
      * 重算指定评论的热度。目标评论已不存在时直接返回；重复重算安全。

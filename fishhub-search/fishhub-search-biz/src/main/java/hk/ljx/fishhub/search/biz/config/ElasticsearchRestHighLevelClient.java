@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.search.biz.config;
 
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.apache.http.HttpHost;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestHighLevelClient;
@@ -9,10 +9,10 @@ import org.springframework.context.annotation.Configuration;
 
 
 @Configuration
+@RequiredArgsConstructor
 public class ElasticsearchRestHighLevelClient {
 
-    @Resource
-    private ElasticsearchProperties elasticsearchProperties;
+    private final ElasticsearchProperties elasticsearchProperties;
 
     private static final String COLON = ":";
     private static final String HTTP = "http";

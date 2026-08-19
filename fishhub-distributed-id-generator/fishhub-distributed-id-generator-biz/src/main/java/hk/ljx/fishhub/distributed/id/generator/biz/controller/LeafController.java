@@ -6,7 +6,7 @@ import hk.ljx.fishhub.distributed.id.generator.biz.exception.LeafServerException
 import hk.ljx.fishhub.distributed.id.generator.biz.exception.NoKeyException;
 import hk.ljx.fishhub.distributed.id.generator.biz.service.SegmentService;
 import hk.ljx.fishhub.distributed.id.generator.biz.service.SnowflakeService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,12 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/id")
 @Slf4j
+@RequiredArgsConstructor
 public class LeafController {
 
-    @Resource
-    private SegmentService segmentService;
-    @Resource
-    private SnowflakeService snowflakeService;
+    private final SegmentService segmentService;
+    private final SnowflakeService snowflakeService;
 
     @RequestMapping(value = "/segment/get/{key}")
     public String getSegmentId(@PathVariable("key") String key) {

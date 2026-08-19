@@ -40,9 +40,10 @@ import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
@@ -66,30 +67,21 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    @Resource
-    private UserDOMapper userDOMapper;
-    @Resource
-    private UserRoleDOMapper userRoleDOMapper;
-    @Resource
-    private RoleDOMapper roleDOMapper;
-    @Resource
-    private OssRpcService ossRpcService;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    @Resource(name = "fishhubTaskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    @Resource
-    private CountRpcService countRpcService;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
-    @Resource
-    private RolePermissionService rolePermissionService;
-    @Resource
-    private TransactionTemplate transactionTemplate;
+    private final UserDOMapper userDOMapper;
+    private final UserRoleDOMapper userRoleDOMapper;
+    private final RoleDOMapper roleDOMapper;
+    private final OssRpcService ossRpcService;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
+    @Qualifier("fishhubTaskExecutor")
+    private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    private final CountRpcService countRpcService;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final RolePermissionService rolePermissionService;
+    private final TransactionTemplate transactionTemplate;
 
     /**
      * 用户信息本地缓存

@@ -10,7 +10,7 @@ import hk.ljx.fishhub.user.relation.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.UnfollowUserMqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -34,18 +34,14 @@ import java.util.Objects;
         consumeMode = ConsumeMode.ORDERLY // 设置为顺序消费模式
 )
 @Slf4j
+@RequiredArgsConstructor
 public class FollowUnfollowConsumer implements RocketMQListener<Message> {
 
-    @Resource
-    private FollowingDOMapper followingDOMapper;
-    @Resource
-    private TransactionTemplate transactionTemplate;
-    @Resource
-    private RateLimiter rateLimiter;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
-    @Resource
-    private RelationListCacheService relationListCacheService;
+    private final FollowingDOMapper followingDOMapper;
+    private final TransactionTemplate transactionTemplate;
+    private final RateLimiter rateLimiter;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final RelationListCacheService relationListCacheService;
 
     @Override
     public void onMessage(Message message) {

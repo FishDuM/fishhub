@@ -7,7 +7,7 @@ import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.service.FileService;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
 import hk.ljx.fishhub.oss.dto.DeleteFileReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -18,10 +18,10 @@ import java.util.Set;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class FileServiceImpl implements FileService {
 
-    @Resource
-    private FileStrategy fileStrategy;
+    private final FileStrategy fileStrategy;
 
     private static final String BUCKET_NAME = "fishhub";
     private static final long MAX_FILE_SIZE = 100L * 1024 * 1024;

@@ -7,6 +7,7 @@ import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -22,17 +23,15 @@ import java.util.Objects;
         topic = MQConstants.TOPIC_NOTE_CHANGED // 主题 Topic
         )
 @Slf4j
+@RequiredArgsConstructor
 public class CountNoteChangedConsumer implements RocketMQListener<String> {
 
     private static final int CHANGE_TYPE_PUBLISH = 1;
     private static final int CHANGE_TYPE_DELETE = 0;
 
-    @Resource
-    private UserCountDOMapper userCountDOMapper;
-    @Resource
-    private MqIdempotentExecutor mqIdempotentExecutor;
-    @Resource
-    private UserCountCacheVersionService userCountCacheVersionService;
+    private final UserCountDOMapper userCountDOMapper;
+    private final MqIdempotentExecutor mqIdempotentExecutor;
+    private final UserCountCacheVersionService userCountCacheVersionService;
 
     @Override
     public void onMessage(String body) {

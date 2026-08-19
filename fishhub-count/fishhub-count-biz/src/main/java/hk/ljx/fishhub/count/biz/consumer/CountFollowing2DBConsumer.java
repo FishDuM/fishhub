@@ -8,7 +8,7 @@ import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
 import hk.ljx.fishhub.count.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
@@ -29,17 +29,15 @@ import java.util.Objects;
         consumeMode = ConsumeMode.ORDERLY
         )
 @Slf4j
+@RequiredArgsConstructor
 public class CountFollowing2DBConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private UserCountDOMapper userCountDOMapper;
-    @Resource
-    private MqIdempotentExecutor mqIdempotentExecutor;
-    @Resource
-    private UserCountCacheVersionService userCountCacheVersionService;
+    private final UserCountDOMapper userCountDOMapper;
+    private final MqIdempotentExecutor mqIdempotentExecutor;
+    private final UserCountCacheVersionService userCountCacheVersionService;
 
     // 每秒创建 5000 个令牌
-    private RateLimiter rateLimiter = RateLimiter.create(5000);
+    private final RateLimiter rateLimiter = RateLimiter.create(5000);
 
     @Override
     public void onMessage(String body) {

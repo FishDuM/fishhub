@@ -12,9 +12,8 @@ import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
@@ -25,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -33,18 +31,14 @@ import java.util.stream.Collectors;
 @Slf4j
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT,
         topic = MQConstants.TOPIC_DELETE_COMMENT)
+@RequiredArgsConstructor
 public class DeleteCommentConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource
-    private CommentLikeDOMapper commentLikeDOMapper;
-    @Resource
-    private TransactionalMqSender transactionalMqSender;
-    @Resource
-    private TxJournalStore txJournalStore;
-    @Resource
-    private MqIdempotentExecutor mqIdempotentExecutor;
+    private final CommentDOMapper commentDOMapper;
+    private final CommentLikeDOMapper commentLikeDOMapper;
+    private final TransactionalMqSender transactionalMqSender;
+    private final TxJournalStore txJournalStore;
+    private final MqIdempotentExecutor mqIdempotentExecutor;
 
     private final RateLimiter rateLimiter = RateLimiter.create(1000);
 

@@ -7,7 +7,7 @@ import hk.ljx.fishhub.search.biz.enums.NoteStatusEnum;
 import hk.ljx.fishhub.search.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -25,12 +25,11 @@ import java.util.Objects;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class CanalSyncService {
 
-    @Resource
-    private RestHighLevelClient restHighLevelClient;
-    @Resource
-    private SelectMapper selectMapper;
+    private final RestHighLevelClient restHighLevelClient;
+    private final SelectMapper selectMapper;
 
     /**
      * 处理 Canal FlatMessage 消息

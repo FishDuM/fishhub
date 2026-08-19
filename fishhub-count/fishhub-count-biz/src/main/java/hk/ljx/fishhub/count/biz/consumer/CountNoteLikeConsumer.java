@@ -11,7 +11,7 @@ import hk.ljx.fishhub.count.biz.model.dto.CountLikeUnlikeNoteMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import jakarta.annotation.PreDestroy;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class CountNoteLikeConsumer {
 
     /** 每批最多拉取的消息数 */
@@ -47,16 +48,11 @@ public class CountNoteLikeConsumer {
     @Value("${rocketmq.name-server}")
     private String namesrvAddr;
 
-    @Resource
-    private NoteCountDOMapper noteCountDOMapper;
-    @Resource
-    private UserCountDOMapper userCountDOMapper;
-    @Resource
-    private MqIdempotentExecutor mqIdempotentExecutor;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private UserCountCacheVersionService userCountCacheVersionService;
+    private final NoteCountDOMapper noteCountDOMapper;
+    private final UserCountDOMapper userCountDOMapper;
+    private final MqIdempotentExecutor mqIdempotentExecutor;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final UserCountCacheVersionService userCountCacheVersionService;
 
     private DefaultMQPushConsumer consumer;
 

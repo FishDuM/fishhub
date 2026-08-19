@@ -2,7 +2,7 @@ package hk.ljx.fishhub.user.biz.consumer;
 
 import hk.ljx.fishhub.user.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -17,10 +17,10 @@ import java.util.Arrays;
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE, // Group
         topic = MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE // 消费的主题 Topic
         )
+@RequiredArgsConstructor
 public class DelayDeleteUserRedisCacheConsumer implements RocketMQListener<String>  {
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     public void onMessage(String body) {

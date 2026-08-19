@@ -5,7 +5,7 @@ import com.aliyun.oss.OSS;
 import hk.ljx.fishhub.oss.biz.config.AliyunOSSProperties;
 import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,15 +19,14 @@ import java.util.regex.Pattern;
 
 
 @Slf4j
+@RequiredArgsConstructor
 public class AliyunOSSFileStrategy implements FileStrategy  {
 
     private static final Pattern OWNED_OBJECT_NAME = Pattern.compile("user/\\d+/[a-f0-9]{32}\\.[a-z0-9]+");
 
-    @Resource
-    private AliyunOSSProperties aliyunOSSProperties;
+    private final AliyunOSSProperties aliyunOSSProperties;
 
-    @Resource
-    private OSS ossClient;
+    private final OSS ossClient;
 
     @Override
     @SneakyThrows

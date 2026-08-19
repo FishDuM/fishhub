@@ -6,7 +6,7 @@ import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class RelationListCacheService {
 
     /** 关注列表展示上限（与关注数上限一致） */
@@ -46,10 +47,8 @@ public class RelationListCacheService {
     private static final DefaultRedisScript<Long> FANS_BATCH_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/fans_batch_add_and_expire.lua");
     private static final DefaultRedisScript<Long> EMPTY_ZSET_SCRIPT = luaScript("/lua/zset_empty_with_expire.lua");
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private FollowingDOMapper followingDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final FollowingDOMapper followingDOMapper;
 
     /** 关注列表一页（offset 从 0 开始，最多 count 条）。缓存未命中先单飞重建，兜底 DB。 */
     public List<String> fetchFollowingMembers(Long userId, long offset, int count) {

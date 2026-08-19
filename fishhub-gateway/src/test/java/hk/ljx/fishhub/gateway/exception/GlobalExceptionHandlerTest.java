@@ -16,12 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class GlobalExceptionHandlerTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final GlobalExceptionHandler exceptionHandler = new GlobalExceptionHandler();
-
-    @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(exceptionHandler, "objectMapper", objectMapper);
-    }
+    private final GlobalExceptionHandler exceptionHandler = new GlobalExceptionHandler(objectMapper);
 
     @Test
     void shouldReturnInternalServerErrorForUnexpectedException() throws Exception {

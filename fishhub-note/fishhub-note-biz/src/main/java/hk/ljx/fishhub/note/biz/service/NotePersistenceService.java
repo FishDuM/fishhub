@@ -5,7 +5,7 @@ import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.fishhub.note.biz.enums.ResponseCodeEnum;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,12 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 提交事实由事务消息机制原子地转化为事件可见性。
  */
 @Service
+@RequiredArgsConstructor
 public class NotePersistenceService {
 
-    @Resource
-    private NoteDOMapper noteDOMapper;
-    @Resource
-    private TxJournalStore txJournalStore;
+    private final NoteDOMapper noteDOMapper;
+    private final TxJournalStore txJournalStore;
 
     /**
      * 发布笔记。

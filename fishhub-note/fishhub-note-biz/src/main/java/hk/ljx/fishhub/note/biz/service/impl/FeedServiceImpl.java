@@ -25,7 +25,7 @@ import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.note.biz.service.FeedService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.redisson.api.RLock;
@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class FeedServiceImpl implements FeedService {
 
     private static final long PAGE_SIZE = 10L;
@@ -62,22 +63,14 @@ public class FeedServiceImpl implements FeedService {
             .expireAfterWrite(1, TimeUnit.MINUTES)
             .build();
 
-    @Resource
-    private ChannelDOMapper channelDOMapper;
-    @Resource
-    private TopicDOMapper topicDOMapper;
-    @Resource
-    private NoteDOMapper noteDOMapper;
-    @Resource
-    private NoteInteractionCacheService noteInteractionCacheService;
-    @Resource
-    private UserRpcService userRpcService;
-    @Resource
-    private CountRpcService countRpcService;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private RedissonClient redissonClient;
+    private final ChannelDOMapper channelDOMapper;
+    private final TopicDOMapper topicDOMapper;
+    private final NoteDOMapper noteDOMapper;
+    private final NoteInteractionCacheService noteInteractionCacheService;
+    private final UserRpcService userRpcService;
+    private final CountRpcService countRpcService;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final RedissonClient redissonClient;
 
     @Override
     public Response<List<FindChannelRspVO>> findChannelList() {

@@ -8,7 +8,7 @@ import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.kv.api.KeyValueFeignApi;
 import hk.ljx.fishhub.kv.dto.req.*;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -17,10 +17,10 @@ import java.util.List;
 
 
 @Component
+@RequiredArgsConstructor
 public class KeyValueRpcService {
 
-    @Resource
-    private KeyValueFeignApi keyValueFeignApi;
+    private final KeyValueFeignApi keyValueFeignApi;
 
     /**
      * 批量存储评论内容

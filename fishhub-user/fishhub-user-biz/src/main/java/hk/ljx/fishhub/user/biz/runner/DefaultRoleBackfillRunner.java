@@ -1,7 +1,7 @@
 package hk.ljx.fishhub.user.biz.runner;
 
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -14,10 +14,10 @@ import static hk.ljx.fishhub.user.biz.constant.RoleConstants.COMMON_USER_ROLE_ID
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class DefaultRoleBackfillRunner implements ApplicationRunner {
 
-    @Resource
-    private UserRoleDOMapper userRoleDOMapper;
+    private final UserRoleDOMapper userRoleDOMapper;
 
     @Override
     public void run(ApplicationArguments args) {

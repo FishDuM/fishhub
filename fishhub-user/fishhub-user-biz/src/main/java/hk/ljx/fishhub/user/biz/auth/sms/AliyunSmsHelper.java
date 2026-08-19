@@ -5,17 +5,17 @@ import com.aliyun.dysmsapi20170525.models.SendSmsRequest;
 import com.aliyun.dysmsapi20170525.models.SendSmsResponse;
 import com.aliyun.teautil.models.RuntimeOptions;
 import hk.ljx.framework.common.util.JsonUtils;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class AliyunSmsHelper {
 
-    @Resource
-    private Client client;
+    private final Client client;
 
     /**
      * 发送短信

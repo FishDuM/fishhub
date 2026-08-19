@@ -17,5 +17,6 @@ public class FindChildCommentPageListReqVO {
     private Long parentCommentId;
 
     @NotNull(message = "页码不能为空")
+    @Builder.Default
     private Integer pageNo = 1;
 }

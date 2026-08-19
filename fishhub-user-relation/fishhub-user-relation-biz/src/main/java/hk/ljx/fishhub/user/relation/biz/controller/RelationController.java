@@ -4,7 +4,7 @@ import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.relation.biz.model.vo.*;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,10 +18,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/relation")
 @Slf4j
+@RequiredArgsConstructor
 public class RelationController {
 
-    @Resource
-    private RelationService relationService;
+    private final RelationService relationService;
 
     @PostMapping("/follow")
     @ApiOperationLog(description = "关注用户")

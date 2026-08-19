@@ -3,7 +3,7 @@ package hk.ljx.fishhub.note.biz.rpc;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.oss.api.FileFeignApi;
 import hk.ljx.fishhub.oss.dto.DeleteFileReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -11,10 +11,10 @@ import java.util.Collection;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class OssRpcService {
 
-    @Resource
-    private FileFeignApi fileFeignApi;
+    private final FileFeignApi fileFeignApi;
 
     public void deleteFiles(Collection<String> fileUrls) {
         fileUrls.forEach(fileUrl -> {

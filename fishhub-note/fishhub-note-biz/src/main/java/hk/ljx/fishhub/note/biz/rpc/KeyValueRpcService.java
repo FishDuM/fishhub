@@ -6,17 +6,17 @@ import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
 
 @Component
+@RequiredArgsConstructor
 public class KeyValueRpcService {
 
-    @Resource
-    private KeyValueFeignApi keyValueFeignApi;
+    private final KeyValueFeignApi keyValueFeignApi;
 
     /**
      * 保存笔记内容

@@ -16,8 +16,9 @@ import hk.ljx.fishhub.count.biz.util.Counts;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
@@ -32,16 +33,14 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class UserCountServiceImpl implements UserCountService {
 
-    @Resource
-    private UserCountDOMapper userCountDOMapper;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource(name = "fishhubTaskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    @Resource
-    private UserCountCacheVersionService userCountCacheVersionService;
+    private final UserCountDOMapper userCountDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
+    @Qualifier("fishhubTaskExecutor")
+    private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    private final UserCountCacheVersionService userCountCacheVersionService;
 
     /**
      * 查询用户相关计数

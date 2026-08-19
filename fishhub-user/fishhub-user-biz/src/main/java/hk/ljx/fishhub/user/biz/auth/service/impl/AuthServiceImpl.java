@@ -17,7 +17,7 @@ import hk.ljx.fishhub.user.biz.auth.service.AuthService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.ClassPathResource;
@@ -31,6 +31,7 @@ import java.util.*;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     private static DefaultRedisScript<Long> luaScript(String luaPath) {
@@ -42,12 +43,9 @@ public class AuthServiceImpl implements AuthService {
 
     private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CODE_SCRIPT = luaScript("/lua/verify_and_consume_code.lua");
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private PasswordEncoder passwordEncoder;
-    @Resource
-    private UserRpcService userRpcService;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final PasswordEncoder passwordEncoder;
+    private final UserRpcService userRpcService;
 
     /**
      * 登录与注册

@@ -9,7 +9,7 @@ import hk.ljx.fishhub.count.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.count.biz.service.NoteCountService;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,10 +24,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/count")
 @Slf4j
+@RequiredArgsConstructor
 public class NoteCountController {
 
-    @Resource
-    private NoteCountService noteCountService;
+    private final NoteCountService noteCountService;
 
     @PostMapping(value = "/notes/data")
     @ApiOperationLog(description = "批量获取笔记计数数据")

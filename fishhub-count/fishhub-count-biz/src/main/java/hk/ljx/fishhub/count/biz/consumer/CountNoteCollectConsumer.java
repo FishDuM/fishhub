@@ -10,7 +10,7 @@ import hk.ljx.fishhub.count.biz.model.dto.AggregationCountCollectUnCollectNoteMq
 import hk.ljx.fishhub.count.biz.model.dto.CountCollectUnCollectNoteMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -28,18 +28,14 @@ import java.util.stream.Collectors;
         topic = MQConstants.TOPIC_COUNT_NOTE_COLLECT // 主题 Topic
         )
 @Slf4j
+@RequiredArgsConstructor
 public class CountNoteCollectConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private NoteCountDOMapper noteCountDOMapper;
-    @Resource
-    private UserCountDOMapper userCountDOMapper;
-    @Resource
-    private MqIdempotentExecutor mqIdempotentExecutor;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private UserCountCacheVersionService userCountCacheVersionService;
+    private final NoteCountDOMapper noteCountDOMapper;
+    private final UserCountDOMapper userCountDOMapper;
+    private final MqIdempotentExecutor mqIdempotentExecutor;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final UserCountCacheVersionService userCountCacheVersionService;
 
     @Override
     public void onMessage(String body) {

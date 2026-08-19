@@ -35,6 +35,7 @@ import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.util.Strings;
@@ -43,6 +44,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.*;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
@@ -58,32 +60,22 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class CommentServiceImpl implements CommentService {
 
-    @Resource
-    private NoteRpcService noteRpcService;
-    @Resource
-    private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    @Resource
-    private KeyValueRpcService keyValueRpcService;
-    @Resource
-    private UserRpcService userRpcService;
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private CommentDetailCache commentDetailCache;
-    @Resource(name = "fishhubTaskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
-    @Resource
-    private TransactionTemplate transactionTemplate;
-    @Resource
-    private RedissonClient redissonClient;
-    @Resource
-    private CommentLikeRealtimeService commentLikeRealtimeService;
+    private final NoteRpcService noteRpcService;
+    private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
+    private final KeyValueRpcService keyValueRpcService;
+    private final UserRpcService userRpcService;
+    private final CommentDOMapper commentDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final CommentDetailCache commentDetailCache;
+    @Qualifier("fishhubTaskExecutor")
+    private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final TransactionTemplate transactionTemplate;
+    private final RedissonClient redissonClient;
+    private final CommentLikeRealtimeService commentLikeRealtimeService;
 
     /**
      * 评论详情本地缓存

@@ -4,7 +4,7 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.SetBucketPolicyArgs;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
@@ -14,10 +14,10 @@ import org.springframework.stereotype.Component;
 /** 社区图片使用普通对象 URL，启动时确保 fishhub bucket 允许匿名只读。 */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class MinioBucketInitializer implements ApplicationRunner {
 
-    @Resource
-    private MinioClient minioClient;
+    private final MinioClient minioClient;
 
     @Value("${storage.minio.public-read-bucket:fishhub}")
     private String publicReadBucket;

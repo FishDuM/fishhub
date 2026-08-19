@@ -23,7 +23,7 @@ import hk.ljx.fishhub.user.relation.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.user.relation.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -40,6 +40,7 @@ import java.util.*;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class RelationServiceImpl implements RelationService {
 
     private static DefaultRedisScript<Long> luaScript(String luaPath) {
@@ -54,18 +55,12 @@ public class RelationServiceImpl implements RelationService {
     private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/follow_batch_add_and_expire.lua");
     private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = luaScript("/lua/unfollow_check_and_delete.lua");
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private UserRpcService userRpcService;
-    @Resource
-    private FollowingDOMapper followingDOMapper;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
-    @Resource
-    private CountRpcService countRpcService;
-    @Resource
-    private RelationListCacheService relationListCacheService;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final UserRpcService userRpcService;
+    private final FollowingDOMapper followingDOMapper;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final CountRpcService countRpcService;
+    private final RelationListCacheService relationListCacheService;
 
 
     /**

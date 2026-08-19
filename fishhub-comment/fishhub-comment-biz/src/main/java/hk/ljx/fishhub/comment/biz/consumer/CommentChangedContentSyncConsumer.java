@@ -9,7 +9,7 @@ import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -28,12 +28,11 @@ import java.util.stream.Collectors;
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_content_sync",
         topic = MQConstants.TOPIC_COMMENT_CHANGED)
+@RequiredArgsConstructor
 public class CommentChangedContentSyncConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private KeyValueRpcService keyValueRpcService;
-    @Resource
-    private CommentDOMapper commentDOMapper;
+    private final KeyValueRpcService keyValueRpcService;
+    private final CommentDOMapper commentDOMapper;
 
     @Override
     public void onMessage(String body) {

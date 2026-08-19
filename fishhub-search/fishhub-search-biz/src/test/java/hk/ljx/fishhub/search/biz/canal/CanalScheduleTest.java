@@ -13,7 +13,7 @@ class CanalScheduleTest {
 
     @Test
     void shouldRebuildNoteDocumentWhenNoteCountChanges() throws Exception {
-        CanalSchedule schedule = spy(new CanalSchedule());
+        CanalSchedule schedule = spy(new CanalSchedule(null, null, null, null));
         doNothing().when(schedule).syncNoteIndex(11L);
 
         schedule.processEvent(Map.of("note_id", "11"), "t_note_count", CanalEntry.EventType.UPDATE);
@@ -23,7 +23,7 @@ class CanalScheduleTest {
 
     @Test
     void shouldRebuildUserDocumentWhenUserCountChanges() throws Exception {
-        CanalSchedule schedule = spy(new CanalSchedule());
+        CanalSchedule schedule = spy(new CanalSchedule(null, null, null, null));
         doNothing().when(schedule).syncUserIndex(22L);
 
         schedule.processEvent(Map.of("user_id", "22"), "t_user_count", CanalEntry.EventType.UPDATE);

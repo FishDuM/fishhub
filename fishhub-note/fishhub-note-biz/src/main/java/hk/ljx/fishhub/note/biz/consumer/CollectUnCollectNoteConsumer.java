@@ -14,7 +14,7 @@ import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
 import jakarta.annotation.PreDestroy;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -40,6 +40,7 @@ import java.util.stream.Collectors;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class CollectUnCollectNoteConsumer {
 
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
@@ -48,14 +49,10 @@ public class CollectUnCollectNoteConsumer {
     @Value("${rocketmq.name-server}")
     private String namesrvAddr;
 
-    @Resource
-    private TransactionalMqSender transactionalMqSender;
-    @Resource
-    private NoteInteractionPersistenceService persistenceService;
-    @Resource
-    private NoteDOMapper noteDOMapper;
-    @Resource
-    private NoteInteractionCacheService noteInteractionCacheService;
+    private final TransactionalMqSender transactionalMqSender;
+    private final NoteInteractionPersistenceService persistenceService;
+    private final NoteDOMapper noteDOMapper;
+    private final NoteInteractionCacheService noteInteractionCacheService;
 
     // 每秒 5000 令牌，批级限速兜底
     private final RateLimiter rateLimiter = RateLimiter.create(5000);

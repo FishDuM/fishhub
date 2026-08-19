@@ -2,16 +2,16 @@ package hk.ljx.fishhub.user.biz.rpc;
 
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.oss.api.FileFeignApi;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 
 @Component
+@RequiredArgsConstructor
 public class OssRpcService {
 
-    @Resource
-    private FileFeignApi fileFeignApi;
+    private final FileFeignApi fileFeignApi;
 
     public String uploadFile(MultipartFile file) {
         // 调用对象存储服务上传文件

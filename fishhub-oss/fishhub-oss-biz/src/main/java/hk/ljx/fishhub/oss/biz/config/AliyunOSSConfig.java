@@ -4,16 +4,16 @@ import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.common.auth.CredentialsProviderFactory;
 import com.aliyun.oss.common.auth.DefaultCredentialProvider;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
 @Configuration
+@RequiredArgsConstructor
 public class AliyunOSSConfig {
 
-    @Resource
-    private AliyunOSSProperties aliyunOSSProperties;
+    private final AliyunOSSProperties aliyunOSSProperties;
 
     /**
      * 构建 阿里云 OSS 客户端

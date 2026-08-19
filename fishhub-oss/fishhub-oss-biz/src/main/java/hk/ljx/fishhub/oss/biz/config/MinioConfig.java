@@ -1,16 +1,16 @@
 package hk.ljx.fishhub.oss.biz.config;
 
 import io.minio.MinioClient;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
 @Configuration
+@RequiredArgsConstructor
 public class MinioConfig {
 
-    @Resource
-    private MinioProperties minioProperties;
+    private final MinioProperties minioProperties;
 
     @Bean
     public MinioClient minioClient() {

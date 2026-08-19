@@ -14,7 +14,7 @@ import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.PreDestroy;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
 import org.apache.rocketmq.client.consumer.listener.ConsumeOrderlyStatus;
@@ -42,24 +42,21 @@ import java.util.stream.Collectors;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class LikeUnlikeComment2DBConsumer {
 
     @Value("${rocketmq.name-server}")
     private String namesrvAddr;
 
-    @Resource
-    private CommentLikePersistenceService persistenceService;
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource
-    private NoteRpcService noteRpcService;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
+    private final CommentLikePersistenceService persistenceService;
+    private final CommentDOMapper commentDOMapper;
+    private final NoteRpcService noteRpcService;
+    private final RocketMQTemplate rocketMQTemplate;
 
     private DefaultMQPushConsumer consumer;
 
     // 每秒创建 5000 个令牌
-    private RateLimiter rateLimiter = RateLimiter.create(5000);
+    private final RateLimiter rateLimiter = RateLimiter.create(5000);
 
     @Bean(name = "LikeUnlikeComment2DBConsumer")
     public DefaultMQPushConsumer mqPushConsumer() throws MQClientException {

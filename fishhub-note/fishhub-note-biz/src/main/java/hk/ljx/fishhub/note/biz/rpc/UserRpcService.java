@@ -8,7 +8,7 @@ import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -16,10 +16,10 @@ import java.util.concurrent.TimeUnit;
 
 
 @Component
+@RequiredArgsConstructor
 public class UserRpcService {
 
-    @Resource
-    private UserFeignApi userFeignApi;
+    private final UserFeignApi userFeignApi;
 
     /**
      * 用户资料短缓存（容量 5000，过期 60s），消除热门创作者/大 V 资料在发现页列表和详情中的重复网络 Feign 开销

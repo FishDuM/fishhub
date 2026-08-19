@@ -1,7 +1,7 @@
 package hk.ljx.fishhub.count.biz.service;
 
 import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -12,12 +12,12 @@ import java.util.List;
  * 为用户计数快照提供 fencing version。旧查询即使晚到，只会写入旧版本 Key，不会重新被读取。
  */
 @Service
+@RequiredArgsConstructor
 public class UserCountCacheVersionService {
 
     public static final long VERSION_EXPIRE_SECONDS = 3 * 60 * 60L;
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
 
     public long currentVersion(Long userId) {
         String value = stringRedisTemplate.opsForValue().get(RedisKeyConstants.buildCountUserCacheVersionKey(userId));

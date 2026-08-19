@@ -18,7 +18,7 @@ import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import jakarta.annotation.PreDestroy;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
@@ -41,25 +41,21 @@ import java.util.stream.Collectors;
 
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class Comment2DBConsumer {
 
     @Value("${rocketmq.name-server}")
     private String namesrvAddr;
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource
-    private TransactionTemplate transactionTemplate;
-    @Resource
-    private TransactionalMqSender transactionalMqSender;
-    @Resource
-    private TxJournalStore txJournalStore;
-    @Resource
-    private NoteRpcService noteRpcService;
+    private final CommentDOMapper commentDOMapper;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionalMqSender transactionalMqSender;
+    private final TxJournalStore txJournalStore;
+    private final NoteRpcService noteRpcService;
 
     private DefaultMQPushConsumer consumer;
 
     // 每秒创建 1000 个令牌
-    private RateLimiter rateLimiter = RateLimiter.create(1000);
+    private final RateLimiter rateLimiter = RateLimiter.create(1000);
 
     @Bean
     public DefaultMQPushConsumer mqPushConsumer() throws MQClientException {

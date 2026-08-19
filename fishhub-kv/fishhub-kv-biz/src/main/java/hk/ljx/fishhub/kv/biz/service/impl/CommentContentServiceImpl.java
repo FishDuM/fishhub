@@ -12,7 +12,7 @@ import hk.ljx.fishhub.kv.dto.req.BatchFindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.cassandra.core.CassandraTemplate;
@@ -29,12 +29,11 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class CommentContentServiceImpl implements CommentContentService {
 
-    @Resource
-    private CassandraTemplate cassandraTemplate;
-    @Resource
-    private CommentContentRepository commentContentRepository;
+    private final CassandraTemplate cassandraTemplate;
+    private final CommentContentRepository commentContentRepository;
 
     /**
      * 批量添加评论内容

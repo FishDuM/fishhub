@@ -12,20 +12,19 @@ import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentFirstReplyBO;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * 消费评论发布事件，为首次收到回复的一级评论回填 first_reply_comment_id。
@@ -35,16 +34,14 @@ import java.util.stream.Collectors;
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_first_reply_comment_id",
         topic = MQConstants.TOPIC_COMMENT_CHANGED)
 @Slf4j
+@RequiredArgsConstructor
 public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource(name = "fishhubTaskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final CommentDOMapper commentDOMapper;
+    @Qualifier("fishhubTaskExecutor")
+    private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    private final RocketMQTemplate rocketMQTemplate;
 
     @Override
     public void onMessage(String body) {

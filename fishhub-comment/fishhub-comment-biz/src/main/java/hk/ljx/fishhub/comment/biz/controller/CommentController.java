@@ -5,7 +5,7 @@ import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.comment.biz.model.vo.*;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,10 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/comment")
 @Slf4j
+@RequiredArgsConstructor
 public class CommentController {
 
-    @Resource
-    private CommentService commentService;
+    private final CommentService commentService;
 
     @PostMapping("/publish")
     @ApiOperationLog(description = "发布评论")

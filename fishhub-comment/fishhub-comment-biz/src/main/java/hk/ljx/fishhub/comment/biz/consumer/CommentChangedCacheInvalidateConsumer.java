@@ -9,7 +9,7 @@ import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_cache",
         topic = MQConstants.TOPIC_COMMENT_CHANGED)
+@RequiredArgsConstructor
 public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<String> {
 
     private static final long COMMENT_LIST_MAX_SIZE = 500;
@@ -40,10 +41,8 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
     private static final long COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
     private static final long CHILD_COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private CommentDetailCache commentDetailCache;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final CommentDetailCache commentDetailCache;
 
     @Override
     public void onMessage(String body) {

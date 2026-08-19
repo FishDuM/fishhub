@@ -7,7 +7,7 @@ import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.service.CommentHeatAggregator;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -23,10 +23,10 @@ import java.util.Set;
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_heat",
         topic = MQConstants.TOPIC_COMMENT_CHANGED)
 @Slf4j
+@RequiredArgsConstructor
 public class CommentChangedHeatConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private CommentHeatAggregator commentHeatAggregator;
+    private final CommentHeatAggregator commentHeatAggregator;
 
     @Override
     public void onMessage(String body) {

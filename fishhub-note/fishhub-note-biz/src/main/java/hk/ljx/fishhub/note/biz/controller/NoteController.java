@@ -5,7 +5,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.note.biz.service.NoteService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,10 +23,10 @@ import java.util.List;
 @RequestMapping("/note")
 @Slf4j
 @Validated
+@RequiredArgsConstructor
 public class NoteController {
 
-    @Resource
-    private NoteService noteService;
+    private final NoteService noteService;
 
     @PostMapping(value = "/exists")
     public Response<Boolean> exists(@NotNull(message = "笔记ID不能为空") @RequestBody Long noteId) {

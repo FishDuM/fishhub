@@ -2,7 +2,7 @@ package hk.ljx.fishhub.search.biz.canal;
 
 import com.alibaba.otter.canal.client.CanalConnector;
 import com.alibaba.otter.canal.client.CanalConnectors;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.context.annotation.Bean;
@@ -16,10 +16,10 @@ import java.util.Objects;
 @Component
 @ConditionalOnProperty(prefix = "canal", name = "mode", havingValue = "tcp")
 @Slf4j
+@RequiredArgsConstructor
 public class CanalClient implements DisposableBean {
 
-    @Resource
-    private CanalProperties canalProperties;
+    private final CanalProperties canalProperties;
 
     private CanalConnector canalConnector;
 

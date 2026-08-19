@@ -5,7 +5,7 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,12 +19,11 @@ import java.util.stream.Collectors;
  * 评论点赞持久化服务
  */
 @Service
+@RequiredArgsConstructor
 public class CommentLikePersistenceService {
 
-    @Resource
-    private CommentLikeDOMapper commentLikeDOMapper;
-    @Resource
-    private CommentDOMapper commentDOMapper;
+    private final CommentLikeDOMapper commentLikeDOMapper;
+    private final CommentDOMapper commentDOMapper;
 
     /**
      * 批量持久化点赞与取消点赞数据并更新计数

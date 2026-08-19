@@ -6,7 +6,7 @@ import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -14,10 +14,10 @@ import java.util.Objects;
 
 
 @Component
+@RequiredArgsConstructor
 public class UserRpcService {
 
-    @Resource
-    private UserFeignApi userFeignApi;
+    private final UserFeignApi userFeignApi;
 
     /**
      * 根据用户 ID 查询

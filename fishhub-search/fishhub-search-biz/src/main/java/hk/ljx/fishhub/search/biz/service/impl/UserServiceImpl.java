@@ -8,7 +8,7 @@ import hk.ljx.fishhub.search.biz.index.UserIndex;
 import hk.ljx.fishhub.search.biz.model.vo.SearchUserReqVO;
 import hk.ljx.fishhub.search.biz.model.vo.SearchUserRspVO;
 import hk.ljx.fishhub.search.biz.service.UserService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
@@ -32,10 +32,10 @@ import java.util.Map;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    @Resource
-    private RestHighLevelClient restHighLevelClient;
+    private final RestHighLevelClient restHighLevelClient;
 
     /**
      * 搜索用户

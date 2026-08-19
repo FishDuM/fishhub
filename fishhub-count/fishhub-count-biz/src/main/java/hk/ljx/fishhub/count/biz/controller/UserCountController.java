@@ -9,7 +9,7 @@ import hk.ljx.fishhub.count.biz.service.UserCountService;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,10 +24,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/count")
 @Slf4j
+@RequiredArgsConstructor
 public class UserCountController {
 
-    @Resource
-    private UserCountService userCountService;
+    private final UserCountService userCountService;
 
     @PostMapping(value = "/user/data")
     @ApiOperationLog(description = "获取用户计数数据")

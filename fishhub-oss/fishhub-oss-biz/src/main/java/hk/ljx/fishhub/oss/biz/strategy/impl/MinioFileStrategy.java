@@ -8,7 +8,7 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import io.minio.http.Method;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,15 +21,14 @@ import java.util.regex.Pattern;
 
 
 @Slf4j
+@RequiredArgsConstructor
 public class MinioFileStrategy implements FileStrategy  {
 
     private static final Pattern OWNED_OBJECT_NAME = Pattern.compile("user/\\d+/[a-f0-9]{32}\\.[a-z0-9]+");
 
-    @Resource
-    private MinioProperties minioProperties;
+    private final MinioProperties minioProperties;
 
-    @Resource
-    private MinioClient minioClient;
+    private final MinioClient minioClient;
 
     @Override
     @SneakyThrows

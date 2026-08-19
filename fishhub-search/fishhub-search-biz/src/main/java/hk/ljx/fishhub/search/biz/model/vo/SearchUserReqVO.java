@@ -20,6 +20,7 @@ public class SearchUserReqVO {
 
     @Min(value = 1, message = "页码不能小于 1")
     @Max(value = 100, message = "由于性能限制，最多仅支持查询前 100 页")
+    @Builder.Default
     private Integer pageNo = 1; // 默认值为第一页
 
 }

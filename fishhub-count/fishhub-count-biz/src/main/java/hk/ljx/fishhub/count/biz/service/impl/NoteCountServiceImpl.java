@@ -13,8 +13,9 @@ import hk.ljx.fishhub.count.biz.service.NoteCountService;
 import hk.ljx.fishhub.count.biz.util.Counts;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
@@ -30,14 +31,13 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class NoteCountServiceImpl implements NoteCountService {
 
-    @Resource
-    private NoteCountDOMapper noteCountDOMapper;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource(name = "fishhubTaskExecutor")
-    private ThreadPoolTaskExecutor fishhubTaskExecutor;
+    private final NoteCountDOMapper noteCountDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
+    @Qualifier("fishhubTaskExecutor")
+    private final ThreadPoolTaskExecutor fishhubTaskExecutor;
 
     /**
      * 批量查询笔记计数

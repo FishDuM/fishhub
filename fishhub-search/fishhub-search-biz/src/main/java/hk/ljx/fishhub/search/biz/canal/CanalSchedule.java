@@ -10,7 +10,7 @@ import hk.ljx.fishhub.search.biz.enums.NoteStatusEnum;
 import hk.ljx.fishhub.search.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -33,16 +33,13 @@ import java.util.concurrent.TimeUnit;
 @Component
 @ConditionalOnProperty(prefix = "canal", name = "mode", havingValue = "tcp")
 @Slf4j
+@RequiredArgsConstructor
 public class CanalSchedule implements Runnable {
 
-    @Resource
-    private CanalProperties canalProperties;
-    @Resource
-    private CanalConnector canalConnector;
-    @Resource
-    private RestHighLevelClient restHighLevelClient;
-    @Resource
-    private SelectMapper selectMapper;
+    private final CanalProperties canalProperties;
+    private final CanalConnector canalConnector;
+    private final RestHighLevelClient restHighLevelClient;
+    private final SelectMapper selectMapper;
 
     @Override
     @Scheduled(fixedDelay = 100) // 每隔 100ms 被执行一次

@@ -6,7 +6,7 @@ import hk.ljx.fishhub.kv.biz.service.CommentContentService;
 import hk.ljx.fishhub.kv.dto.req.BatchAddCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.BatchFindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteCommentContentReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,10 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/kv")
 @Slf4j
+@RequiredArgsConstructor
 public class CommentContentController {
 
-    @Resource
-    private CommentContentService commentContentService;
+    private final CommentContentService commentContentService;
 
     @PostMapping(value = "/comment/content/batchAdd")
     @ApiOperationLog(description = "批量存储评论内容")

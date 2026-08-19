@@ -6,7 +6,7 @@ import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,10 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/kv")
 @Slf4j
+@RequiredArgsConstructor
 public class NoteContentController {
 
-    @Resource
-    private NoteContentService noteContentService;
+    private final NoteContentService noteContentService;
 
     @PostMapping(value = "/note/content/add")
     public Response<?> addNoteContent(@Validated @RequestBody AddNoteContentReqDTO addNoteContentReqDTO) {

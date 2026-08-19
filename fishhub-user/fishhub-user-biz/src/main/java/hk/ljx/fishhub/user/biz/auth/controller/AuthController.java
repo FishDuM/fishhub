@@ -5,7 +5,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.user.biz.auth.service.AuthService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -13,10 +13,10 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @Slf4j
+@RequiredArgsConstructor
 public class AuthController {
 
-    @Resource
-    private AuthService authService;
+    private final AuthService authService;
 
     @PostMapping("/login")
     @ApiOperationLog(description = "用户登录/注册")

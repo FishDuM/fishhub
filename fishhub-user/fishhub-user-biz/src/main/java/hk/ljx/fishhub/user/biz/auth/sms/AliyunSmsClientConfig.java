@@ -2,19 +2,18 @@ package hk.ljx.fishhub.user.biz.auth.sms;
 
 import com.aliyun.dysmsapi20170525.Client;
 import com.aliyun.teaopenapi.models.Config;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 
 @Configuration
 @Slf4j
+@RequiredArgsConstructor
 public class AliyunSmsClientConfig {
 
-    @Resource
-    private AliyunAccessKeyProperties aliyunAccessKeyProperties;
+    private final AliyunAccessKeyProperties aliyunAccessKeyProperties;
 
     @Bean
     public Client smsClient() {

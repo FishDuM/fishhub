@@ -5,7 +5,7 @@ import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.fishhub.search.biz.model.vo.SearchNoteReqVO;
 import hk.ljx.fishhub.search.biz.model.vo.SearchNoteRspVO;
 import hk.ljx.fishhub.search.biz.service.NoteService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,10 +18,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/search")
 @Slf4j
+@RequiredArgsConstructor
 public class NoteController {
 
-    @Resource
-    private NoteService noteService;
+    private final NoteService noteService;
 
     @PostMapping("/note")
     @ApiOperationLog(description = "搜索笔记")

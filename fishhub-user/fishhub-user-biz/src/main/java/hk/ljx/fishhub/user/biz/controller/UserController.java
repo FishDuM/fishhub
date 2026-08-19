@@ -12,7 +12,7 @@ import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -27,12 +27,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/user")
 @Slf4j
+@RequiredArgsConstructor
 public class UserController {
 
-    @Resource
-    private UserService userService;
-    @Resource
-    private RolePermissionService rolePermissionService;
+    private final UserService userService;
+    private final RolePermissionService rolePermissionService;
 
     /**
      * 用户信息修改

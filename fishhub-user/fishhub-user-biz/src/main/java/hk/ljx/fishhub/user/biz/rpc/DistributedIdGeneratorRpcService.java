@@ -2,7 +2,7 @@ package hk.ljx.fishhub.user.biz.rpc;
 
 import cn.hutool.core.util.IdUtil;
 import hk.ljx.fishhub.distributed.id.generator.api.DistributedIdGeneratorFeignApi;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +14,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class DistributedIdGeneratorRpcService {
 
     private static final int MAX_RETRY_ATTEMPTS = 2;
@@ -21,8 +22,7 @@ public class DistributedIdGeneratorRpcService {
 
     private static final String FISHHUB_ID_PREFIX = "fish";
 
-    @Resource
-    private DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
+    private final DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
 
     private static final String BIZ_TAG_FISHHUB_ID = "leaf-snowflake-fishhub-id";
     private static final String BIZ_TAG_USER_ID = "leaf-snowflake-user-id";

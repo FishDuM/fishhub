@@ -2,7 +2,7 @@ package hk.ljx.fishhub.comment.biz.consumer;
 
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.MessageModel;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -15,10 +15,10 @@ import org.springframework.stereotype.Component;
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, // Group
         topic = MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, // 消费的主题 Topic
         messageModel = MessageModel.BROADCASTING) // 广播模式
+@RequiredArgsConstructor
 public class DeleteCommentLocalCacheConsumer implements RocketMQListener<String>  {
 
-    @Resource
-    private CommentService commentService;
+    private final CommentService commentService;
 
     @Override
     public void onMessage(String body) {

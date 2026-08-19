@@ -5,7 +5,7 @@ import cn.dev33.satoken.exception.NotPermissionException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.gateway.enums.ResponseCodeEnum;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.reactive.error.ErrorWebExceptionHandler;
 import org.springframework.core.io.buffer.DataBufferFactory;
@@ -23,10 +23,10 @@ import reactor.core.publisher.Mono;
 @Component
 @Slf4j
 @Order(-2)
+@RequiredArgsConstructor
 public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
 
-    @Resource
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {

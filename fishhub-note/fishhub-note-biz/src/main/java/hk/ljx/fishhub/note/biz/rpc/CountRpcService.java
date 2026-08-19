@@ -5,7 +5,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.api.CountFeignApi;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdsReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -14,10 +14,10 @@ import java.util.Objects;
 
 
 @Component
+@RequiredArgsConstructor
 public class CountRpcService {
 
-    @Resource
-    private CountFeignApi countFeignApi;
+    private final CountFeignApi countFeignApi;
 
     /**
      * 批量查询笔记计数

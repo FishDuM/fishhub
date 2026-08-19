@@ -6,7 +6,7 @@ import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlReqVO;
 import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.service.FileService;
 import hk.ljx.fishhub.oss.dto.DeleteFileReqDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,10 +21,10 @@ import org.springframework.validation.annotation.Validated;
 @RestController
 @RequestMapping("/file")
 @Slf4j
+@RequiredArgsConstructor
 public class FileController {
 
-    @Resource
-    private FileService fileService;
+    private final FileService fileService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Response<?> uploadFile(@RequestPart(value = "file") MultipartFile file) {

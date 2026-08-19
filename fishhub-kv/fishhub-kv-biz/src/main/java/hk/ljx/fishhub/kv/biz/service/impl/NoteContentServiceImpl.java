@@ -10,7 +10,7 @@ import hk.ljx.fishhub.kv.dto.req.AddNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.DeleteNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.req.FindNoteContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindNoteContentRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +21,10 @@ import java.util.UUID;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class NoteContentServiceImpl implements NoteContentService {
 
-    @Resource
-    private NoteContentRepository noteContentRepository;
+    private final NoteContentRepository noteContentRepository;
 
     @Override
     public Response<?> addNoteContent(AddNoteContentReqDTO addNoteContentReqDTO) {

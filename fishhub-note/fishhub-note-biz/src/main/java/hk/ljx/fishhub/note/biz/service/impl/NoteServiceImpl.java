@@ -43,7 +43,7 @@ import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.UserNoteListService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -52,6 +52,7 @@ import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -74,6 +75,7 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class NoteServiceImpl implements NoteService {
 
     private static final long ZSET_NOT_INITIALIZED = -1L;
@@ -94,42 +96,25 @@ public class NoteServiceImpl implements NoteService {
     private static final DefaultRedisScript<Long> NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT = luaScript("/lua/note_collect_check_and_update_zset.lua");
     private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT = luaScript("/lua/batch_add_note_collect_zset_and_expire.lua");
 
-    @Resource
-    private NoteDOMapper noteDOMapper;
-    @Resource
-    private TopicDOMapper topicDOMapper;
-    @Resource
-    private ChannelDOMapper channelDOMapper;
-    @Resource
-    private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    @Resource
-    private KeyValueRpcService keyValueRpcService;
-    @Resource
-    private UserRpcService userRpcService;
-    @Resource(name = "fishhubTaskExecutor")
-    private ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private RocketMQTemplate rocketMQTemplate;
-    @Resource
-    private NoteLikeDOMapper noteLikeDOMapper;
-    @Resource
-    private NoteCollectionDOMapper noteCollectionDOMapper;
-    @Resource
-    private CountRpcService countRpcService;
-    @Resource
-    private TransactionalMqSender transactionalMqSender;
-    @Resource
-    private NotePersistenceService notePersistenceService;
-    @Resource
-    private NoteInteractionCacheService noteInteractionCacheService;
-    @Resource
-    private RedissonClient redissonClient;
-    @Resource
-    private UserNoteListService userNoteListService;
-    @Resource
-    private OssRpcService ossRpcService;
+    private final NoteDOMapper noteDOMapper;
+    private final TopicDOMapper topicDOMapper;
+    private final ChannelDOMapper channelDOMapper;
+    private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
+    private final KeyValueRpcService keyValueRpcService;
+    private final UserRpcService userRpcService;
+    @Qualifier("fishhubTaskExecutor")
+    private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final RocketMQTemplate rocketMQTemplate;
+    private final NoteLikeDOMapper noteLikeDOMapper;
+    private final NoteCollectionDOMapper noteCollectionDOMapper;
+    private final CountRpcService countRpcService;
+    private final TransactionalMqSender transactionalMqSender;
+    private final NotePersistenceService notePersistenceService;
+    private final NoteInteractionCacheService noteInteractionCacheService;
+    private final RedissonClient redissonClient;
+    private final UserNoteListService userNoteListService;
+    private final OssRpcService ossRpcService;
 
     @Override
     public Response<Boolean> exists(Long noteId) {

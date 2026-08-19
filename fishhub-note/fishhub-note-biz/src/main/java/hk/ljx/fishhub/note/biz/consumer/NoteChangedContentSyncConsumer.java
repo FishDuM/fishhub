@@ -8,7 +8,7 @@ import hk.ljx.fishhub.note.biz.enums.NoteContentTaskTypeEnum;
 import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -26,12 +26,11 @@ import java.util.Objects;
 @RocketMQMessageListener(
         consumerGroup = "fishhub_group_" + MQConstants.TOPIC_NOTE_CHANGED + "_content_sync",
         topic = MQConstants.TOPIC_NOTE_CHANGED)
+@RequiredArgsConstructor
 public class NoteChangedContentSyncConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private KeyValueRpcService keyValueRpcService;
-    @Resource
-    private NoteDOMapper noteDOMapper;
+    private final KeyValueRpcService keyValueRpcService;
+    private final NoteDOMapper noteDOMapper;
 
     @Override
     public void onMessage(String body) {

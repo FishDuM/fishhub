@@ -4,7 +4,7 @@ import com.google.common.collect.Sets;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.service.CommentHeatAggregator;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -19,10 +19,10 @@ import java.util.Set;
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_HEAT_UPDATE,
         topic = MQConstants.TOPIC_COMMENT_HEAT_UPDATE)
 @Slf4j
+@RequiredArgsConstructor
 public class CommentHeatUpdateConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private CommentHeatAggregator commentHeatAggregator;
+    private final CommentHeatAggregator commentHeatAggregator;
 
     @Override
     public void onMessage(String body) {

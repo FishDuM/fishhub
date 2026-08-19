@@ -13,7 +13,7 @@ import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.model.vo.SearchNoteReqVO;
 import hk.ljx.fishhub.search.biz.model.vo.SearchNoteRspVO;
 import hk.ljx.fishhub.search.biz.service.NoteService;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.search.SearchRequest;
@@ -45,10 +45,10 @@ import java.util.Objects;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class NoteServiceImpl implements NoteService {
 
-    @Resource
-    private RestHighLevelClient restHighLevelClient;
+    private final RestHighLevelClient restHighLevelClient;
 
     /**
      * 搜索笔记

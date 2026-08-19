@@ -8,7 +8,7 @@ import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentLikeDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -32,9 +32,12 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class CommentLikeRealtimeService {
 
-    private static final long BASE_EXPIRE_SECONDS = 5 * 60 * 60L;
+    private static final long FOOTPRINT_TTL_SECONDS = 7 * 86400L;
+    private static final long COUNT_TTL_SECONDS = 30 * 86400L;
+    private static final long EMPTY_BASELINE_TTL_SECONDS = 60L;
 
     private static DefaultRedisScript<Long> luaScript(String luaPath) {
         DefaultRedisScript<Long> script = new DefaultRedisScript<>();
@@ -48,12 +51,9 @@ public class CommentLikeRealtimeService {
      */
     private static final DefaultRedisScript<Long> LIKE_TOGGLE_SCRIPT = luaScript("/lua/comment_like_toggle.lua");
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private CommentDOMapper commentDOMapper;
-    @Resource
-    private CommentLikeDOMapper commentLikeDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final CommentDOMapper commentDOMapper;
+    private final CommentLikeDOMapper commentLikeDOMapper;
 
     /**
      * 点赞
@@ -195,8 +195,8 @@ public class CommentLikeRealtimeService {
                             zsetKey, String.valueOf(like.getCommentId()), score);
                 }
             }
-            stringRedisTemplate.expire(setKey, BASE_EXPIRE_SECONDS, TimeUnit.SECONDS);
-            stringRedisTemplate.expire(zsetKey, BASE_EXPIRE_SECONDS, TimeUnit.SECONDS);
+            stringRedisTemplate.expire(setKey, FOOTPRINT_TTL_SECONDS, TimeUnit.SECONDS);
+            stringRedisTemplate.expire(zsetKey, FOOTPRINT_TTL_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Redis 不可用，点赞缓存重建失败（下次读会回源数据库）, setKey={}", setKey, e);
         }

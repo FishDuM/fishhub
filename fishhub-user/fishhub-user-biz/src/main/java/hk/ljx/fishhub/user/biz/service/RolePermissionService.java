@@ -13,7 +13,7 @@ import hk.ljx.fishhub.user.biz.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.RolePermissionDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -33,18 +33,14 @@ import java.util.stream.Collectors;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class RolePermissionService {
 
-    @Resource
-    private UserRoleDOMapper userRoleDOMapper;
-    @Resource
-    private RoleDOMapper roleDOMapper;
-    @Resource
-    private RolePermissionDOMapper rolePermissionDOMapper;
-    @Resource
-    private PermissionDOMapper permissionDOMapper;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final UserRoleDOMapper userRoleDOMapper;
+    private final RoleDOMapper roleDOMapper;
+    private final RolePermissionDOMapper rolePermissionDOMapper;
+    private final PermissionDOMapper permissionDOMapper;
+    private final StringRedisTemplate stringRedisTemplate;
 
     public UserRolePermissionRspDTO findByUserId(Long userId) {
         String cacheKey = RedisKeyConstants.buildUserRolePermissionKey(userId);

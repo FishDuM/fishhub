@@ -2,20 +2,20 @@ package hk.ljx.fishhub.comment.biz.rpc;
 
 import cn.hutool.core.util.IdUtil;
 import hk.ljx.fishhub.distributed.id.generator.api.DistributedIdGeneratorFeignApi;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class DistributedIdGeneratorRpcService {
 
     private static final String BIZ_TAG_COMMENT_ID = "leaf-snowflake-comment-id";
     private static final int MAX_RETRY_ATTEMPTS = 2;
     private static final long RETRY_BACKOFF_MILLIS = 50L;
 
-    @Resource
-    private DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
+    private final DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
 
     /**
      * 生成评论 ID（使用 Leaf 雪花算法，带重试与本地雪花降级）

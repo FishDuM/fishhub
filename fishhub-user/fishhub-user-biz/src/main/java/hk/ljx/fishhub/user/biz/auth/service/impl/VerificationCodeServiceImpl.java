@@ -8,7 +8,7 @@ import hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
 import hk.ljx.fishhub.user.biz.auth.service.VerificationCodeService;
 import hk.ljx.fishhub.user.biz.auth.sms.AliyunSmsHelper;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.ClassPathResource;
@@ -21,12 +21,11 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class VerificationCodeServiceImpl implements VerificationCodeService {
 
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
-    @Resource
-    private AliyunSmsHelper aliyunSmsHelper;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final AliyunSmsHelper aliyunSmsHelper;
 
     private static final int PHONE_RATE_LIMIT_PER_MINUTE = 100;
     private static final int IP_RATE_LIMIT_PER_MINUTE = 500;

@@ -11,17 +11,16 @@ import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 
 @Component
+@RequiredArgsConstructor
 public class UserRpcService {
 
-    @Resource
-    private UserService userService;
-    @Resource
-    private RolePermissionService rolePermissionService;
+    private final UserService userService;
+    private final RolePermissionService rolePermissionService;
 
     /**
      * 查询手机号对应的可登录账号；不存在时创建默认账号。

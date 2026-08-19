@@ -4,8 +4,8 @@ import hk.ljx.framework.biz.operationlog.aspect.ApiOperationLog;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
 import hk.ljx.fishhub.user.biz.auth.service.VerificationCodeService;
-import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -16,10 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Slf4j
+@RequiredArgsConstructor
 public class VerificationCodeController {
 
-    @Resource
-    private VerificationCodeService verificationCodeService;
+    private final VerificationCodeService verificationCodeService;
 
     @PostMapping("/verification/code/send")
     @ApiOperationLog(description = "发送短信验证码")

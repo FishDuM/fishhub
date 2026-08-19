@@ -10,6 +10,7 @@ import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
@@ -31,14 +32,12 @@ import java.util.stream.Collectors;
         topic = MQConstants.TOPIC_COMMENT_CHANGED // 主题 Topic
         )
 @Slf4j
+@RequiredArgsConstructor
 public class CountCommentChangedConsumer implements RocketMQListener<String> {
 
-    @Resource
-    private NoteCountDOMapper noteCountDOMapper;
-    @Resource
-    private MqIdempotentExecutor mqIdempotentExecutor;
-    @Resource
-    private StringRedisTemplate stringRedisTemplate;
+    private final NoteCountDOMapper noteCountDOMapper;
+    private final MqIdempotentExecutor mqIdempotentExecutor;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     public void onMessage(String body) {

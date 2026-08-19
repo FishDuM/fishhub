@@ -4,17 +4,17 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.api.CountFeignApi;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
-import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
 
 @Component
+@RequiredArgsConstructor
 public class CountRpcService {
 
-    @Resource
-    private CountFeignApi countFeignApi;
+    private final CountFeignApi countFeignApi;
 
     /**
      * 查询用户计数信息
