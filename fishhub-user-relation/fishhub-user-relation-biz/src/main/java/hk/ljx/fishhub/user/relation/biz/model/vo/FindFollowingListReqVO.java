@@ -18,5 +18,6 @@ public class FindFollowingListReqVO {
     private Long userId;
 
     @Min(value = 0, message = "游标不能小于 0")
+    @Builder.Default
     private Long cursor = 0L;
 }

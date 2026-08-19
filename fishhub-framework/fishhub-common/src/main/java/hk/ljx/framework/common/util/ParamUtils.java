@@ -35,7 +35,7 @@ public final class ParamUtils {
         return !pattern.matcher(nickname).find();
     }
     private static final int ID_MIN_LENGTH = 6;
-    private static final int ID_MAX_LENGTH = 15;
+    private static final int ID_MAX_LENGTH = 32;
     private static final Pattern ID_FORMAT_PATTERN = Pattern.compile("^[a-zA-Z0-9_]+$");
     private static final Pattern ID_LETTER_PATTERN = Pattern.compile("[a-zA-Z]");
 

@@ -22,26 +22,28 @@ class DistributedIdGeneratorRpcServiceTest {
 
     @Test
     void shouldGenerateFishhubIdThatMatchesProfileRule() {
-        when(distributedIdGeneratorFeignApi.getSegmentId("leaf-segment-fishhub-id"))
-                .thenReturn("10100");
+        when(distributedIdGeneratorFeignApi.getSnowflakeId("leaf-snowflake-fishhub-id"))
+                .thenReturn("1892182918291829101");
 
-        assertEquals("fish10100", service.getFishhubId());
+        assertEquals("fish1892182918291829101", service.getFishhubId());
     }
 
     @Test
     void shouldRetryAndSucceedOnSecondAttempt() {
-        when(distributedIdGeneratorFeignApi.getSegmentId("leaf-segment-fishhub-id"))
+        when(distributedIdGeneratorFeignApi.getSnowflakeId("leaf-snowflake-fishhub-id"))
                 .thenThrow(new RuntimeException("first call fails"))
-                .thenReturn("10101");
+                .thenReturn("1892182918291829102");
 
-        assertEquals("fish10101", service.getFishhubId());
+        assertEquals("fish1892182918291829102", service.getFishhubId());
     }
 
     @Test
-    void shouldThrowBizExceptionAfterRetriesExhausted() {
-        when(distributedIdGeneratorFeignApi.getSegmentId("leaf-segment-fishhub-id"))
+    void shouldFallbackToLocalSnowflakeAfterRetriesExhausted() {
+        when(distributedIdGeneratorFeignApi.getSnowflakeId("leaf-snowflake-fishhub-id"))
                 .thenThrow(new RuntimeException("always fails"));
 
-        assertThrows(hk.ljx.framework.common.exception.BizException.class, () -> service.getFishhubId());
+        String fishhubId = service.getFishhubId();
+        org.junit.jupiter.api.Assertions.assertNotNull(fishhubId);
+        org.junit.jupiter.api.Assertions.assertTrue(fishhubId.startsWith("fish"));
     }
 }

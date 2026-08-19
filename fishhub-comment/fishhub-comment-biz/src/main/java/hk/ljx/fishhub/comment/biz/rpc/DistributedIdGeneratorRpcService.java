@@ -10,20 +10,32 @@ import org.springframework.stereotype.Component;
 @Component
 public class DistributedIdGeneratorRpcService {
 
-    private static final String BIZ_TAG_COMMENT_ID = "leaf-segment-comment-id";
+    private static final String BIZ_TAG_COMMENT_ID = "leaf-snowflake-comment-id";
+    private static final int MAX_RETRY_ATTEMPTS = 2;
+    private static final long RETRY_BACKOFF_MILLIS = 50L;
 
     @Resource
     private DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
 
     /**
-     * 生成评论 ID
+     * 生成评论 ID（使用 Leaf 雪花算法，带重试与本地雪花降级）
      */
     public String generateCommentId() {
-        try {
-            return distributedIdGeneratorFeignApi.getSegmentId(BIZ_TAG_COMMENT_ID);
-        } catch (Exception e) {
-            log.warn("==> ID 生成服务 RPC 不可用，使用本地雪花算法生成 ID", e);
-            return IdUtil.getSnowflakeNextIdStr();
+        for (int attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+            try {
+                return distributedIdGeneratorFeignApi.getSnowflakeId(BIZ_TAG_COMMENT_ID);
+            } catch (Exception e) {
+                log.warn("==> 评论 ID 生成服务调用失败，第 {} 次重试, bizTag: {}", attempt, BIZ_TAG_COMMENT_ID, e);
+                if (attempt < MAX_RETRY_ATTEMPTS) {
+                    try {
+                        Thread.sleep(RETRY_BACKOFF_MILLIS * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
         }
+        log.warn("==> 评论 ID 生成服务重试 {} 次后仍不可用，高可用降级为本地雪花算法", MAX_RETRY_ATTEMPTS);
+        return IdUtil.getSnowflakeNextIdStr();
     }
 }

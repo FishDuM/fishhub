@@ -174,13 +174,12 @@ public class CommentServiceImpl implements CommentService {
         // 构建评论 ZSET Key
         String commentZSetKey = RedisKeyConstants.buildCommentListKey(noteId);
         // 先判断 ZSET 是否存在
-        boolean hasKey = stringRedisTemplate.hasKey(commentZSetKey);
+        boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(commentZSetKey));
 
-        // 若不存在
-        if (!hasKey) {
-            // 异步同步热点评论到 redis（最多 500 条），单飞锁防热 key 击穿重复查库
-            threadPoolTaskExecutor.execute(() ->
-                    rebuildCommentListZSetWithLock(commentZSetKey, noteId));
+        // 若不存在且查询前 50 页热点数据，单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
+        if (!hasKey && offset < 500) {
+            rebuildCommentListZSetWithLock(commentZSetKey, noteId);
+            hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(commentZSetKey));
         }
 
         // 若 ZSET 缓存存在, 并且查询的是前 50 页的评论
@@ -348,13 +347,12 @@ public class CommentServiceImpl implements CommentService {
         // 构建子评论 ZSET Key
         String childCommentZSetKey = RedisKeyConstants.buildChildCommentListKey(parentCommentId);
         // 先判断 ZSET 是否存在
-        boolean hasKey = stringRedisTemplate.hasKey(childCommentZSetKey);
+        boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
 
-        // 若不存在
-        if (!hasKey) {
-            // 异步单飞重建子评论 ZSET，防止并发读取重复查库
-            threadPoolTaskExecutor.execute(() ->
-                    rebuildChildCommentListZSetWithLock(parentCommentId, childCommentZSetKey));
+        // 若不存在且查询前 10 页热点数据，单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
+        if (!hasKey && offset < 6 * 10) {
+            rebuildChildCommentListZSetWithLock(parentCommentId, childCommentZSetKey);
+            hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
         }
 
         // 若子评论 ZSET 缓存存在, 并且查询的是前 10 页的子评论
