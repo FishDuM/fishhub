@@ -117,6 +117,10 @@ public class RelationListCacheService {
                 if (CollUtil.isEmpty(all)) {
                     return Collections.emptySet();
                 }
+                all.remove("-1");
+                if (all.isEmpty()) {
+                    return Collections.emptySet();
+                }
                 Set<String> wanted = candidates.stream().map(String::valueOf).collect(Collectors.toSet());
                 all.retainAll(wanted);
                 return all.stream().map(Long::valueOf).collect(Collectors.toSet());
@@ -199,7 +203,9 @@ public class RelationListCacheService {
         if (CollUtil.isEmpty(members)) {
             return Collections.emptyList();
         }
-        return new ArrayList<>(members);
+        return members.stream()
+                .filter(m -> !"-1".equals(m))
+                .toList();
     }
 
     private List<String> followingFromDb(Long userId, long offset, int count) {

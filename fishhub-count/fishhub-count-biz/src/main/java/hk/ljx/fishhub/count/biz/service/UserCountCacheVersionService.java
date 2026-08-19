@@ -27,6 +27,9 @@ public class UserCountCacheVersionService {
     public List<Long> currentVersions(List<Long> userIds) {
         List<String> keys = userIds.stream().map(RedisKeyConstants::buildCountUserCacheVersionKey).toList();
         List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
+        if (values == null) {
+            return userIds.stream().map(id -> 0L).toList();
+        }
         return values.stream()
                 .map(value -> value == null ? 0L : Long.parseLong(value))
                 .toList();

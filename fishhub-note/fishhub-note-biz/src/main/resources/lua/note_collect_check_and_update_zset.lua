@@ -10,12 +10,13 @@ end
 
 -- 获取笔记收藏列表大小
 local size = redis.call('ZCARD', key)
+local isMember = redis.call('ZSCORE', key, noteId)
 
--- 若已经收藏了 300 篇笔记，则移除最早收藏的那篇
-if size >= 300 then
+-- 若已经收藏了 300 篇笔记且当前笔记为新收藏，则移除最早收藏的那篇
+if not isMember and size >= 300 then
     redis.call('ZPOPMIN', key)
 end
 
--- 添加新的笔记收藏关系
+-- 添加或更新笔记收藏关系
 redis.call('ZADD', key, timestamp, noteId)
 return 0

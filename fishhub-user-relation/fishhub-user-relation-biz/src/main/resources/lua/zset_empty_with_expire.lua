@@ -1,10 +1,9 @@
 -- LUA 脚本：创建带 TTL 的空 ZSET
--- 空列表也占位并设置过期时间，避免热空列表反复回源 DB
+-- 写入 -1 作为空列表占位哨兵，避免空集合被 Redis 引擎自动回收导致缓存穿透
 
 local key = KEYS[1]
 local expireSeconds = ARGV[1]
 
-redis.call('ZADD', key, 0, '')
-redis.call('ZREM', key, '')
+redis.call('ZADD', key, 0, '-1')
 redis.call('EXPIRE', key, expireSeconds)
 return 0

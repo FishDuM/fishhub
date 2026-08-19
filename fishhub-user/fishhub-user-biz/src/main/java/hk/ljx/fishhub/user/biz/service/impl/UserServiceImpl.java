@@ -463,116 +463,94 @@ public class UserServiceImpl implements UserService {
             return Response.success(Collections.emptyList());
         }
 
-        List<String> redisKeys = userIds.stream()
+        List<Long> distinctUserIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (CollUtil.isEmpty(distinctUserIds)) {
+            return Response.success(Collections.emptyList());
+        }
+
+        List<String> redisKeys = distinctUserIds.stream()
                 .map(RedisKeyConstants::buildUserInfoKey)
                 .toList();
 
-        // 先从 Redis 缓存中查, multiGet 批量查询提升性能
+        // 批量查询 Redis
         List<String> redisValues = stringRedisTemplate.opsForValue().multiGet(redisKeys);
-        // 如果缓存中不为空
+
+        Map<Long, FindUserByIdRspDTO> foundUsersMap = new HashMap<>();
+        List<Long> userIdsNeedQuery = new ArrayList<>();
+
         if (CollUtil.isNotEmpty(redisValues)) {
-            // 过滤掉为空的数据
-            redisValues = redisValues.stream()
-                    .filter(Objects::nonNull)
-                    .filter(value -> !"null".equals(value))
-                    .toList();
-        }
-
-        // 返参
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = Lists.newArrayList();
-
-        // 将过滤后的缓存集合，转换为 DTO 返参实体类
-        if (CollUtil.isNotEmpty(redisValues)) {
-            findUserByIdRspDTOS.addAll(redisValues.stream()
-                    .map(value -> JsonUtils.parseObject(value, FindUserByIdRspDTO.class))
-                    .filter(Objects::nonNull)
-                    .toList());
-        }
-
-        // 如果被查询的用户信息，都在 Redis 缓存中, 则直接返回
-        if (CollUtil.size(userIds) == CollUtil.size(findUserByIdRspDTOS)) {
-            return Response.success(orderUsersByRequestIds(userIds, findUserByIdRspDTOS));
-        }
-
-        // 还有另外两种情况：一种是缓存里没有用户信息数据，还有一种是缓存里数据不全，需要从数据库中补充
-        // 筛选出缓存里没有的用户数据，去查数据库
-        List<Long> userIdsNeedQuery = null;
-
-        if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
-            // 将 findUserInfoByIdRspDTOS 集合转 Map
-            Map<Long, FindUserByIdRspDTO> map = findUserByIdRspDTOS.stream()
-                    .collect(Collectors.toMap(FindUserByIdRspDTO::getId, p -> p));
-
-            // 筛选出需要查 DB 的用户 ID
-            userIdsNeedQuery = userIds.stream()
-                    .filter(id -> Objects.isNull(map.get(id)))
-                    .toList();
-        } else { // 缓存中一条用户信息都没查到，则提交的用户 ID 集合都需要查数据库
-            userIdsNeedQuery = userIds;
-        }
-
-        // 从数据库中批量查询
-        List<UserDO> userDOS = null;
-        if (CollUtil.isNotEmpty(userIdsNeedQuery)) {
-            userDOS = userDOMapper.selectByIds(userIdsNeedQuery);
-        }
-
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS2 = null;
-
-        // 若数据库查询的记录不为空
-        if (CollUtil.isNotEmpty(userDOS)) {
-            // DO 转 DTO
-            findUserByIdRspDTOS2 = userDOS.stream()
-                    .map(userDO -> FindUserByIdRspDTO.builder()
-                            .id(userDO.getId())
-                            .nickName(userDO.getNickname())
-                            .avatar(userDO.getAvatar())
-                            .introduction(userDO.getIntroduction())
-                            .build())
-                    .collect(Collectors.toList());
-
-            // 异步线程将用户信息同步到 Redis 中
-            List<FindUserByIdRspDTO> finalFindUserByIdRspDTOS = findUserByIdRspDTOS2;
-            List<UserDO> finalUserDOS = userDOS;
-            threadPoolTaskExecutor.submit(() -> {
-                try {
-                    // DTO 集合转 Map
-                    Map<Long, FindUserByIdRspDTO> map = finalFindUserByIdRspDTOS.stream()
-                            .collect(Collectors.toMap(FindUserByIdRspDTO::getId, p -> p));
-
-                    // 执行 pipeline 操作
-                    stringRedisTemplate.executePipelined(new SessionCallback<>() {
-                        @Override
-                        public Object execute(RedisOperations operations) {
-                            for (UserDO userDO : finalUserDOS) {
-                                Long userId = userDO.getId();
-
-                                // 用户信息缓存 Redis Key
-                                String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
-
-                                // DTO 转 JSON 字符串
-                                FindUserByIdRspDTO findUserInfoByIdRspDTO = map.get(userId);
-                                String value = JsonUtils.toJsonString(findUserInfoByIdRspDTO);
-
-                                // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
-                                long expireSeconds = CacheTtl.days(1, 1);
-                                operations.opsForValue().set(userInfoRedisKey, value, expireSeconds, TimeUnit.SECONDS);
-                            }
-                            return null;
-                        }
-                    });
-                } catch (Exception e) {
-                    log.warn("Redis 不可用，用户信息批量缓存写入失败", e);
+            for (int i = 0; i < distinctUserIds.size(); i++) {
+                Long uid = distinctUserIds.get(i);
+                String val = redisValues.get(i);
+                if (val == null) {
+                    userIdsNeedQuery.add(uid);
+                } else if (!"null".equals(val)) {
+                    FindUserByIdRspDTO dto = JsonUtils.parseObject(val, FindUserByIdRspDTO.class);
+                    if (dto != null) {
+                        foundUsersMap.put(uid, dto);
+                    } else {
+                        userIdsNeedQuery.add(uid);
+                    }
                 }
-            });
+                // "null" 哨兵说明该用户确定不存在，防穿透拦截，不加入 userIdsNeedQuery
+            }
+        } else {
+            userIdsNeedQuery.addAll(distinctUserIds);
         }
 
-        // 合并数据
-        if (CollUtil.isNotEmpty(findUserByIdRspDTOS2)) {
-            findUserByIdRspDTOS.addAll(findUserByIdRspDTOS2);
+        // 若全部命中缓存（包括存在的与已确定不存在的哨兵），直接按序组装返回
+        if (userIdsNeedQuery.isEmpty()) {
+            return Response.success(orderUsersByRequestIds(userIds, new ArrayList<>(foundUsersMap.values())));
         }
 
-        return Response.success(orderUsersByRequestIds(userIds, findUserByIdRspDTOS));
+        // 从数据库中批量查询缺失的用户
+        List<UserDO> userDOS = userDOMapper.selectByIds(userIdsNeedQuery);
+        List<FindUserByIdRspDTO> dbFoundRspDTOs = new ArrayList<>();
+        Set<Long> dbFoundUserIds = new HashSet<>();
+
+        if (CollUtil.isNotEmpty(userDOS)) {
+            for (UserDO userDO : userDOS) {
+                FindUserByIdRspDTO dto = FindUserByIdRspDTO.builder()
+                        .id(userDO.getId())
+                        .nickName(userDO.getNickname())
+                        .avatar(userDO.getAvatar())
+                        .introduction(userDO.getIntroduction())
+                        .build();
+                dbFoundRspDTOs.add(dto);
+                dbFoundUserIds.add(userDO.getId());
+                foundUsersMap.put(userDO.getId(), dto);
+            }
+        }
+
+        // 异步写缓存：查到的写正常数据（1天+随机），未查到的写 "null" 哨兵（1分钟+随机）防穿透
+        List<Long> nonExistentIds = userIdsNeedQuery.stream()
+                .filter(id -> !dbFoundUserIds.contains(id))
+                .toList();
+
+        threadPoolTaskExecutor.submit(() -> {
+            try {
+                stringRedisTemplate.executePipelined(new SessionCallback<>() {
+                    @Override
+                    public Object execute(RedisOperations operations) {
+                        for (FindUserByIdRspDTO dto : dbFoundRspDTOs) {
+                            String key = RedisKeyConstants.buildUserInfoKey(dto.getId());
+                            long expireSeconds = CacheTtl.days(1, 1);
+                            operations.opsForValue().set(key, JsonUtils.toJsonString(dto), expireSeconds, TimeUnit.SECONDS);
+                        }
+                        for (Long nonExistentId : nonExistentIds) {
+                            String key = RedisKeyConstants.buildUserInfoKey(nonExistentId);
+                            long expireSeconds = CacheTtl.minutes(1, 1);
+                            operations.opsForValue().set(key, "null", expireSeconds, TimeUnit.SECONDS);
+                        }
+                        return null;
+                    }
+                });
+            } catch (Exception e) {
+                log.warn("Redis 不可用，用户信息批量缓存写入失败", e);
+            }
+        });
+
+        return Response.success(orderUsersByRequestIds(userIds, new ArrayList<>(foundUsersMap.values())));
     }
 
     /**

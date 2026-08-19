@@ -10,12 +10,13 @@ end
 
 -- 获取笔记点赞列表大小
 local size = redis.call('ZCARD', key)
+local isMember = redis.call('ZSCORE', key, noteId)
 
--- 若已经点赞了 100 篇笔记，则移除最早点赞的那篇
-if size >= 100 then
+-- 若已经点赞了 100 篇笔记且当前笔记为新点赞，则移除最早点赞的那篇
+if not isMember and size >= 100 then
     redis.call('ZPOPMIN', key)
 end
 
--- 添加新的笔记点赞关系
+-- 添加或更新笔记点赞关系
 redis.call('ZADD', key, timestamp, noteId)
 return 0

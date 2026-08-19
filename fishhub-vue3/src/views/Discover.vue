@@ -10,10 +10,9 @@
 
 
     <div v-if="notes.length > 0" class="masonry-grid">
-
-      <div v-for="colIndex in columnCount" :key="colIndex" class="masonry-column">
+      <div v-for="(colNotes, colIndex) in columnsNotes" :key="colIndex" class="masonry-column">
         <div
-          v-for="note in getColumnNotes(colIndex-1)"
+          v-for="note in colNotes"
           :key="note.id"
           class="masonry-item"
         >
@@ -54,7 +53,7 @@ import NoteCard from '@/components/note/NoteCard.vue'
 import NoteDetailModal from '@/components/note/NoteDetailModal.vue'
 import CategoryNav from '@/components/layout/CategoryNav.vue'
 import EmptyStateIllustration from '@/components/common/EmptyStateIllustration.vue'
-import { ref, onMounted, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { getDiscoverNotePageList } from '@/api/note'
 import { useRoute, useRouter } from 'vue-router'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -84,14 +83,23 @@ const getColumnCount = () => {
 
 const columnCount = ref(getColumnCount())
 
+let resizeTimer = null
 const handleResize = () => {
-  columnCount.value = getColumnCount()
+  if (resizeTimer) return
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null
+    columnCount.value = getColumnCount()
+  }, 100)
 }
 
-// 各列独立布局，按索引分配可避免 CSS columns 打乱卡片阅读顺序。
-const getColumnNotes = (colIndex) => {
-  return notes.value.filter((_, index) => index % columnCount.value === colIndex)
-}
+// 各列独立布局：使用 computed 进行 O(N) 一次性划分，避免每次重渲染时的多重全量 filter
+const columnsNotes = computed(() => {
+  const cols = Array.from({ length: columnCount.value }, () => [])
+  notes.value.forEach((note, index) => {
+    cols[index % columnCount.value].push(note)
+  })
+  return cols
+})
 
 const loadingRef = ref(null)
 
@@ -190,14 +198,19 @@ const handleCardLikeChange = ({ noteId, isLiked, likeTotal }) => {
   if (note) Object.assign(note, { isLiked, likeTotal })
 }
 
+let scrollTimer = null
 const handleScroll = () => {
-  const scrollTop = document.documentElement.scrollTop || document.body.scrollTop
-  const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
-  const clientHeight = document.documentElement.clientHeight || window.innerHeight
+  if (scrollTimer) return
+  scrollTimer = setTimeout(() => {
+    scrollTimer = null
+    const scrollTop = document.documentElement.scrollTop || document.body.scrollTop
+    const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
+    const clientHeight = document.documentElement.clientHeight || window.innerHeight
 
-  if (scrollHeight - scrollTop - clientHeight < 100) {
-    loadMoreNotes()
-  }
+    if (scrollHeight - scrollTop - clientHeight < 150) {
+      loadMoreNotes()
+    }
+  }, 100)
 }
 
 onMounted(() => {

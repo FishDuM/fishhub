@@ -188,9 +188,18 @@ public class UserCountServiceImpl implements UserCountService {
             : userCountDOS.stream().collect(java.util.stream.Collectors.toMap(UserCountDO::getUserId, countDO -> countDO));
 
         // 4. 回填并异步写缓存
-        for (FindUserCountsByIdRspDTO dto : resultList) {
+        for (int i = 0; i < resultList.size(); i++) {
+            FindUserCountsByIdRspDTO dto = resultList.get(i);
             Long userId = dto.getUserId();
             UserCountDO userCountDO = countDOMap.get(userId);
+
+            @SuppressWarnings("unchecked")
+            List<String> rawCounts = (List<String>) (List<?>) countHashes.get(i);
+            String rawCollect = rawCounts != null && rawCounts.size() > 0 ? rawCounts.get(0) : null;
+            String rawFans = rawCounts != null && rawCounts.size() > 1 ? rawCounts.get(1) : null;
+            String rawNote = rawCounts != null && rawCounts.size() > 2 ? rawCounts.get(2) : null;
+            String rawFollowing = rawCounts != null && rawCounts.size() > 3 ? rawCounts.get(3) : null;
+            String rawLike = rawCounts != null && rawCounts.size() > 4 ? rawCounts.get(4) : null;
 
             if (dto.getCollectTotal() == null) {
                 dto.setCollectTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getCollectTotal()));
@@ -211,7 +220,7 @@ public class UserCountServiceImpl implements UserCountService {
             if (userIdsNeedQuery.contains(userId)) {
                 int userIndex = userIds.indexOf(userId);
                 syncHashCount2Redis(RedisKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(userIndex)), userCountDO,
-                        null, null, null, null, null);
+                        rawCollect, rawFans, rawNote, rawFollowing, rawLike);
             }
         }
 

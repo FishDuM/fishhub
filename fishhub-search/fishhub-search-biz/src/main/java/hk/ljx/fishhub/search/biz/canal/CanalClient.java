@@ -6,6 +6,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.net.InetSocketAddress;
@@ -13,6 +14,7 @@ import java.util.Objects;
 
 
 @Component
+@ConditionalOnProperty(prefix = "canal", name = "mode", havingValue = "tcp")
 @Slf4j
 public class CanalClient implements DisposableBean {
 

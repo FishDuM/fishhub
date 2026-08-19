@@ -20,6 +20,7 @@ import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.rest.RestStatus;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 
 
 @Component
+@ConditionalOnProperty(prefix = "canal", name = "mode", havingValue = "tcp")
 @Slf4j
 public class CanalSchedule implements Runnable {
 

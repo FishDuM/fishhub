@@ -393,7 +393,7 @@ public class RelationServiceImpl implements RelationService {
         Long userId = LoginUserContextHolder.getUserId();
         Long targetUserId = checkFollowingReqVO.getTargetUserId();
         if (Objects.equals(userId, targetUserId)) return Response.success(false);
-        List<Long> followed = followingDOMapper.selectFollowingUserIds(userId, Collections.singletonList(targetUserId));
+        Set<Long> followed = relationListCacheService.findFollowedUserIds(userId, Collections.singletonList(targetUserId));
         return Response.success(CollUtil.isNotEmpty(followed));
     }
 
@@ -408,6 +408,7 @@ public class RelationServiceImpl implements RelationService {
         if (targetUserIds.isEmpty()) {
             return Response.success(Collections.emptyList());
         }
-        return Response.success(followingDOMapper.selectFollowingUserIds(userId, targetUserIds));
+        Set<Long> followed = relationListCacheService.findFollowedUserIds(userId, targetUserIds);
+        return Response.success(new ArrayList<>(followed));
     }
 }
