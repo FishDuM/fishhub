@@ -8,8 +8,8 @@ import hk.ljx.fishhub.user.relation.biz.model.vo.FindFansUserRspVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingListReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingUserRspVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.RelationCursorPageResponse;
-import hk.ljx.fishhub.user.relation.biz.rpc.CountRpcService;
-import hk.ljx.fishhub.user.relation.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.fishhub.user.client.UserClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -32,9 +32,9 @@ class RelationServiceImplTest {
     @Mock
     private RelationListCacheService relationListCacheService;
     @Mock
-    private UserRpcService userRpcService;
+    private UserClient userClient;
     @Mock
-    private CountRpcService countRpcService;
+    private CountClient countClient;
     @InjectMocks
     private RelationServiceImpl relationService;
 
@@ -42,7 +42,7 @@ class RelationServiceImplTest {
     void shouldReturnFirstPageOfFollowingListWithNextCursor() {
         when(relationListCacheService.fetchFollowingMembers(1L, 0L, 11))
                 .thenReturn(Arrays.asList("2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"));
-        when(userRpcService.findByIds(anyList())).thenReturn(users(2L, 12L));
+        when(userClient.findByIds(anyList())).thenReturn(users(2L, 12L));
 
         RelationCursorPageResponse<FindFollowingUserRspVO> resp =
                 relationService.findFollowingList(FindFollowingListReqVO.builder().userId(1L).cursor(0L).build());
@@ -57,7 +57,7 @@ class RelationServiceImplTest {
     void shouldReturnTailPageWithoutNextCursor() {
         when(relationListCacheService.fetchFollowingMembers(1L, 20L, 11))
                 .thenReturn(Arrays.asList("30", "31", "32"));
-        when(userRpcService.findByIds(anyList())).thenReturn(users(30L, 33L));
+        when(userClient.findByIds(anyList())).thenReturn(users(30L, 33L));
 
         RelationCursorPageResponse<FindFollowingUserRspVO> resp =
                 relationService.findFollowingList(FindFollowingListReqVO.builder().userId(1L).cursor(20L).build());
@@ -75,15 +75,15 @@ class RelationServiceImplTest {
 
         assertTrue(resp.getData().isEmpty());
         assertNull(resp.getNextCursor());
-        verify(userRpcService, never()).findByIds(anyList());
+        verify(userClient, never()).findByIds(anyList());
     }
 
     @Test
     void shouldReturnFansWithCountsAndFollowedFlags() {
         when(relationListCacheService.fetchFansMembers(9L, 0L, 11))
                 .thenReturn(Arrays.asList("2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"));
-        when(userRpcService.findByIds(anyList())).thenReturn(users(2L, 12L));
-        when(countRpcService.findByUserIds(anyList())).thenReturn(counts(2L, 12L));
+        when(userClient.findByIds(anyList())).thenReturn(users(2L, 12L));
+        when(countClient.findByUserIds(anyList())).thenReturn(counts(2L, 12L));
         when(relationListCacheService.findFollowedUserIds(isNull(), anyList())).thenReturn(Collections.singleton(2L));
 
         RelationCursorPageResponse<FindFansUserRspVO> resp =
@@ -108,7 +108,7 @@ class RelationServiceImplTest {
 
         assertTrue(resp.getData().isEmpty());
         assertNull(resp.getNextCursor());
-        verify(userRpcService, never()).findByIds(anyList());
+        verify(userClient, never()).findByIds(anyList());
     }
 
     private List<FindUserByIdRspDTO> users(long from, long toExclusive) {

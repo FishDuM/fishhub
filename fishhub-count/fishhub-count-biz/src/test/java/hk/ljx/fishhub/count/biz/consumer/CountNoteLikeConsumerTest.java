@@ -3,7 +3,8 @@ package hk.ljx.fishhub.count.biz.consumer;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
-import hk.ljx.fishhub.count.biz.model.dto.CountLikeUnlikeNoteMqDTO;
+import hk.ljx.fishhub.count.biz.consumer.aggregation.AbstractNoteCountAggregationConsumer;
+import hk.ljx.fishhub.count.biz.model.dto.CountNoteMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import org.junit.jupiter.api.Test;
@@ -67,8 +68,8 @@ class CountNoteLikeConsumerTest {
         verify(userCountCacheVersionService).advanceVersion(8L);
     }
 
-    private CountLikeUnlikeNoteMqDTO event(Long userId, Long noteId, Long creatorId, Integer type) {
-        return CountLikeUnlikeNoteMqDTO.builder()
+    private CountNoteMqDTO event(Long userId, Long noteId, Long creatorId, Integer type) {
+        return CountNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
                 .noteCreatorId(creatorId)
@@ -78,7 +79,7 @@ class CountNoteLikeConsumerTest {
     }
 
     private void invokeConsumeMessage(String body) throws Exception {
-        java.lang.reflect.Method m = CountNoteLikeConsumer.class.getDeclaredMethod("consumeMessage", List.class);
+        java.lang.reflect.Method m = AbstractNoteCountAggregationConsumer.class.getDeclaredMethod("consumeBatches", List.class);
         m.setAccessible(true);
         m.invoke(consumer, List.of(body));
     }

@@ -4,8 +4,8 @@ import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListReqVO;
-import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
-import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.fishhub.user.client.UserClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,9 +26,9 @@ class UserNoteListServiceTest {
     @Mock
     private NoteDOMapper noteDOMapper;
     @Mock
-    private UserRpcService userRpcService;
+    private UserClient userClient;
     @Mock
-    private CountRpcService countRpcService;
+    private CountClient countClient;
     @Mock
     private NoteInteractionCacheService noteInteractionCacheService;
     @InjectMocks
@@ -47,8 +47,8 @@ class UserNoteListServiceTest {
                 NoteDO.builder().id(101L).creatorId(2L).actionId(32L).actionTime(actionTime.plusMinutes(1)).build(),
                 NoteDO.builder().id(100L).creatorId(2L).actionId(31L).actionTime(actionTime).build());
         when(noteDOMapper.selectCollectedNoteListByUserIdAndCursor(1L, cursorTime, 31L)).thenReturn(noteDOS);
-        when(userRpcService.findByIds(List.of(2L))).thenReturn(Collections.emptyList());
-        when(countRpcService.findByNoteIds(List.of(101L, 100L))).thenReturn(Collections.<FindNoteCountsByIdRspDTO>emptyList());
+        when(userClient.findByIds(List.of(2L))).thenReturn(Collections.emptyList());
+        when(countClient.findByNoteIds(List.of(101L, 100L))).thenReturn(Collections.<FindNoteCountsByIdRspDTO>emptyList());
 
         var response = service.findCollectedNotes(request);
 

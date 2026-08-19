@@ -31,7 +31,7 @@ import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
-import hk.ljx.fishhub.user.biz.rpc.CountRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.RolePermissionService;
@@ -78,7 +78,7 @@ public class UserServiceImpl implements UserService {
     private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    private final CountRpcService countRpcService;
+    private final CountClient countClient;
     private final RocketMQTemplate rocketMQTemplate;
     private final RolePermissionService rolePermissionService;
     private final TransactionTemplate transactionTemplate;
@@ -640,7 +640,7 @@ public class UserServiceImpl implements UserService {
      * @param findUserProfileRspVO
      */
     private void rpcCountServiceAndSetData(Long userId, FindUserProfileRspVO findUserProfileRspVO) {
-        FindUserCountsByIdRspDTO findUserCountsByIdRspDTO = countRpcService.findUserCountById(userId);
+        FindUserCountsByIdRspDTO findUserCountsByIdRspDTO = countClient.findUserCountById(userId);
 
         if (Objects.nonNull(findUserCountsByIdRspDTO)) {
             Long fansTotal = findUserCountsByIdRspDTO.getFansTotal();

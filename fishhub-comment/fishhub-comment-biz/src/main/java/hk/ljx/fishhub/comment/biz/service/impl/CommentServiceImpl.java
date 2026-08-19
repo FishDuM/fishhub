@@ -19,6 +19,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.*;
@@ -28,7 +29,7 @@ import hk.ljx.fishhub.comment.biz.model.vo.*;
 import hk.ljx.fishhub.comment.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
-import hk.ljx.fishhub.comment.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
 import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
@@ -66,7 +67,7 @@ public class CommentServiceImpl implements CommentService {
     private final NoteRpcService noteRpcService;
     private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
     private final KeyValueRpcService keyValueRpcService;
-    private final UserRpcService userRpcService;
+    private final UserClient userClient;
     private final CommentDOMapper commentDOMapper;
     private final StringRedisTemplate stringRedisTemplate;
     private final CommentDetailCache commentDetailCache;
@@ -303,10 +304,10 @@ public class CommentServiceImpl implements CommentService {
         long pageSize = 6;
 
         // 先从缓存中查
-        String countCommentKey = RedisKeyConstants.buildCountCommentKey(parentCommentId);
+        String countCommentKey = CountKeyConstants.buildCountCommentKey(parentCommentId);
         // 子评论总数
         String redisCount = stringRedisTemplate.<String, String>opsForHash()
-                .get(countCommentKey, RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
+                .get(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
         long count = Objects.isNull(redisCount) ? 0L : Long.parseLong(redisCount);
 
         // 若缓存不存在，走数据库查询
@@ -549,7 +550,7 @@ public class CommentServiceImpl implements CommentService {
                 .toList();
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap;
         if (CollUtil.isNotEmpty(authorIds)) {
-            List<FindUserByIdRspDTO> users = userRpcService.findByIds(authorIds);
+            List<FindUserByIdRspDTO> users = userClient.findByIds(authorIds);
             userIdAndDTOMap = CollUtil.isNotEmpty(users)
                     ? users.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto))
                     : Collections.emptyMap();
@@ -707,7 +708,7 @@ public class CommentServiceImpl implements CommentService {
             // 设置子评论的点赞数
             Map<String, String> hash = commentIdAndCountMap.get(commentId);
             if (CollUtil.isNotEmpty(hash)) {
-                String likeTotalObj = hash.get(RedisKeyConstants.FIELD_LIKE_TOTAL);
+                String likeTotalObj = hash.get(CountKeyConstants.FIELD_LIKE_TOTAL);
                 Long likeTotal = Objects.isNull(likeTotalObj) ? 0 : Long.parseLong(likeTotalObj);
                 commentRspVO.setLikeTotal(likeTotal);
             }
@@ -724,7 +725,7 @@ public class CommentServiceImpl implements CommentService {
         List<Long> expiredCountCommentIds = Lists.newArrayList();
         // 构建需要查询的 Hash Key 集合
         List<String> commentCountKeys = notExpiredCommentIds.stream()
-                .map(RedisKeyConstants::buildCountCommentKey).toList();
+                .map(CountKeyConstants::buildCountCommentKey).toList();
 
         // 使用 RedisTemplate 执行管道批量操作
         List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<>() {
@@ -765,10 +766,10 @@ public class CommentServiceImpl implements CommentService {
             commentDOS.forEach(commentDO -> {
                 Integer level = commentDO.getLevel();
                 Map<String, String> map = Maps.newHashMap();
-                map.put(RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
+                map.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
                 // 只有一级评论需要统计子评论总数
                 if (Objects.equals(level, CommentLevelEnum.ONE.getCode())) {
-                    map.put(RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
+                    map.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
                 }
                 // 统一添加到 commentIdAndCountMap 字典中，方便后续查询
                 commentIdAndCountMap.put(commentDO.getId(), map);
@@ -781,13 +782,13 @@ public class CommentServiceImpl implements CommentService {
                     public Object execute(RedisOperations operations) {
                         commentDOS.forEach(commentDO -> {
                             // 构建 Hash Key
-                            String key = RedisKeyConstants.buildCountCommentKey(commentDO.getId());
+                            String key = CountKeyConstants.buildCountCommentKey(commentDO.getId());
                             // 评论级别
                             Integer level = commentDO.getLevel();
                             // 设置 Field 数据
                             Map<String, String> fieldsMap = Objects.equals(level, CommentLevelEnum.ONE.getCode()) ?
-                                    Map.of(RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()),
-                                            RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal())) : Map.of(RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
+                                    Map.of(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()),
+                                            CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal())) : Map.of(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
                             // 添加 Hash 数据
                             operations.opsForHash().putAll(key, fieldsMap);
 
@@ -852,7 +853,7 @@ public class CommentServiceImpl implements CommentService {
         }
 
         // RPC: 调用用户服务，批量获取用户信息（头像、昵称等）
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds.stream().toList());
+        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds.stream().toList());
 
         // DTO 集合转 Map, 方便后续拼装数据
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();
@@ -963,10 +964,10 @@ public class CommentServiceImpl implements CommentService {
             public Object execute(RedisOperations operations) {
                 // 同步 hash 数据
                 operations.opsForHash()
-                        .put(countCommentKey, RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
+                        .put(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
                                 String.valueOf(countRecord.getChildCommentTotal()));
                 operations.opsForHash()
-                        .put(countCommentKey, RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(countRecord.getLikeTotal()));
+                        .put(countCommentKey, CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(countRecord.getLikeTotal()));
 
                 // 随机过期时间 (保底1小时 + 随机时间)，单位：秒
                 long expireTime = CacheTtl.hours(1, 4);
@@ -1144,9 +1145,9 @@ public class CommentServiceImpl implements CommentService {
             // 设置一级评论的子评论总数、点赞数
             Map<String, String> hash = commentIdAndCountMap.get(commentId);
             if (CollUtil.isNotEmpty(hash)) {
-                String likeTotalObj = hash.get(RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
+                String likeTotalObj = hash.get(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
                 Long childCommentTotal = Objects.isNull(likeTotalObj) ? 0 : Long.parseLong(likeTotalObj);
-                String likeTotalFieldObj = hash.get(RedisKeyConstants.FIELD_LIKE_TOTAL);
+                String likeTotalFieldObj = hash.get(CountKeyConstants.FIELD_LIKE_TOTAL);
                 Long likeTotal = Objects.isNull(likeTotalFieldObj) ? 0 : Long.parseLong(likeTotalFieldObj);
                 commentRspVO.setChildCommentTotal(childCommentTotal);
                 commentRspVO.setLikeTotal(likeTotal);
@@ -1156,7 +1157,7 @@ public class CommentServiceImpl implements CommentService {
                     Long firstCommentId = firstCommentVO.getCommentId();
                     Map<String, String> firstCommentHash = commentIdAndCountMap.get(firstCommentId);
                     if (CollUtil.isNotEmpty(firstCommentHash)) {
-                        Long firstCommentLikeTotal = Long.valueOf(firstCommentHash.get(RedisKeyConstants.FIELD_LIKE_TOTAL));
+                        Long firstCommentLikeTotal = Long.valueOf(firstCommentHash.get(CountKeyConstants.FIELD_LIKE_TOTAL));
                         firstCommentVO.setLikeTotal(firstCommentLikeTotal);
                     }
                 }
@@ -1247,7 +1248,7 @@ public class CommentServiceImpl implements CommentService {
         }
 
         // RPC: 调用用户服务，批量获取用户信息（头像、昵称等）
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds);
+        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
 
         // DTO 集合转 Map, 方便后续拼装数据
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();

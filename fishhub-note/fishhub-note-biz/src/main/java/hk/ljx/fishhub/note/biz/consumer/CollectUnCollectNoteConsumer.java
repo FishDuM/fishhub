@@ -10,21 +10,14 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.CollectUnCollectNoteTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.model.dto.CollectUnCollectNoteMqDTO;
+import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
+import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
-import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
-import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
-import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -36,53 +29,55 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 笔记收藏/取消收藏事件的批量消费（30/批，非顺序），与点赞链同款。
+ * 笔记收藏/取消收藏批量消费
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class CollectUnCollectNoteConsumer {
 
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
     private static final String CONSUME_GROUP = "fishhub_group_" + MQConstants.TOPIC_COLLECT_OR_UN_COLLECT;
 
-    @Value("${rocketmq.name-server}")
-    private String namesrvAddr;
-
     private final TransactionalMqSender transactionalMqSender;
     private final NoteInteractionPersistenceService persistenceService;
     private final NoteDOMapper noteDOMapper;
     private final NoteInteractionCacheService noteInteractionCacheService;
+    private final BatchPushConsumer batchPushConsumer;
 
     // 每秒 5000 令牌，批级限速兜底
     private final RateLimiter rateLimiter = RateLimiter.create(5000);
 
-    private DefaultMQPushConsumer consumer;
+    public CollectUnCollectNoteConsumer(TransactionalMqSender transactionalMqSender,
+                                        NoteInteractionPersistenceService persistenceService,
+                                        NoteDOMapper noteDOMapper,
+                                        NoteInteractionCacheService noteInteractionCacheService,
+                                        BatchConsumerFactory batchConsumerFactory) throws MQClientException {
+        this.transactionalMqSender = transactionalMqSender;
+        this.persistenceService = persistenceService;
+        this.noteDOMapper = noteDOMapper;
+        this.noteInteractionCacheService = noteInteractionCacheService;
+        this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
+                CONSUME_GROUP,
+                MQConstants.TOPIC_COLLECT_OR_UN_COLLECT,
+                MQConstants.TAG_COLLECT + "||" + MQConstants.TAG_UN_COLLECT,
+                CONSUME_BATCH_MAX_SIZE,
+                0,
+                BatchConsumerFactory.Mode.CONCURRENTLY,
+                this::consumeBatch);
+    }
 
-    @Bean
-    public DefaultMQPushConsumer collectUnCollectPushConsumer() throws MQClientException {
-        consumer = new DefaultMQPushConsumer(CONSUME_GROUP);
-        consumer.setNamesrvAddr(namesrvAddr);
-        consumer.subscribe(MQConstants.TOPIC_COLLECT_OR_UN_COLLECT,
-                MQConstants.TAG_COLLECT + "||" + MQConstants.TAG_UN_COLLECT);
-        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
-        consumer.setMessageModel(MessageModel.CLUSTERING);
-        consumer.setConsumeMessageBatchMaxSize(CONSUME_BATCH_MAX_SIZE);
-        consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
-            try {
-                rateLimiter.acquire();
-                List<String> bodys = msgs.stream()
-                        .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
-                        .toList();
-                consumeEventBodies(bodys);
-                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-            } catch (Exception e) {
-                log.error("笔记收藏批量消费失败，整批稍后重投", e);
-                return ConsumeConcurrentlyStatus.RECONSUME_LATER;
-            }
-        });
-        consumer.start();
-        return consumer;
+    private boolean consumeBatch(List<MessageExt> msgs) {
+        try {
+            rateLimiter.acquire();
+            List<String> bodys = msgs.stream()
+                    .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
+                    .toList();
+            consumeEventBodies(bodys);
+            return true;
+        } catch (Exception e) {
+            log.error("笔记收藏批量消费失败，整批稍后重投", e);
+            return false;
+        }
     }
 
     void consumeEventBodies(List<String> bodys) {
@@ -137,16 +132,5 @@ public class CollectUnCollectNoteConsumer {
         return note != null && Objects.equals(note.getStatus(), 1)
                 && (Objects.equals(note.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
                 || Objects.equals(note.getCreatorId(), userId));
-    }
-
-    @PreDestroy
-    public void destroy() {
-        if (Objects.nonNull(consumer)) {
-            try {
-                consumer.shutdown();
-            } catch (Exception e) {
-                log.error("笔记收藏消费者关闭失败", e);
-            }
-        }
     }
 }

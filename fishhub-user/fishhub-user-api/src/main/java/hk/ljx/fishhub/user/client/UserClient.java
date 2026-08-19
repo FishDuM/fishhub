@@ -1,28 +1,31 @@
-package hk.ljx.fishhub.note.biz.rpc;
+package hk.ljx.fishhub.user.client;
 
 import cn.hutool.core.collection.CollUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-
-@Component
+/**
+ * 用户服务 RPC 客户端
+ */
 @RequiredArgsConstructor
-public class UserRpcService {
+public class UserClient {
 
     private final UserFeignApi userFeignApi;
 
     /**
-     * 用户资料短缓存（容量 5000，过期 60s），消除热门创作者/大 V 资料在发现页列表和详情中的重复网络 Feign 开销
+     * 用户资料本地缓存
      */
     private static final Cache<Long, FindUserByIdRspDTO> USER_RPC_LOCAL_CACHE = Caffeine.newBuilder()
             .initialCapacity(1000)
@@ -31,9 +34,7 @@ public class UserRpcService {
             .build();
 
     /**
-     * 查询用户信息（优先走本地短缓存）
-     * @param userId
-     * @return
+     * 查询用户信息
      */
     public FindUserByIdRspDTO findById(Long userId) {
         if (userId == null) {
@@ -59,17 +60,24 @@ public class UserRpcService {
     }
 
     /**
-     * 批量查询用户信息（优先走本地短缓存，仅对未命中用户发起增量 RPC）
+     * 批量查询用户信息
      */
     public List<FindUserByIdRspDTO> findByIds(List<Long> userIds) {
         if (CollUtil.isEmpty(userIds)) {
             return List.of();
         }
 
-        Map<Long, FindUserByIdRspDTO> hitMap = new HashMap<>(USER_RPC_LOCAL_CACHE.getAllPresent(userIds));
-        List<Long> missedUserIds = userIds.stream()
-                .filter(id -> id != null && !hitMap.containsKey(id))
+        List<Long> nonNullIds = userIds.stream()
+                .filter(Objects::nonNull)
                 .distinct()
+                .toList();
+        if (CollUtil.isEmpty(nonNullIds)) {
+            return List.of();
+        }
+
+        Map<Long, FindUserByIdRspDTO> hitMap = new HashMap<>(USER_RPC_LOCAL_CACHE.getAllPresent(nonNullIds));
+        List<Long> missedUserIds = nonNullIds.stream()
+                .filter(id -> !hitMap.containsKey(id))
                 .toList();
 
         if (CollUtil.isNotEmpty(missedUserIds)) {
@@ -87,11 +95,9 @@ public class UserRpcService {
         }
 
         return userIds.stream()
+                .filter(Objects::nonNull)
                 .map(hitMap::get)
                 .filter(Objects::nonNull)
                 .toList();
     }
-
-
-
 }

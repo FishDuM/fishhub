@@ -1,7 +1,7 @@
 package hk.ljx.fishhub.count.biz.service.impl;
 
 import hk.ljx.framework.common.response.Response;
-import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
@@ -141,8 +141,8 @@ class NoteCountServiceImplTest {
 
         // 只写缺失的 comment 字段，like/collect 已缓存不覆盖
         verify(hashOperations, times(1)).putIfAbsent(
-                RedisKeyConstants.buildCountNoteKey(1L), RedisKeyConstants.FIELD_COMMENT_TOTAL, "20");
-        verify(redisOperations).expire(eq(RedisKeyConstants.buildCountNoteKey(1L)), anyLong(), any(TimeUnit.class));
+                CountKeyConstants.buildCountNoteKey(1L), CountKeyConstants.FIELD_COMMENT_TOTAL, "20");
+        verify(redisOperations).expire(eq(CountKeyConstants.buildCountNoteKey(1L)), anyLong(), any(TimeUnit.class));
     }
 
     @Test

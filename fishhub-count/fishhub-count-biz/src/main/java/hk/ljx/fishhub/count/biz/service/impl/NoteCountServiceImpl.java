@@ -6,7 +6,7 @@ import cn.hutool.core.collection.CollUtil;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import hk.ljx.framework.common.response.Response;
-import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.service.NoteCountService;
@@ -53,7 +53,7 @@ public class NoteCountServiceImpl implements NoteCountService {
         // 1. 先查询 Redis 缓存
         // 构建 Redis Hash Key 集合
         List<String> hashKeys = noteIds.stream()
-                .map(RedisKeyConstants::buildCountNoteKey)
+                .map(CountKeyConstants::buildCountNoteKey)
                 .toList();
 
         // 使用 Pipeline 通道，从 Redis 中批量查询笔记 Hash 计数
@@ -197,22 +197,22 @@ public class NoteCountServiceImpl implements NoteCountService {
                     // 否则，若有任意一个 Field 计数为空，则需要同步对应的 Field
                     Long noteId = findNoteCountsByIdRspDTO.getNoteId();
                     // 构建 Hash Key
-                    String noteCountHashKey = RedisKeyConstants.buildCountNoteKey(noteId);
+                    String noteCountHashKey = CountKeyConstants.buildCountNoteKey(noteId);
 
                     // 设置 Field 计数
                     Map<String, Long> countMap = Maps.newHashMap();
                     NoteCountDO noteCountDO = noteIdAndDOMap.get(noteId);
 
                     if (Objects.isNull(likeTotal)) {
-                        countMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL,
+                        countMap.put(CountKeyConstants.FIELD_LIKE_TOTAL,
                                 Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getLikeTotal() : null));
                     }
                     if (Objects.isNull(collectTotal)) {
-                        countMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL,
+                        countMap.put(CountKeyConstants.FIELD_COLLECT_TOTAL,
                                 Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCollectTotal() : null));
                     }
                     if (Objects.isNull(commentTotal)) {
-                        countMap.put(RedisKeyConstants.FIELD_COMMENT_TOTAL,
+                        countMap.put(CountKeyConstants.FIELD_COMMENT_TOTAL,
                                 Counts.clamp0(Objects.nonNull(noteCountDO) ? noteCountDO.getCommentTotal() : null));
                     }
 
@@ -244,9 +244,9 @@ public class NoteCountServiceImpl implements NoteCountService {
                 for (String hashKey : hashKeys) {
                     // 批量获取多个字段
                     operations.opsForHash().multiGet(hashKey, List.of(
-                            RedisKeyConstants.FIELD_LIKE_TOTAL,
-                            RedisKeyConstants.FIELD_COLLECT_TOTAL,
-                            RedisKeyConstants.FIELD_COMMENT_TOTAL
+                            CountKeyConstants.FIELD_LIKE_TOTAL,
+                            CountKeyConstants.FIELD_COLLECT_TOTAL,
+                            CountKeyConstants.FIELD_COMMENT_TOTAL
                     ));
                 }
                 return null;

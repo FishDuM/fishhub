@@ -7,7 +7,7 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.NoteContentTaskTypeEnum;
 import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
-import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
+import hk.ljx.fishhub.kv.client.KeyValueClient;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -29,7 +29,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class NoteChangedContentSyncConsumer implements RocketMQListener<String> {
 
-    private final KeyValueRpcService keyValueRpcService;
+    private final KeyValueClient keyValueClient;
     private final NoteDOMapper noteDOMapper;
 
     @Override
@@ -57,7 +57,7 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
         List<NoteContentTaskMqDTO> upsertTasks = new ArrayList<>();
         for (NoteContentTaskMqDTO task : tasks) {
             if (Objects.equals(task.getType(), NoteContentTaskTypeEnum.DELETE.name())) {
-                if (!keyValueRpcService.deleteNoteContent(task.getContentUuid())) {
+                if (!keyValueClient.deleteNoteContent(task.getContentUuid())) {
                     throw new IllegalStateException("笔记正文删除到 KV 失败");
                 }
             } else {
@@ -75,12 +75,12 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
             if (matchesCurrentContent(current, task)) {
                 toSaveTasks.add(task);
             } else {
-                keyValueRpcService.deleteNoteContent(task.getContentUuid());
+                keyValueClient.deleteNoteContent(task.getContentUuid());
             }
         }
         for (NoteContentTaskMqDTO task : toSaveTasks) {
             if (StringUtils.isBlank(task.getContent())
-                    || !keyValueRpcService.saveNoteContent(task.getContentUuid(), task.getContent())) {
+                    || !keyValueClient.saveNoteContent(task.getContentUuid(), task.getContent())) {
                 throw new IllegalStateException("笔记正文同步到 KV 失败");
             }
         }
@@ -89,7 +89,7 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
         NoteDO after = noteDOMapper.selectByPrimaryKey(upsertTasks.get(0).getNoteId());
         toSaveTasks.stream()
                 .filter(task -> !matchesCurrentContent(after, task))
-                .forEach(task -> keyValueRpcService.deleteNoteContent(task.getContentUuid()));
+                .forEach(task -> keyValueClient.deleteNoteContent(task.getContentUuid()));
     }
 
     private boolean matchesCurrentContent(NoteDO note, NoteContentTaskMqDTO task) {

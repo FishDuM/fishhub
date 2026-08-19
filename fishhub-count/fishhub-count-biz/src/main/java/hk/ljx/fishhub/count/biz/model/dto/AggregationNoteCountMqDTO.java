@@ -5,12 +5,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-
+/**
+ * 笔记计数聚合 DTO
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class AggregationCountCollectUnCollectNoteMqDTO {
+public class AggregationNoteCountMqDTO {
 
     /**
      * 笔记发布者 ID
@@ -23,13 +25,12 @@ public class AggregationCountCollectUnCollectNoteMqDTO {
     private Long noteId;
 
     /**
-     * 聚合后的计数
+     * 聚合计数
      */
     private Integer count;
 
     /**
-     * 聚合批次标识（源消息内容哈希），用于 2DB 幂等键，区分不同批次的相同聚合结果
+     * 批次标识
      */
     private String batchId;
-
 }

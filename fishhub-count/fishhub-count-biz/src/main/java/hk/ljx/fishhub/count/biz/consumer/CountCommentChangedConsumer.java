@@ -3,7 +3,7 @@ package hk.ljx.fishhub.count.biz.consumer;
 import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
-import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
@@ -23,9 +23,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
- * 消费评论变更统一事件，维护评论相关计数（t_note_count 的唯一写入口，归属 fishhub_count）：
- * 发布 —— 笔记评论总数（按笔记聚合）与一级评论的二级评论总数（按父评论聚合）；
- * 删除 —— 笔记评论总数扣减（按笔记聚合取负），child_comment_total 由评论模块在其事务内维护。
+ * 评论变更计数消费者
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED, // Group 组
@@ -88,7 +86,7 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
         List<String> noteCountKeys = event.getItems().stream()
                 .map(CommentItemMqDTO::getNoteId)
                 .distinct()
-                .map(RedisKeyConstants::buildCountNoteKey)
+                .map(CountKeyConstants::buildCountNoteKey)
                 .collect(Collectors.toList());
 
         // 删除流程的笔记评论总数扣减由 applyDeleteCounts 完成，此处只清缓存
@@ -99,7 +97,7 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
                     .map(CommentItemMqDTO::getParentId)
                     .filter(Objects::nonNull)
                     .distinct()
-                    .map(RedisKeyConstants::buildCountCommentKey)
+                    .map(CountKeyConstants::buildCountCommentKey)
                     .collect(Collectors.toList());
             stringRedisTemplate.delete(commentCountKeys);
         }

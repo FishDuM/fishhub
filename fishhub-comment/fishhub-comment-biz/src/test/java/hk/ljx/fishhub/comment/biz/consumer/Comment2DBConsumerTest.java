@@ -10,7 +10,6 @@ import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.framework.mq.tx.TxLocalTransaction;
-import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,9 +67,9 @@ class Comment2DBConsumerTest {
                 .content("测试评论")
                 .build()).getBytes(StandardCharsets.UTF_8));
 
-        ConsumeConcurrentlyStatus status = consumer.consume(List.of(message));
+        boolean success = consumer.consume(List.of(message));
 
-        assertEquals(ConsumeConcurrentlyStatus.CONSUME_SUCCESS, status);
+        assertEquals(true, success);
         verify(noteRpcService).findWritableNoteAccesses(anyList());
         verify(commentDOMapper, never()).batchInsert(anyList());
     }
@@ -97,9 +96,9 @@ class Comment2DBConsumerTest {
         MessageExt first = message(1L, 2L, 3L, "第一条评论");
         MessageExt second = message(2L, 4L, 5L, "第二条评论");
 
-        ConsumeConcurrentlyStatus status = consumer.consume(List.of(first, second));
+        boolean success = consumer.consume(List.of(first, second));
 
-        assertEquals(ConsumeConcurrentlyStatus.CONSUME_SUCCESS, status);
+        assertEquals(true, success);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<CommentBO>> captor = ArgumentCaptor.forClass(List.class);
         // 整批 2 条只调 1 次 batchInsert（1 个事务、1 条多行 SQL）
@@ -118,5 +117,31 @@ class Comment2DBConsumerTest {
                 .content(content)
                 .build()).getBytes(StandardCharsets.UTF_8));
         return message;
+    }
+
+    @Test
+    void shouldDiscardBatchWhenAllReplyTargetsAreInvalid() {
+        when(commentDOMapper.selectByCommentIds(eq(List.of(10L)))).thenReturn(Collections.emptyList());
+        when(noteRpcService.findWritableNoteAccesses(anyList()))
+                .thenReturn(List.of(NoteWriteAccessCheckReqDTO.builder().noteId(2L).userId(3L).build()));
+
+        MessageExt message = new MessageExt();
+        message.setReconsumeTimes(4); // 超过重试阈值，直接校验丢弃
+        message.setBody(JsonUtils.toJsonString(PublishCommentMqDTO.builder()
+                .commentId(10L)
+                .noteId(2L)
+                .creatorId(3L)
+                .replyCommentId(999L)
+                .createTime(LocalDateTime.of(2026, 8, 16, 12, 0))
+                .content("无效回复")
+                .build()).getBytes(StandardCharsets.UTF_8));
+
+        when(commentDOMapper.selectByCommentIds(eq(List.of(999L)))).thenReturn(Collections.emptyList());
+
+        boolean success = consumer.consume(List.of(message));
+
+        assertEquals(true, success);
+        verify(commentDOMapper, never()).batchInsert(anyList());
+        verify(transactionalMqSender, never()).sendInTransaction(anyString(), anyString(), any());
     }
 }

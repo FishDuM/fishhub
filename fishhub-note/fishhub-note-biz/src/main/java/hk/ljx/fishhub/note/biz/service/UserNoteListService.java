@@ -10,8 +10,8 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.NoteItemRspVO;
-import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
-import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
 public class UserNoteListService {
 
     private final NoteDOMapper noteDOMapper;
-    private final UserRpcService userRpcService;
-    private final CountRpcService countRpcService;
+    private final UserClient userClient;
+    private final CountClient countClient;
     private final NoteInteractionCacheService noteInteractionCacheService;
 
     public Response<FindNoteActionListRspVO> findCollectedNotes(FindNoteActionListReqVO request) {
@@ -58,7 +58,7 @@ public class UserNoteListService {
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
-        Map<Long, FindUserByIdRspDTO> users = userRpcService.findByIds(noteDOS.stream()
+        Map<Long, FindUserByIdRspDTO> users = userClient.findByIds(noteDOS.stream()
                 .map(NoteDO::getCreatorId).distinct().toList()).stream()
                 .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
         notes.forEach(note -> {
@@ -69,7 +69,7 @@ public class UserNoteListService {
             }
         });
 
-        applyLikeTotals(notes, countRpcService.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
+        applyLikeTotals(notes, countClient.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
         applyLikeState(notes);
         NoteDO lastNote = noteDOS.get(noteDOS.size() - 1);
         return Response.success(FindNoteActionListRspVO.builder()

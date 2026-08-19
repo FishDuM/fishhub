@@ -7,19 +7,21 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-
+/**
+ * 笔记计数变更事件 DTO
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class CountLikeUnlikeNoteMqDTO {
+public class CountNoteMqDTO {
 
     private Long userId;
 
     private Long noteId;
 
     /**
-     * 0: 取消点赞， 1：点赞
+     * 操作类型
      */
     private Integer type;
 

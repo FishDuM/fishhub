@@ -6,6 +6,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
@@ -25,9 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * 消费评论变更事件，增量维护 Redis 中的评论列表与详情缓存。
- * 列表 ZSET 增量入榜/出榜（发布 ZADD、删除 ZREM），取代整表删除重建，
- * 热点笔记高并发下不再边写边删边重建；计数与详情缓存按删除处理。
+ * 评论变更缓存更新消费者
  */
 @Component
 @Slf4j
@@ -92,7 +91,7 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
                 .distinct()
                 .toList();
         List<String> countKeys = new ArrayList<>(commentIds.stream()
-                .map(RedisKeyConstants::buildCountCommentKey)
+                .map(CountKeyConstants::buildCountCommentKey)
                 .toList());
         List<String> detailKeys = new ArrayList<>(commentIds.stream()
                 .map(RedisKeyConstants::buildCommentDetailKey)
@@ -103,7 +102,7 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
                 .filter(Objects::nonNull)
                 .distinct()
                 .forEach(parentId -> {
-                    countKeys.add(RedisKeyConstants.buildCountCommentKey(parentId));
+                    countKeys.add(CountKeyConstants.buildCountCommentKey(parentId));
                     detailKeys.add(RedisKeyConstants.buildCommentDetailKey(parentId));
                     stringRedisTemplate.delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(parentId));
                 });
@@ -115,12 +114,10 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
     private void publishOneLevelComments(Long noteId, List<Long> commentIds) {
         bumpOneLevelCommentTotalVersion(noteId);
         String key = RedisKeyConstants.buildCommentListKey(noteId);
-        // 列表 ZSET 不存在（TTL 过期/冷启动）时不增量创建，交读取侧全量重建，避免只含新评论的空壳覆盖全量。
         if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             return;
         }
         ZSetOperations<String, String> zSet = stringRedisTemplate.opsForZSet();
-        // 新评论以 0 热度入榜，由热度重算脚本接管后续分值
         commentIds.forEach(commentId -> zSet.add(key, String.valueOf(commentId), 0D));
         trimZSet(zSet, key, COMMENT_LIST_MAX_SIZE);
         stringRedisTemplate.expire(key, COMMENT_LIST_EXPIRE_SECONDS, TimeUnit.SECONDS);
@@ -135,12 +132,10 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
 
     private void publishChildComment(CommentItemMqDTO item) {
         String key = RedisKeyConstants.buildChildCommentListKey(item.getParentId());
-        // 与一级列表同理：ZSET 不存在时跳过增量，交读取侧全量重建。
         if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             return;
         }
         ZSetOperations<String, String> zSet = stringRedisTemplate.opsForZSet();
-        // 与重建语义一致：子列表按 create_time 时间戳升序
         zSet.add(key, String.valueOf(item.getId()), DateUtils.localDateTime2Timestamp(item.getCreateTime()));
         trimZSet(zSet, key, CHILD_COMMENT_LIST_MAX_SIZE);
         stringRedisTemplate.expire(key, CHILD_COMMENT_LIST_EXPIRE_SECONDS, TimeUnit.SECONDS);

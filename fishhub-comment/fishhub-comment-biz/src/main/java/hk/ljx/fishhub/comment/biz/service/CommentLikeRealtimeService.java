@@ -3,6 +3,7 @@ package hk.ljx.fishhub.comment.biz.service;
 import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.common.util.CacheTtl;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentLikeDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
@@ -197,7 +198,7 @@ public class CommentLikeRealtimeService {
     private void executeToggle(Long userId, Long commentId, int incr) {
         try {
             stringRedisTemplate.execute(LIKE_TOGGLE_SCRIPT,
-                    List.of(RedisKeyConstants.buildCountCommentKey(commentId),
+                    List.of(CountKeyConstants.buildCountCommentKey(commentId),
                             RedisKeyConstants.buildUserCommentLikeSetKey(userId),
                             RedisKeyConstants.buildUserCommentLikeZSetKey(userId)),
                     String.valueOf(commentId),
@@ -215,7 +216,7 @@ public class CommentLikeRealtimeService {
      * 若 count:comment 缓存未初始化，先回源数据库写入基线值，避免冷点赞把计数从 1 起跳（丢失历史基数）。
      */
     private void ensureCountBaseline(Long commentId) {
-        String key = RedisKeyConstants.buildCountCommentKey(commentId);
+        String key = CountKeyConstants.buildCountCommentKey(commentId);
         try {
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
                 return;
@@ -226,10 +227,10 @@ public class CommentLikeRealtimeService {
             }
             CommentDO comment = records.get(0);
             Map<String, String> fields = new HashMap<>();
-            fields.put(RedisKeyConstants.FIELD_LIKE_TOTAL,
+            fields.put(CountKeyConstants.FIELD_LIKE_TOTAL,
                     String.valueOf(comment.getLikeTotal() == null ? 0L : comment.getLikeTotal()));
             if (Objects.equals(comment.getLevel(), CommentLevelEnum.ONE.getCode())) {
-                fields.put(RedisKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
+                fields.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
                         String.valueOf(comment.getChildCommentTotal() == null ? 0L : comment.getChildCommentTotal()));
             }
             long expireSeconds = CacheTtl.hours(0, 5);

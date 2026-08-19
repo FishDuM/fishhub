@@ -11,8 +11,8 @@ import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindChannelRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindDiscoverNoteListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindTopicListReqVO;
-import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
-import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,9 +48,9 @@ class FeedServiceImplTest {
     @Mock
     private ChannelDOMapper channelDOMapper;
     @Mock
-    private UserRpcService userRpcService;
+    private UserClient userClient;
     @Mock
-    private CountRpcService countRpcService;
+    private CountClient countClient;
     @Mock
     private StringRedisTemplate stringRedisTemplate;
     @Mock
@@ -70,9 +70,9 @@ class FeedServiceImplTest {
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
-        when(userRpcService.findByIds(List.of(10L))).thenReturn(List.of(
+        when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
-        when(countRpcService.findByNoteIds(List.of(101L))).thenReturn(List.of(
+        when(countClient.findByNoteIds(List.of(101L))).thenReturn(List.of(
                 FindNoteCountsByIdRspDTO.builder().noteId(101L).likeTotal(3L).build()));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
@@ -81,7 +81,7 @@ class FeedServiceImplTest {
 
         assertEquals(1, response.getData().size());
         assertEquals("3", response.getData().get(0).getLikeTotal());
-        verify(countRpcService, times(1)).findByNoteIds(List.of(101L));
+        verify(countClient, times(1)).findByNoteIds(List.of(101L));
     }
 
     @Test
@@ -92,9 +92,9 @@ class FeedServiceImplTest {
         when(valueOperations.get(pageKey)).thenReturn("{");
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
-        when(userRpcService.findByIds(List.of(10L))).thenReturn(List.of(
+        when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
-        when(countRpcService.findByNoteIds(List.of(101L))).thenReturn(List.of(
+        when(countClient.findByNoteIds(List.of(101L))).thenReturn(List.of(
                 FindNoteCountsByIdRspDTO.builder().noteId(101L).likeTotal(3L).build()));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
@@ -110,9 +110,9 @@ class FeedServiceImplTest {
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenThrow(new IllegalStateException("redis unavailable"));
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
-        when(userRpcService.findByIds(List.of(10L))).thenReturn(List.of(
+        when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
-        when(countRpcService.findByNoteIds(List.of(101L))).thenReturn(List.of(
+        when(countClient.findByNoteIds(List.of(101L))).thenReturn(List.of(
                 FindNoteCountsByIdRspDTO.builder().noteId(101L).likeTotal(3L).build()));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
@@ -172,7 +172,7 @@ class FeedServiceImplTest {
         assertEquals(1, response.getData().size());
         assertEquals("5", response.getData().get(0).getLikeTotal());
         // 快照命中计数已内嵌，免 count Feign
-        verify(countRpcService, never()).findByNoteIds(any());
+        verify(countClient, never()).findByNoteIds(any());
     }
 
     @Test

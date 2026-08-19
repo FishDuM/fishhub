@@ -32,11 +32,11 @@ import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.model.bo.NoteAccessSnapshot;
 import hk.ljx.fishhub.note.biz.model.vo.*;
-import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.fishhub.kv.client.KeyValueClient;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
-import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.note.biz.rpc.OssRpcService;
-import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
@@ -92,15 +92,15 @@ public class NoteServiceImpl implements NoteService {
     private final TopicDOMapper topicDOMapper;
     private final ChannelDOMapper channelDOMapper;
     private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    private final KeyValueRpcService keyValueRpcService;
-    private final UserRpcService userRpcService;
+    private final KeyValueClient keyValueClient;
+    private final UserClient userClient;
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
     private final StringRedisTemplate stringRedisTemplate;
     private final RocketMQTemplate rocketMQTemplate;
     private final NoteLikeDOMapper noteLikeDOMapper;
     private final NoteCollectionDOMapper noteCollectionDOMapper;
-    private final CountRpcService countRpcService;
+    private final CountClient countClient;
     private final TransactionalMqSender transactionalMqSender;
     private final NotePersistenceService notePersistenceService;
     private final NoteInteractionCacheService noteInteractionCacheService;
@@ -448,13 +448,13 @@ public class NoteServiceImpl implements NoteService {
         // 并发查询优化
         // RPC: 调用用户服务
         CompletableFuture<FindUserByIdRspDTO> userResultFuture = CompletableFuture
-                .supplyAsync(() -> userRpcService.findById(noteDO.getCreatorId()), threadPoolTaskExecutor);
+                .supplyAsync(() -> userClient.findById(noteDO.getCreatorId()), threadPoolTaskExecutor);
 
         // RPC: 调用 K-V 存储服务获取内容
         CompletableFuture<String> contentResultFuture = CompletableFuture.completedFuture(null);
         if (Objects.equals(noteDO.getIsContentEmpty(), Boolean.FALSE)) {
             contentResultFuture = CompletableFuture
-                    .supplyAsync(() -> keyValueRpcService.findNoteContent(noteDO.getContentUuid()), threadPoolTaskExecutor);
+                    .supplyAsync(() -> keyValueClient.findNoteContent(noteDO.getContentUuid()), threadPoolTaskExecutor);
         }
 
         CompletableFuture<String> finalContentResultFuture = contentResultFuture;
@@ -1222,14 +1222,14 @@ public class NoteServiceImpl implements NoteService {
             CompletableFuture<FindUserByIdRspDTO> userFuture = CompletableFuture
                     .supplyAsync(() -> {
                         Optional<Long> creatorIdOptional = noteDOS.stream().map(NoteDO::getCreatorId).findAny();
-                        return userRpcService.findById(creatorIdOptional.get());
+                        return userClient.findById(creatorIdOptional.get());
                     }, threadPoolTaskExecutor);
 
             // Feign 调用计数服务，批量获取笔记点赞数
             CompletableFuture<List<FindNoteCountsByIdRspDTO>> noteCountFuture = CompletableFuture
                     .supplyAsync(() -> {
                         List<Long> noteIds = noteDOS.stream().map(NoteDO::getId).toList();
-                        return countRpcService.findByNoteIds(noteIds);
+                        return countClient.findByNoteIds(noteIds);
                     }, threadPoolTaskExecutor);
 
             try {
@@ -1313,7 +1313,7 @@ public class NoteServiceImpl implements NoteService {
         // 用户已登录，并且查询的是自己
         if (Objects.nonNull(loginUserId) && Objects.equals(loginUserId, userId)) {
             List<Long> noteIds = sortedList.stream().map(NoteItemRspVO::getNoteId).toList();
-            List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS = countRpcService.findByNoteIds(noteIds);
+            List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS = countClient.findByNoteIds(noteIds);
 
             // 设置笔记的点赞量
             setVOListLikeTotal(sortedList, findNoteCountsByIdRspDTOS);
@@ -1472,7 +1472,7 @@ public class NoteServiceImpl implements NoteService {
         }
 
         try {
-            List<FindNoteCountsByIdRspDTO> counts = countRpcService.findByNoteIds(List.of(noteId));
+            List<FindNoteCountsByIdRspDTO> counts = countClient.findByNoteIds(List.of(noteId));
             FindNoteCountsByIdRspDTO count = CollUtil.isEmpty(counts) ? null : counts.get(0);
             noteDetail.setLikeTotal(count == null || count.getLikeTotal() == null ? 0L : count.getLikeTotal());
             noteDetail.setCollectTotal(count == null || count.getCollectTotal() == null ? 0L : count.getCollectTotal());

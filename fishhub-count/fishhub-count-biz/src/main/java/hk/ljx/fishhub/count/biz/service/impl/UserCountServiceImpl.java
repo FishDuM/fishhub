@@ -7,7 +7,7 @@ import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.google.common.collect.Maps;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.JsonUtils;
-import hk.ljx.fishhub.count.biz.constant.RedisKeyConstants;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.service.UserCountService;
@@ -60,15 +60,15 @@ public class UserCountServiceImpl implements UserCountService {
 
         // 先从 Redis 中查询
         long cacheVersion = userCountCacheVersionService.currentVersion(userId);
-        String userCountHashKey = RedisKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
+        String userCountHashKey = CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
 
         List<String> counts = stringRedisTemplate.<String, String>opsForHash()
                 .multiGet(userCountHashKey, List.of(
-                        RedisKeyConstants.FIELD_COLLECT_TOTAL,
-                        RedisKeyConstants.FIELD_FANS_TOTAL,
-                        RedisKeyConstants.FIELD_NOTE_TOTAL,
-                        RedisKeyConstants.FIELD_FOLLOWING_TOTAL,
-                        RedisKeyConstants.FIELD_LIKE_TOTAL
+                        CountKeyConstants.FIELD_COLLECT_TOTAL,
+                        CountKeyConstants.FIELD_FANS_TOTAL,
+                        CountKeyConstants.FIELD_NOTE_TOTAL,
+                        CountKeyConstants.FIELD_FOLLOWING_TOTAL,
+                        CountKeyConstants.FIELD_LIKE_TOTAL
                 ));
 
         // 若 Hash 中计数不为空，优先以其为主（实时性更高）
@@ -129,7 +129,7 @@ public class UserCountServiceImpl implements UserCountService {
         List<Long> cacheVersions = userCountCacheVersionService.currentVersions(userIds);
         List<String> hashKeys = new java.util.ArrayList<>(userIds.size());
         for (int i = 0; i < userIds.size(); i++) {
-            hashKeys.add(RedisKeyConstants.buildCountUserSnapshotKey(userIds.get(i), cacheVersions.get(i)));
+            hashKeys.add(CountKeyConstants.buildCountUserSnapshotKey(userIds.get(i), cacheVersions.get(i)));
         }
 
         List<Object> countHashes = stringRedisTemplate.executePipelined(new SessionCallback<>() {
@@ -137,11 +137,11 @@ public class UserCountServiceImpl implements UserCountService {
             public Object execute(RedisOperations operations) {
                 for (String hashKey : hashKeys) {
                     operations.opsForHash().multiGet(hashKey, List.of(
-                            RedisKeyConstants.FIELD_COLLECT_TOTAL,
-                            RedisKeyConstants.FIELD_FANS_TOTAL,
-                            RedisKeyConstants.FIELD_NOTE_TOTAL,
-                            RedisKeyConstants.FIELD_FOLLOWING_TOTAL,
-                            RedisKeyConstants.FIELD_LIKE_TOTAL
+                            CountKeyConstants.FIELD_COLLECT_TOTAL,
+                            CountKeyConstants.FIELD_FANS_TOTAL,
+                            CountKeyConstants.FIELD_NOTE_TOTAL,
+                            CountKeyConstants.FIELD_FOLLOWING_TOTAL,
+                            CountKeyConstants.FIELD_LIKE_TOTAL
                     ));
                 }
                 return null;
@@ -218,7 +218,7 @@ public class UserCountServiceImpl implements UserCountService {
 
             if (userIdsNeedQuery.contains(userId)) {
                 int userIndex = userIds.indexOf(userId);
-                syncHashCount2Redis(RedisKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(userIndex)), userCountDO,
+                syncHashCount2Redis(CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(userIndex)), userCountDO,
                         rawCollect, rawFans, rawNote, rawFollowing, rawLike);
             }
         }
@@ -259,19 +259,19 @@ public class UserCountServiceImpl implements UserCountService {
                 // 存放计数
                 Map<String, String> userCountMap = Maps.newHashMap();
                 if (Objects.isNull(collectTotal))
-                    userCountMap.put(RedisKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal())));
+                    userCountMap.put(CountKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal())));
 
                 if (Objects.isNull(fansTotal))
-                    userCountMap.put(RedisKeyConstants.FIELD_FANS_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal())));
+                    userCountMap.put(CountKeyConstants.FIELD_FANS_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal())));
 
                 if (Objects.isNull(noteTotal))
-                    userCountMap.put(RedisKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal())));
+                    userCountMap.put(CountKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal())));
 
                 if (Objects.isNull(followingTotal))
-                    userCountMap.put(RedisKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal())));
+                    userCountMap.put(CountKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal())));
 
                 if (Objects.isNull(likeTotal))
-                    userCountMap.put(RedisKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal())));
+                    userCountMap.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal())));
 
                 stringRedisTemplate.executePipelined(new SessionCallback<>() {
                     @Override

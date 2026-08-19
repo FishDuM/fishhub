@@ -4,6 +4,7 @@ import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalPurgeJob;
 import hk.ljx.framework.mq.idempotent.MqConsumeRecordPurgeJob;
 import hk.ljx.framework.mq.idempotent.MqConsumeRecordStore;
+import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.framework.mq.tx.TxMqLocalTransactionListener;
@@ -52,6 +53,12 @@ public class TxMqAutoConfiguration {
     @ConditionalOnMissingBean
     public MqConsumeRecordStore mqConsumeRecordStore(DataSource dataSource) {
         return new MqConsumeRecordStore(new JdbcTemplate(dataSource));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public BatchConsumerFactory batchConsumerFactory(@Value("${rocketmq.name-server}") String namesrvAddr) {
+        return new BatchConsumerFactory(namesrvAddr);
     }
 
     @Bean

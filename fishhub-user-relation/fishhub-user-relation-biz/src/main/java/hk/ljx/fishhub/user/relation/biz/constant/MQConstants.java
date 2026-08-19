@@ -1,17 +1,16 @@
 package hk.ljx.fishhub.user.relation.biz.constant;
 
+import hk.ljx.framework.common.constant.MqTopicConstants;
 
-public interface MQConstants {
+/**
+ * 用户关系模块 MQ 常量
+ */
+public interface MQConstants extends MqTopicConstants {
 
     /**
-     * Topic: 关注、取关共用一个
+     * Topic: 关注、取关共用一个（模块内部）
      */
     String TOPIC_FOLLOW_OR_UNFOLLOW = "FollowUnfollowTopic";
-
-    /**
-     * Topic: 关注数计数（统一事件：一次消费同时累加关注数与粉丝数）
-     */
-    String TOPIC_COUNT_FOLLOWING = "CountFollowingTopic";
 
     /**
      * 关注标签

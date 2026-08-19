@@ -20,8 +20,8 @@ import hk.ljx.fishhub.note.biz.model.vo.FindDiscoverNoteListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindTopicListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindTopicRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.NoteItemRspVO;
-import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
-import hk.ljx.fishhub.note.biz.rpc.UserRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.note.biz.service.FeedService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
@@ -67,8 +67,8 @@ public class FeedServiceImpl implements FeedService {
     private final TopicDOMapper topicDOMapper;
     private final NoteDOMapper noteDOMapper;
     private final NoteInteractionCacheService noteInteractionCacheService;
-    private final UserRpcService userRpcService;
-    private final CountRpcService countRpcService;
+    private final UserClient userClient;
+    private final CountClient countClient;
     private final StringRedisTemplate stringRedisTemplate;
     private final RedissonClient redissonClient;
 
@@ -205,7 +205,7 @@ public class FeedServiceImpl implements FeedService {
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
-        Map<Long, FindUserByIdRspDTO> users = userRpcService.findByIds(noteDOS.stream()
+        Map<Long, FindUserByIdRspDTO> users = userClient.findByIds(noteDOS.stream()
                         .map(NoteDO::getCreatorId).distinct().toList())
                 .stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, Function.identity(), (left, right) -> left));
         notes.forEach(note -> {
@@ -260,7 +260,7 @@ public class FeedServiceImpl implements FeedService {
     }
 
     private List<FindNoteCountsByIdRspDTO> safeCounts(List<Long> noteIds) {
-        List<FindNoteCountsByIdRspDTO> counts = countRpcService.findByNoteIds(noteIds);
+        List<FindNoteCountsByIdRspDTO> counts = countClient.findByNoteIds(noteIds);
         return counts == null ? Collections.emptyList() : counts;
     }
 

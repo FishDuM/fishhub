@@ -1,32 +1,21 @@
 package hk.ljx.fishhub.note.biz.constant;
 
+import hk.ljx.framework.common.constant.MqTopicConstants;
 
-public interface MQConstants {
+/**
+ * 笔记模块 MQ 常量
+ */
+public interface MQConstants extends MqTopicConstants {
 
     /**
-     * Topic: 笔记变更统一事件（发布、编辑、删除），由 count / data-align / 本模块以各自 consumer group 订阅
-     */
-    String TOPIC_NOTE_CHANGED = "NoteChangedTopic";
-
-    /**
-     * Topic: 点赞、取消点赞共用一个
+     * Topic: 点赞、取消点赞共用一个（模块内部）
      */
     String TOPIC_LIKE_OR_UNLIKE = "LikeUnlikeTopic";
 
     /**
-     * Topic: 收藏、取消收藏共用一个
+     * Topic: 收藏、取消收藏共用一个（模块内部）
      */
     String TOPIC_COLLECT_OR_UN_COLLECT = "CollectUnCollectTopic";
-
-    /**
-     * Topic: 计数 - 笔记点赞数
-     */
-    String TOPIC_COUNT_NOTE_LIKE = "CountNoteLikeTopic";
-
-    /**
-     * Topic: 计数 - 笔记收藏数
-     */
-    String TOPIC_COUNT_NOTE_COLLECT = "CountNoteCollectTopic";
 
     /**
      * Tag 标签：点赞

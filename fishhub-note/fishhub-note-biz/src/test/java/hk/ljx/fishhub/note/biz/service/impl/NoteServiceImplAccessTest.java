@@ -7,7 +7,7 @@ import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
-import hk.ljx.fishhub.note.biz.rpc.CountRpcService;
+import hk.ljx.fishhub.count.client.CountClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,7 +51,7 @@ class NoteServiceImplAccessTest {
     @Mock
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Mock
-    private CountRpcService countRpcService;
+    private CountClient countClient;
     @InjectMocks
     private NoteServiceImpl service;
 
@@ -170,7 +170,7 @@ class NoteServiceImplAccessTest {
         assertEquals(7L, response.getData().getLikeTotal());
         assertEquals(8L, response.getData().getCollectTotal());
         assertEquals(9L, response.getData().getCommentTotal());
-        verify(countRpcService, never()).findByNoteIds(any());
+        verify(countClient, never()).findByNoteIds(any());
     }
 
     @Test
@@ -181,7 +181,7 @@ class NoteServiceImplAccessTest {
         // 旧格式缓存：计数未内嵌
         when(valueOperations.get(RedisKeyConstants.buildNoteDetailKey(11L)))
                 .thenReturn("{\"id\":11,\"revision\":1,\"type\":0,\"title\":\"t\"}");
-        when(countRpcService.findByNoteIds(List.of(11L))).thenReturn(List.of(
+        when(countClient.findByNoteIds(List.of(11L))).thenReturn(List.of(
                 FindNoteCountsByIdRspDTO.builder().noteId(11L).likeTotal(5L).collectTotal(6L).commentTotal(7L).build()));
 
         FindNoteDetailReqVO request = new FindNoteDetailReqVO();
@@ -191,7 +191,7 @@ class NoteServiceImplAccessTest {
         assertEquals(5L, response.getData().getLikeTotal());
         assertEquals(6L, response.getData().getCollectTotal());
         assertEquals(7L, response.getData().getCommentTotal());
-        verify(countRpcService, times(1)).findByNoteIds(List.of(11L));
+        verify(countClient, times(1)).findByNoteIds(List.of(11L));
     }
 
     @Test

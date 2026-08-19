@@ -10,21 +10,14 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.LikeUnlikeNoteTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
+import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
+import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
-import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
-import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
-import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
 import org.apache.rocketmq.client.exception.MQClientException;
-import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -35,52 +28,56 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** 批量消费点赞/取消点赞事件（30/批，非顺序）；乱序由 upsert 时间守卫兜底。 */
+/**
+ * 笔记点赞/取消点赞批量消费
+ */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class LikeUnlikeNoteConsumer {
 
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
     private static final String CONSUME_GROUP = "fishhub_group_" + MQConstants.TOPIC_LIKE_OR_UNLIKE;
 
-    @Value("${rocketmq.name-server}")
-    private String namesrvAddr;
-
     private final TransactionalMqSender transactionalMqSender;
     private final NoteInteractionPersistenceService persistenceService;
     private final NoteDOMapper noteDOMapper;
     private final NoteInteractionCacheService noteInteractionCacheService;
+    private final BatchPushConsumer batchPushConsumer;
 
     // 每秒 5000 令牌，批级限速兜底
     private final RateLimiter rateLimiter = RateLimiter.create(5000);
 
-    private DefaultMQPushConsumer consumer;
+    public LikeUnlikeNoteConsumer(TransactionalMqSender transactionalMqSender,
+                                  NoteInteractionPersistenceService persistenceService,
+                                  NoteDOMapper noteDOMapper,
+                                  NoteInteractionCacheService noteInteractionCacheService,
+                                  BatchConsumerFactory batchConsumerFactory) throws MQClientException {
+        this.transactionalMqSender = transactionalMqSender;
+        this.persistenceService = persistenceService;
+        this.noteDOMapper = noteDOMapper;
+        this.noteInteractionCacheService = noteInteractionCacheService;
+        this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
+                CONSUME_GROUP,
+                MQConstants.TOPIC_LIKE_OR_UNLIKE,
+                MQConstants.TAG_LIKE + "||" + MQConstants.TAG_UNLIKE,
+                CONSUME_BATCH_MAX_SIZE,
+                0,
+                BatchConsumerFactory.Mode.CONCURRENTLY,
+                this::consumeBatch);
+    }
 
-    @Bean
-    public DefaultMQPushConsumer likeUnlikePushConsumer() throws MQClientException {
-        consumer = new DefaultMQPushConsumer(CONSUME_GROUP);
-        consumer.setNamesrvAddr(namesrvAddr);
-        consumer.subscribe(MQConstants.TOPIC_LIKE_OR_UNLIKE,
-                MQConstants.TAG_LIKE + "||" + MQConstants.TAG_UNLIKE);
-        consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
-        consumer.setMessageModel(MessageModel.CLUSTERING);
-        consumer.setConsumeMessageBatchMaxSize(CONSUME_BATCH_MAX_SIZE);
-        consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
-            try {
-                rateLimiter.acquire();
-                List<String> bodys = msgs.stream()
-                        .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
-                        .toList();
-                consumeEventBodies(bodys);
-                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-            } catch (Exception e) {
-                log.error("笔记点赞批量消费失败，整批稍后重投", e);
-                return ConsumeConcurrentlyStatus.RECONSUME_LATER;
-            }
-        });
-        consumer.start();
-        return consumer;
+    private boolean consumeBatch(List<MessageExt> msgs) {
+        try {
+            rateLimiter.acquire();
+            List<String> bodys = msgs.stream()
+                    .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
+                    .toList();
+            consumeEventBodies(bodys);
+            return true;
+        } catch (Exception e) {
+            log.error("笔记点赞批量消费失败，整批稍后重投", e);
+            return false;
+        }
     }
 
     void consumeEventBodies(List<String> bodys) {
@@ -108,7 +105,6 @@ public class LikeUnlikeNoteConsumer {
             NoteDO note = noteById.get(event.getNoteId());
             boolean like = Objects.equals(event.getType(), LikeUnlikeNoteTypeEnum.LIKE.getCode());
             if (like ? !isWritable(note, event.getUserId()) : note == null) {
-                // 接口已乐观更新 Redis；拒绝落库后清空该用户缓存，后续刷新会从 MySQL 恢复真实状态。
                 noteInteractionCacheService.evictLikeCaches(event.getUserId());
                 log.info("丢弃不可处理的笔记点赞消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
                 continue;
@@ -126,7 +122,6 @@ public class LikeUnlikeNoteConsumer {
             return;
         }
 
-        // 批级幂等键：同批内容重投时不变
         String batchKey = DigestUtil.sha256Hex(String.join("|", bodys));
         String payload = JsonUtils.toJsonString(validEvents);
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_LIKE, payload,
@@ -137,16 +132,5 @@ public class LikeUnlikeNoteConsumer {
         return note != null && Objects.equals(note.getStatus(), 1)
                 && (Objects.equals(note.getVisible(), NoteVisibleEnum.PUBLIC.getCode())
                 || Objects.equals(note.getCreatorId(), userId));
-    }
-
-    @PreDestroy
-    public void destroy() {
-        if (Objects.nonNull(consumer)) {
-            try {
-                consumer.shutdown();
-            } catch (Exception e) {
-                log.error("笔记点赞消费者关闭失败", e);
-            }
-        }
     }
 }

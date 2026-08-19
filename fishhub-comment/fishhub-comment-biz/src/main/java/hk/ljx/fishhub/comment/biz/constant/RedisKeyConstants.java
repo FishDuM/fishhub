@@ -23,11 +23,6 @@ public class RedisKeyConstants {
     private static final String ONE_LEVEL_COMMENT_TOTAL_CACHE_LOCK_KEY_PREFIX = "lock:comment:one-level-total:";
 
     /**
-     * 评论维度计数 Key 前缀
-     */
-    private static final String COUNT_COMMENT_KEY_PREFIX = "count:comment:";
-
-    /**
      * 已点赞状态缓存：用户已点赞的评论 ID Set（实时交互态，冷缓存时回源数据库重建）
      */
     private static final String USER_COMMENT_LIKE_SET_KEY = "set:comment:likes:";
@@ -61,21 +56,6 @@ public class RedisKeyConstants {
      * Key 前缀：评论详情 JSON
      */
     private static final String COMMENT_DETAIL_KEY_PREFIX = "comment:detail:v2:";
-
-    /**
-     * Hash Field 键：评论总数
-     */
-    public static final String FIELD_COMMENT_TOTAL = "commentTotal";
-
-    /**
-     * Hash Field: 子评论总数
-     */
-    public static final String FIELD_CHILD_COMMENT_TOTAL = "childCommentTotal";
-
-    /**
-     * Hash Field: 点赞总数
-     */
-    public static final String FIELD_LIKE_TOTAL = "likeTotal";
 
     /**
      * 构建完整 KEY
@@ -133,15 +113,6 @@ public class RedisKeyConstants {
      */
     public static String buildCommentDetailKey(Object commentId) {
         return COMMENT_DETAIL_KEY_PREFIX + commentId;
-    }
-
-    /**
-     * 构建评论维度计数 Key
-     * @param commentId
-     * @return
-     */
-    public static String buildCountCommentKey(Long commentId) {
-        return COUNT_COMMENT_KEY_PREFIX + commentId;
     }
 
     /**

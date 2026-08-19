@@ -19,8 +19,8 @@ import hk.ljx.fishhub.user.relation.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.relation.biz.model.dto.FollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.dto.UnfollowUserMqDTO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.*;
-import hk.ljx.fishhub.user.relation.biz.rpc.UserRpcService;
-import hk.ljx.fishhub.user.relation.biz.rpc.CountRpcService;
+import hk.ljx.fishhub.user.client.UserClient;
+import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.framework.common.util.RedisScriptHelper;
@@ -48,10 +48,10 @@ public class RelationServiceImpl implements RelationService {
     private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/unfollow_check_and_delete.lua");
 
     private final StringRedisTemplate stringRedisTemplate;
-    private final UserRpcService userRpcService;
+    private final UserClient userClient;
     private final FollowingDOMapper followingDOMapper;
     private final RocketMQTemplate rocketMQTemplate;
-    private final CountRpcService countRpcService;
+    private final CountClient countClient;
     private final RelationListCacheService relationListCacheService;
 
 
@@ -74,7 +74,7 @@ public class RelationServiceImpl implements RelationService {
         }
 
         // 校验关注的用户是否存在
-        FindUserByIdRspDTO findUserByIdRspDTO = userRpcService.findById(followUserId);
+        FindUserByIdRspDTO findUserByIdRspDTO = userClient.findById(followUserId);
 
         if (Objects.isNull(findUserByIdRspDTO)) {
             throw new BizException(ResponseCodeEnum.FOLLOW_USER_NOT_EXISTED);
@@ -168,7 +168,7 @@ public class RelationServiceImpl implements RelationService {
         }
 
         // 校验关注的用户是否存在
-        FindUserByIdRspDTO findUserByIdRspDTO = userRpcService.findById(unfollowUserId);
+        FindUserByIdRspDTO findUserByIdRspDTO = userClient.findById(unfollowUserId);
 
         if (Objects.isNull(findUserByIdRspDTO)) {
             throw new BizException(ResponseCodeEnum.FOLLOW_USER_NOT_EXISTED);
@@ -292,8 +292,8 @@ public class RelationServiceImpl implements RelationService {
             return Collections.emptyList();
         }
         // RPC: 批量查询用户信息
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds);
-        List<FindUserCountsByIdRspDTO> counts = countRpcService.findByUserIds(userIds);
+        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
+        List<FindUserCountsByIdRspDTO> counts = countClient.findByUserIds(userIds);
         Map<Long, FindUserCountsByIdRspDTO> countMap = new HashMap<>();
         for (FindUserCountsByIdRspDTO count : counts) {
             countMap.put(count.getUserId(), count);
@@ -327,7 +327,7 @@ public class RelationServiceImpl implements RelationService {
             return Collections.emptyList();
         }
         // RPC: 批量查询用户信息
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds);
+        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
 
         if (CollUtil.isEmpty(findUserByIdRspDTOS)) {
             return Collections.emptyList();

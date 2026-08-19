@@ -7,7 +7,7 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.NoteContentTaskTypeEnum;
 import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
-import hk.ljx.fishhub.note.biz.rpc.KeyValueRpcService;
+import hk.ljx.fishhub.kv.client.KeyValueClient;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 class NoteChangedContentSyncConsumerTest {
 
     @Mock
-    private KeyValueRpcService keyValueRpcService;
+    private KeyValueClient keyValueClient;
     @Mock
     private NoteDOMapper noteDOMapper;
     @InjectMocks
@@ -38,7 +38,7 @@ class NoteChangedContentSyncConsumerTest {
     void shouldShareSinglePreAndPostCheckAcrossTasks() {
         when(noteDOMapper.selectByPrimaryKey(5L)).thenReturn(
                 NoteDO.builder().id(5L).contentUuid("uuid-new").build());
-        when(keyValueRpcService.saveNoteContent(eq("uuid-new"), anyString())).thenReturn(true);
+        when(keyValueClient.saveNoteContent(eq("uuid-new"), anyString())).thenReturn(true);
 
         // 同一事件两个 UPSERT 任务：前查 + 后查各一次，而非每个任务两次
         consumer.onMessage(body(List.of(
@@ -46,20 +46,20 @@ class NoteChangedContentSyncConsumerTest {
                 task("uuid-new", "c2", NoteContentTaskTypeEnum.UPSERT.name()))));
 
         verify(noteDOMapper, times(2)).selectByPrimaryKey(5L);
-        verify(keyValueRpcService).saveNoteContent("uuid-new", "c1");
-        verify(keyValueRpcService).saveNoteContent("uuid-new", "c2");
-        verify(keyValueRpcService, never()).deleteNoteContent(anyString());
+        verify(keyValueClient).saveNoteContent("uuid-new", "c1");
+        verify(keyValueClient).saveNoteContent("uuid-new", "c2");
+        verify(keyValueClient, never()).deleteNoteContent(anyString());
     }
 
     @Test
     void shouldDeleteDirectlyForDeleteTaskWithoutCheckingNote() {
-        when(keyValueRpcService.deleteNoteContent("uuid-del")).thenReturn(true);
+        when(keyValueClient.deleteNoteContent("uuid-del")).thenReturn(true);
         consumer.onMessage(body(List.of(
                 task("uuid-del", null, NoteContentTaskTypeEnum.DELETE.name()))));
 
-        verify(keyValueRpcService).deleteNoteContent("uuid-del");
+        verify(keyValueClient).deleteNoteContent("uuid-del");
         verify(noteDOMapper, never()).selectByPrimaryKey(anyLong());
-        verify(keyValueRpcService, never()).saveNoteContent(anyString(), anyString());
+        verify(keyValueClient, never()).saveNoteContent(anyString(), anyString());
     }
 
     @Test
@@ -71,8 +71,8 @@ class NoteChangedContentSyncConsumerTest {
                 task("uuid-stale", "c1", NoteContentTaskTypeEnum.UPSERT.name()))));
 
         // 写前校验不匹配：清理旧正文，不写 KV
-        verify(keyValueRpcService).deleteNoteContent("uuid-stale");
-        verify(keyValueRpcService, never()).saveNoteContent(anyString(), anyString());
+        verify(keyValueClient).deleteNoteContent("uuid-stale");
+        verify(keyValueClient, never()).saveNoteContent(anyString(), anyString());
     }
 
     @Test
@@ -80,14 +80,14 @@ class NoteChangedContentSyncConsumerTest {
         when(noteDOMapper.selectByPrimaryKey(5L)).thenReturn(
                 NoteDO.builder().id(5L).contentUuid("uuid-new").build(),
                 NoteDO.builder().id(5L).contentUuid("uuid-new-after-delete").build());
-        when(keyValueRpcService.saveNoteContent("uuid-new", "c1")).thenReturn(true);
+        when(keyValueClient.saveNoteContent("uuid-new", "c1")).thenReturn(true);
 
         consumer.onMessage(body(List.of(
                 task("uuid-new", "c1", NoteContentTaskTypeEnum.UPSERT.name()))));
 
         // 写后复核发现正文已更新：清理刚写入的旧正文
-        verify(keyValueRpcService).saveNoteContent("uuid-new", "c1");
-        verify(keyValueRpcService).deleteNoteContent("uuid-new");
+        verify(keyValueClient).saveNoteContent("uuid-new", "c1");
+        verify(keyValueClient).deleteNoteContent("uuid-new");
     }
 
     private String body(List<NoteContentTaskMqDTO> tasks) {
