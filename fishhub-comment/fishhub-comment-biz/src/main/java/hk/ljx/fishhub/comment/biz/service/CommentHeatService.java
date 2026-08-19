@@ -6,12 +6,11 @@ import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentHeatBO;
 import hk.ljx.fishhub.comment.biz.util.HeatCalculator;
+import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -30,14 +29,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CommentHeatService {
 
-    private static DefaultRedisScript<Long> luaScript(String luaPath) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
-        script.setResultType(Long.class);
-        return script;
-    }
-
-    private static final DefaultRedisScript<Long> UPDATE_HOT_COMMENTS_SCRIPT = luaScript("/lua/update_hot_comments.lua");
+    private static final DefaultRedisScript<Long> UPDATE_HOT_COMMENTS_SCRIPT = RedisScriptHelper.loadLongScript("/lua/update_hot_comments.lua");
 
     private final CommentDOMapper commentDOMapper;
     private final StringRedisTemplate stringRedisTemplate;

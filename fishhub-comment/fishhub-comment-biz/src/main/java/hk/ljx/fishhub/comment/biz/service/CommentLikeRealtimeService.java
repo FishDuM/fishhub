@@ -8,12 +8,11 @@ import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentLikeDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentLikeDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
+import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
 import java.time.ZoneId;
@@ -39,17 +38,10 @@ public class CommentLikeRealtimeService {
     private static final long COUNT_TTL_SECONDS = 30 * 86400L;
     private static final long EMPTY_BASELINE_TTL_SECONDS = 60L;
 
-    private static DefaultRedisScript<Long> luaScript(String luaPath) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
-        script.setResultType(Long.class);
-        return script;
-    }
-
     /**
      * 点赞/取消原子脚本：根据成员变动原子更新计数与足迹
      */
-    private static final DefaultRedisScript<Long> LIKE_TOGGLE_SCRIPT = luaScript("/lua/comment_like_toggle.lua");
+    private static final DefaultRedisScript<Long> LIKE_TOGGLE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/comment_like_toggle.lua");
 
     private final StringRedisTemplate stringRedisTemplate;
     private final CommentDOMapper commentDOMapper;

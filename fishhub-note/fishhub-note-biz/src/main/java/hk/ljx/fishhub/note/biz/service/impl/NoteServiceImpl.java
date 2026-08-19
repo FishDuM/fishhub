@@ -47,19 +47,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import hk.ljx.framework.common.util.RedisScriptHelper;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -84,17 +83,10 @@ public class NoteServiceImpl implements NoteService {
     private static final long ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
     private static final long ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS = 2L;
 
-    private static DefaultRedisScript<Long> luaScript(String luaPath) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
-        script.setResultType(Long.class);
-        return script;
-    }
-
-    private static final DefaultRedisScript<Long> NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT = luaScript("/lua/note_like_check_and_update_zset.lua");
-    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT = luaScript("/lua/batch_add_note_like_zset_and_expire.lua");
-    private static final DefaultRedisScript<Long> NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT = luaScript("/lua/note_collect_check_and_update_zset.lua");
-    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT = luaScript("/lua/batch_add_note_collect_zset_and_expire.lua");
+    private static final DefaultRedisScript<Long> NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT = RedisScriptHelper.loadLongScript("/lua/note_like_check_and_update_zset.lua");
+    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/batch_add_note_like_zset_and_expire.lua");
+    private static final DefaultRedisScript<Long> NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT = RedisScriptHelper.loadLongScript("/lua/note_collect_check_and_update_zset.lua");
+    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/batch_add_note_collect_zset_and_expire.lua");
 
     private final NoteDOMapper noteDOMapper;
     private final TopicDOMapper topicDOMapper;

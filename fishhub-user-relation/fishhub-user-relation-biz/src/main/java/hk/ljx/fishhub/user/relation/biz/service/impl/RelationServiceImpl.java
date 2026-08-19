@@ -23,15 +23,14 @@ import hk.ljx.fishhub.user.relation.biz.rpc.UserRpcService;
 import hk.ljx.fishhub.user.relation.biz.rpc.CountRpcService;
 import hk.ljx.fishhub.user.relation.biz.service.RelationService;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
+import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
-import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -43,17 +42,10 @@ import java.util.*;
 @RequiredArgsConstructor
 public class RelationServiceImpl implements RelationService {
 
-    private static DefaultRedisScript<Long> luaScript(String luaPath) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
-        script.setResultType(Long.class);
-        return script;
-    }
-
-    private static final DefaultRedisScript<Long> FOLLOW_CHECK_AND_ADD_SCRIPT = luaScript("/lua/follow_check_and_add.lua");
-    private static final DefaultRedisScript<Long> FOLLOW_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/follow_add_and_expire.lua");
-    private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/follow_batch_add_and_expire.lua");
-    private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = luaScript("/lua/unfollow_check_and_delete.lua");
+    private static final DefaultRedisScript<Long> FOLLOW_CHECK_AND_ADD_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_check_and_add.lua");
+    private static final DefaultRedisScript<Long> FOLLOW_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_add_and_expire.lua");
+    private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_batch_add_and_expire.lua");
+    private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/unfollow_check_and_delete.lua");
 
     private final StringRedisTemplate stringRedisTemplate;
     private final UserRpcService userRpcService;

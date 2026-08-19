@@ -6,13 +6,12 @@ import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
+import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -34,18 +33,11 @@ public class RelationListCacheService {
 
     private static final long REBUILD_LOCK_SECONDS = 60L;
 
-    private static DefaultRedisScript<Long> luaScript(String luaPath) {
-        DefaultRedisScript<Long> script = new DefaultRedisScript<>();
-        script.setScriptSource(new ResourceScriptSource(new ClassPathResource(luaPath)));
-        script.setResultType(Long.class);
-        return script;
-    }
-
-    private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/follow_batch_add_and_expire.lua");
-    private static final DefaultRedisScript<Long> FANS_ADD_SCRIPT = luaScript("/lua/fans_add.lua");
-    private static final DefaultRedisScript<Long> FANS_REMOVE_SCRIPT = luaScript("/lua/fans_remove.lua");
-    private static final DefaultRedisScript<Long> FANS_BATCH_ADD_AND_EXPIRE_SCRIPT = luaScript("/lua/fans_batch_add_and_expire.lua");
-    private static final DefaultRedisScript<Long> EMPTY_ZSET_SCRIPT = luaScript("/lua/zset_empty_with_expire.lua");
+    private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_batch_add_and_expire.lua");
+    private static final DefaultRedisScript<Long> FANS_ADD_SCRIPT = RedisScriptHelper.loadLongScript("/lua/fans_add.lua");
+    private static final DefaultRedisScript<Long> FANS_REMOVE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/fans_remove.lua");
+    private static final DefaultRedisScript<Long> FANS_BATCH_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/fans_batch_add_and_expire.lua");
+    private static final DefaultRedisScript<Long> EMPTY_ZSET_SCRIPT = RedisScriptHelper.loadLongScript("/lua/zset_empty_with_expire.lua");
 
     private final StringRedisTemplate stringRedisTemplate;
     private final FollowingDOMapper followingDOMapper;

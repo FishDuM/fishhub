@@ -33,11 +33,21 @@ public class FileStrategyFactory {
     @RefreshScope
     public FileStrategy getFileStrategy() {
         if (StringUtils.equals(strategyType, "minio")) {
-            return new MinioFileStrategy(minioPropertiesProvider.getObject(), minioClientProvider.getObject());
+            MinioProperties minioProperties = minioPropertiesProvider.getIfAvailable();
+            MinioClient minioClient = minioClientProvider.getIfAvailable();
+            if (minioProperties == null || minioClient == null) {
+                throw new IllegalStateException("MinIO 存储策略所需组件 (MinioProperties / MinioClient) 未就绪，请检查相关配置");
+            }
+            return new MinioFileStrategy(minioProperties, minioClient);
         } else if (StringUtils.equals(strategyType, "aliyun")) {
-            return new AliyunOSSFileStrategy(aliyunOSSPropertiesProvider.getObject(), ossClientProvider.getObject());
+            AliyunOSSProperties aliyunOSSProperties = aliyunOSSPropertiesProvider.getIfAvailable();
+            OSS ossClient = ossClientProvider.getIfAvailable();
+            if (aliyunOSSProperties == null || ossClient == null) {
+                throw new IllegalStateException("阿里云 OSS 存储策略所需组件 (AliyunOSSProperties / OSS) 未就绪，请检查相关配置");
+            }
+            return new AliyunOSSFileStrategy(aliyunOSSProperties, ossClient);
         } else {
-            throw new IllegalArgumentException("不可用的存储类型");
+            throw new IllegalArgumentException("不可用的存储类型: " + strategyType);
         }
     }
 
