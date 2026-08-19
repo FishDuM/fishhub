@@ -53,7 +53,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
         rateLimiter.acquire();
 
         // 消息体
-        String bodyJsonStr = new String(message.getBody());
+        String bodyJsonStr = new String(message.getBody(), java.nio.charset.StandardCharsets.UTF_8);
         // 标签
         String tags = message.getTags();
 

@@ -23,6 +23,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Arrays;
 import java.util.List;
@@ -60,6 +62,9 @@ class UserServiceImplTest {
 
     @Mock
     private RolePermissionService rolePermissionService;
+
+    @Mock
+    private TransactionTemplate transactionTemplate;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -113,7 +118,7 @@ class UserServiceImplTest {
         ResolveLoginableUserReqDTO request = ResolveLoginableUserReqDTO.builder()
                 .phone("13800138000")
                 .build();
-        when(userDOMapper.selectByPhoneForUpdate("13800138000"))
+        when(userDOMapper.selectByPhone("13800138000"))
                 .thenReturn(UserDO.builder()
                         .id(1L)
                         .status(StatusEnum.DISABLED.getValue())
@@ -126,7 +131,7 @@ class UserServiceImplTest {
         assertNotNull(response.getData());
         assertFalse(response.getData().isLoginable());
         assertNull(response.getData().getUserId());
-        verify(userDOMapper).selectByPhoneForUpdate("13800138000");
+        verify(userDOMapper).selectByPhone("13800138000");
     }
 
     @Test
@@ -134,7 +139,7 @@ class UserServiceImplTest {
         ResolveLoginableUserReqDTO request = ResolveLoginableUserReqDTO.builder()
                 .phone("13800138000")
                 .build();
-        when(userDOMapper.selectByPhoneForUpdate("13800138000"))
+        when(userDOMapper.selectByPhone("13800138000"))
                 .thenReturn(null, UserDO.builder()
                         .id(2L)
                         .status(StatusEnum.DISABLED.getValue())
@@ -142,13 +147,17 @@ class UserServiceImplTest {
                         .build());
         when(distributedIdGeneratorRpcService.getFishhubId()).thenReturn("fish100");
         when(distributedIdGeneratorRpcService.getUserId()).thenReturn("100");
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         when(userDOMapper.insertIfAbsent(any())).thenReturn(0);
 
         Response<ResolveLoginableUserRspDTO> response = userService.resolveOrRegisterLoginableUser(request);
 
         assertFalse(response.getData().isLoginable());
         assertNull(response.getData().getUserId());
-        verify(userDOMapper, times(2)).selectByPhoneForUpdate("13800138000");
+        verify(userDOMapper, times(2)).selectByPhone("13800138000");
     }
 
     @Test
@@ -156,9 +165,13 @@ class UserServiceImplTest {
         ResolveLoginableUserReqDTO request = ResolveLoginableUserReqDTO.builder()
                 .phone("13800138000")
                 .build();
-        when(userDOMapper.selectByPhoneForUpdate("13800138000")).thenReturn(null);
+        when(userDOMapper.selectByPhone("13800138000")).thenReturn(null);
         when(distributedIdGeneratorRpcService.getFishhubId()).thenReturn("fish100");
         when(distributedIdGeneratorRpcService.getUserId()).thenReturn("100");
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
         when(userDOMapper.insertIfAbsent(any())).thenReturn(1);
 
         Response<ResolveLoginableUserRspDTO> response = userService.resolveOrRegisterLoginableUser(request);

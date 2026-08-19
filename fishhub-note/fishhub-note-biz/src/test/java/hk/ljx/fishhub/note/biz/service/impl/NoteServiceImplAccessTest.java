@@ -201,10 +201,10 @@ class NoteServiceImplAccessTest {
         ReflectionTestUtils.invokeMethod(service, "invalidateNoteRedisCaches", 1L, 11L, new Long[]{1L});
 
         // 频道 1 发布只 bump 首页 0 与频道 1，不动频道 2
-        verify(valueOperations).setIfAbsent(eq(RedisKeyConstants.buildDiscoverFeedVersionKey(0L)), anyString(), eq(30L), eq(TimeUnit.SECONDS));
-        verify(valueOperations).setIfAbsent(eq(RedisKeyConstants.buildDiscoverFeedVersionKey(1L)), anyString(), eq(30L), eq(TimeUnit.SECONDS));
-        verify(valueOperations, never()).setIfAbsent(eq(RedisKeyConstants.buildDiscoverFeedVersionKey(2L)), anyString(), anyLong(), any(TimeUnit.class));
-        // 详情/访问快照/作者列表仍删；版本改为 NX+30s 限频 bump
+        verify(valueOperations).set(eq(RedisKeyConstants.buildDiscoverFeedVersionKey(0L)), anyString());
+        verify(valueOperations).set(eq(RedisKeyConstants.buildDiscoverFeedVersionKey(1L)), anyString());
+        verify(valueOperations, never()).set(eq(RedisKeyConstants.buildDiscoverFeedVersionKey(2L)), anyString());
+        // 详情/访问快照/作者列表仍删；版本推进使快照立即失效
         verify(stringRedisTemplate).delete(List.of("note:detail:11", "note:access:11", "note:published:list:1"));
     }
 
