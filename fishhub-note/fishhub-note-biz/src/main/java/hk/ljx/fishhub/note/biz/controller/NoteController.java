@@ -13,35 +13,39 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 
 @RestController
 @RequestMapping("/note")
 @Slf4j
+@Validated
 public class NoteController {
 
     @Resource
     private NoteService noteService;
 
     @PostMapping(value = "/exists")
-    public Response<Boolean> exists(@RequestBody Long noteId) {
+    public Response<Boolean> exists(@NotNull(message = "笔记ID不能为空") @RequestBody Long noteId) {
         return noteService.exists(noteId);
     }
 
     @PostMapping(value = "/accessible")
-    public Response<Boolean> isAccessible(@RequestBody Long noteId) {
+    public Response<Boolean> isAccessible(@NotNull(message = "笔记ID不能为空") @RequestBody Long noteId) {
         return noteService.isAccessible(noteId);
     }
 
     @PostMapping(value = "/accessible/batch")
-    public Response<List<Long>> findAccessibleNoteIds(@RequestBody List<Long> noteIds) {
+    public Response<List<Long>> findAccessibleNoteIds(@NotEmpty(message = "笔记ID集合不能为空") @RequestBody List<Long> noteIds) {
         return noteService.findAccessibleNoteIds(noteIds);
     }
 
     @PostMapping(value = "/writable/batch")
     public Response<List<NoteWriteAccessCheckReqDTO>> findWritableNoteAccesses(
-            @RequestBody List<NoteWriteAccessCheckReqDTO> requests) {
+            @NotEmpty(message = "检查请求集合不能为空") @RequestBody List<@Valid NoteWriteAccessCheckReqDTO> requests) {
         return noteService.findWritableNoteAccesses(requests);
     }
 

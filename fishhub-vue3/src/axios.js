@@ -21,7 +21,9 @@ instance.interceptors.response.use(
     const status = error.response?.status
     if (status === 401) {
       message.show('请先登录')
-      useUserStore().logout()
+      const userStore = useUserStore()
+      userStore.logout()
+      userStore.openLoginModal()
     } else {
       message.show(error.response?.data?.message || '请求失败')
     }

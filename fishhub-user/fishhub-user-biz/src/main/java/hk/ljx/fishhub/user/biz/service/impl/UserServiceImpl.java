@@ -87,6 +87,8 @@ public class UserServiceImpl implements UserService {
     private RocketMQTemplate rocketMQTemplate;
     @Resource
     private RolePermissionService rolePermissionService;
+    @Resource
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     /**
      * 用户信息本地缓存
@@ -257,23 +259,19 @@ public class UserServiceImpl implements UserService {
      * @return
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(ResolveLoginableUserReqDTO request) {
         String phone = request.getPhone();
 
-        // 唯一索引上的行锁/间隙锁使同一手机号的“查询或注册”串行，避免并发重复创建。
-        UserDO existingUser = userDOMapper.selectByPhoneForUpdate(phone);
-
+        // 1. 无事务快速无锁查询已有用户（老用户登录直接返回，不霸占 DB 连接与行锁）
+        UserDO existingUser = userDOMapper.selectByPhone(phone);
         log.info("手机号查询完成，found={}", existingUser != null);
 
         if (Objects.nonNull(existingUser)) {
             return resolvedLoginableUserResponse(existingUser);
         }
 
-        // 否则注册新用户
+        // 2. 在事务外部执行远程网络 RPC，避免网络 IO 产生长事务拖垮数据库连接池
         String fishhubId = distributedIdGeneratorRpcService.getFishhubId();
-
-        // RPC: 调用分布式 ID 生成服务生成用户 ID
         String userIdStr = distributedIdGeneratorRpcService.getUserId();
         Long userId = Long.valueOf(userIdStr);
 
@@ -288,27 +286,35 @@ public class UserServiceImpl implements UserService {
                 .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
                 .build();
 
-        if (userDOMapper.insertIfAbsent(newUser) == 0) {
-            UserDO concurrentUser = userDOMapper.selectByPhoneForUpdate(phone);
-            if (concurrentUser == null) {
-                throw new IllegalStateException("手机号账号创建后未找到");
+        // 3. 使用细粒度本地短事务保证：用户插入 + 默认角色绑定 的原子性
+        UserDO finalUser = transactionTemplate.execute(status -> {
+            if (userDOMapper.insertIfAbsent(newUser) == 0) {
+                // 并发注册冲突时，查询已由另一线程成功创建的账号
+                UserDO concurrentUser = userDOMapper.selectByPhone(phone);
+                if (concurrentUser == null) {
+                    throw new IllegalStateException("手机号账号创建后未找到");
+                }
+                return concurrentUser;
             }
-            return resolvedLoginableUserResponse(concurrentUser);
+
+            // 给该用户分配一个默认角色
+            UserRoleDO userRoleDO = UserRoleDO.builder()
+                    .userId(userId)
+                    .roleId(RoleConstants.COMMON_USER_ROLE_ID)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
+                    .isDeleted(DeletedEnum.NO.getValue())
+                    .build();
+            userRoleDOMapper.insert(userRoleDO);
+            return newUser;
+        });
+
+        // 4. 事务成功提交后失效旧快照
+        if (finalUser != null) {
+            rolePermissionService.evict(finalUser.getId());
         }
 
-        // 给该用户分配一个默认角色
-        UserRoleDO userRoleDO = UserRoleDO.builder()
-                .userId(userId)
-                .roleId(RoleConstants.COMMON_USER_ROLE_ID)
-                .createTime(LocalDateTime.now())
-                .updateTime(LocalDateTime.now())
-                .isDeleted(DeletedEnum.NO.getValue())
-                .build();
-        userRoleDOMapper.insert(userRoleDO);
-        // 装配默认角色后失效旧快照，下次登录按最新角色装配
-        rolePermissionService.evict(userId);
-
-        return resolvedLoginableUserResponse(newUser);
+        return resolvedLoginableUserResponse(finalUser);
     }
 
     private Response<ResolveLoginableUserRspDTO> resolvedLoginableUserResponse(UserDO user) {

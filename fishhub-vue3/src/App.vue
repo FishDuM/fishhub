@@ -8,12 +8,14 @@
 </template>
 
 <script setup>
-import { ref, provide, onMounted } from 'vue'
+import { provide, onMounted, toRef } from 'vue'
 import LoginModal from '@/components/auth/LoginModal.vue'
+import { useUserStore } from '@/stores/user'
 import { useChannelStore } from '@/stores/channel'
 import { initializeTheme } from '@/composables/useTheme'
 
-const showLoginModal = ref(false)
+const userStore = useUserStore()
+const showLoginModal = toRef(userStore, 'showLoginModal')
 provide('showLoginModal', showLoginModal)
 
 const channelStore = useChannelStore()
