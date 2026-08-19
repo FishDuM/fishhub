@@ -1,18 +1,22 @@
 package hk.ljx.fishhub.oss.biz.strategy.impl;
 
 import hk.ljx.fishhub.oss.biz.config.MinioProperties;
+import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.http.Method;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.UUID;
 import java.net.URI;
 import java.util.Locale;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 
@@ -91,6 +95,29 @@ public class MinioFileStrategy implements FileStrategy  {
                 .object(objectName)
                 .build());
         log.info("==> MinIO 文件删除成功, ObjectName: {}", objectName);
+    }
+
+    @Override
+    @SneakyThrows
+    public PresignedUrlRspVO getPresignedUploadUrl(String fileName, String contentType, String bucketName, Long ownerId) {
+        String key = UUID.randomUUID().toString().replace("-", "");
+        String suffix = fileName != null && fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase(Locale.ROOT) : "";
+        String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
+
+        String uploadUrl = minioClient.getPresignedObjectUrl(
+                GetPresignedObjectUrlArgs.builder()
+                        .method(Method.PUT)
+                        .bucket(bucketName)
+                        .object(objectName)
+                        .expiry(10, TimeUnit.MINUTES)
+                        .build()
+        );
+
+        String downloadUrl = String.format("%s/%s/%s", minioProperties.getEndpoint(), bucketName, objectName);
+        return PresignedUrlRspVO.builder()
+                .uploadUrl(uploadUrl)
+                .downloadUrl(downloadUrl)
+                .build();
     }
 
     private boolean equalsEndpoint(URI actual, URI expected) {

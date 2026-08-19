@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Component
@@ -61,13 +63,21 @@ public class CountNoteCollect2DBConsumer implements RocketMQListener<String> {
         }
         List<AggregationCountCollectUnCollectNoteMqDTO> finalCountList = countList;
         boolean applied = mqIdempotentExecutor.execute("count-note-collect-2db", body, () -> {
-            finalCountList.forEach(item -> {
-                Long creatorId = item.getCreatorId();
-                Long noteId = item.getNoteId();
-                Integer count = item.getCount();
-                noteCountDOMapper.insertOrUpdateCollectTotalByNoteId(count, noteId);
-                userCountDOMapper.insertOrUpdateCollectTotalByUserId(count, creatorId);
-            });
+            // 1. 在内存中按 noteId 聚合增量，并严格按 noteId 升序更新，消除 MySQL 行锁交叉死锁
+            finalCountList.stream()
+                    .collect(Collectors.groupingBy(AggregationCountCollectUnCollectNoteMqDTO::getNoteId,
+                            Collectors.summingInt(AggregationCountCollectUnCollectNoteMqDTO::getCount)))
+                    .entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> noteCountDOMapper.insertOrUpdateCollectTotalByNoteId(entry.getValue(), entry.getKey()));
+
+            // 2. 在内存中按 creatorId 聚合增量，并严格按 creatorId 升序更新，消除 MySQL 行锁交叉死锁
+            finalCountList.stream()
+                    .collect(Collectors.groupingBy(AggregationCountCollectUnCollectNoteMqDTO::getCreatorId,
+                            Collectors.summingInt(AggregationCountCollectUnCollectNoteMqDTO::getCount)))
+                    .entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> userCountDOMapper.insertOrUpdateCollectTotalByUserId(entry.getValue(), entry.getKey()));
         });
         stringRedisTemplate.delete(countList.stream()
                 .map(item -> RedisKeyConstants.buildCountNoteKey(item.getNoteId()))

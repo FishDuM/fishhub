@@ -1,16 +1,20 @@
 package hk.ljx.fishhub.oss.biz.strategy.impl;
 
+import com.aliyun.oss.HttpMethod;
 import com.aliyun.oss.OSS;
 import hk.ljx.fishhub.oss.biz.config.AliyunOSSProperties;
+import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.UUID;
 import java.net.URI;
+import java.net.URL;
+import java.util.Date;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 
@@ -80,5 +84,21 @@ public class AliyunOSSFileStrategy implements FileStrategy  {
         }
         ossClient.deleteObject(bucketName, objectName);
         log.info("==> 阿里云 OSS 文件删除成功, ObjectName: {}", objectName);
+    }
+
+    @Override
+    public PresignedUrlRspVO getPresignedUploadUrl(String fileName, String contentType, String bucketName, Long ownerId) {
+        String key = UUID.randomUUID().toString().replace("-", "");
+        String suffix = fileName != null && fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase(Locale.ROOT) : "";
+        String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
+
+        Date expiration = new Date(System.currentTimeMillis() + 10 * 60 * 1000L);
+        URL uploadUrl = ossClient.generatePresignedUrl(bucketName, objectName, expiration, HttpMethod.PUT);
+
+        String downloadUrl = String.format("https://%s.%s/%s", bucketName, aliyunOSSProperties.getEndpoint(), objectName);
+        return PresignedUrlRspVO.builder()
+                .uploadUrl(uploadUrl.toString())
+                .downloadUrl(downloadUrl)
+                .build();
     }
 }

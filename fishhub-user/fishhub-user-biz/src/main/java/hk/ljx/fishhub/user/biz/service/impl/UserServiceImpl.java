@@ -43,6 +43,7 @@ import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -88,7 +89,7 @@ public class UserServiceImpl implements UserService {
     @Resource
     private RolePermissionService rolePermissionService;
     @Resource
-    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+    private TransactionTemplate transactionTemplate;
 
     /**
      * 用户信息本地缓存

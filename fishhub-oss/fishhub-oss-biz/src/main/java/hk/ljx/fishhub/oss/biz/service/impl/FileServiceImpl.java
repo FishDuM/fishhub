@@ -2,6 +2,8 @@ package hk.ljx.fishhub.oss.biz.service.impl;
 
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlReqVO;
+import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.service.FileService;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
 import hk.ljx.fishhub.oss.dto.DeleteFileReqDTO;
@@ -57,6 +59,23 @@ public class FileServiceImpl implements FileService {
     public Response<?> deleteFile(DeleteFileReqDTO request) {
         fileStrategy.deleteFile(request.getFileUrl(), BUCKET_NAME, requireCurrentUserId());
         return Response.success();
+    }
+
+    @Override
+    public Response<PresignedUrlRspVO> getPresignedUrl(PresignedUrlReqVO request) {
+        String fileName = request.getFileName();
+        int dotIndex = fileName == null ? -1 : fileName.lastIndexOf('.');
+        if (dotIndex <= 0 || dotIndex == fileName.length() - 1) {
+            throw new IllegalArgumentException("文件名缺少合法扩展名");
+        }
+        String extension = fileName.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new IllegalArgumentException("仅支持图片和常见视频格式");
+        }
+
+        PresignedUrlRspVO rsp = fileStrategy.getPresignedUploadUrl(
+                fileName, request.getContentType(), BUCKET_NAME, requireCurrentUserId());
+        return Response.success(rsp);
     }
 
     private Long requireCurrentUserId() {

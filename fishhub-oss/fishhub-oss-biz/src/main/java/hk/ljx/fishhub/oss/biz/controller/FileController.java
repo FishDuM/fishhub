@@ -2,6 +2,8 @@ package hk.ljx.fishhub.oss.biz.controller;
 
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlReqVO;
+import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.service.FileService;
 import hk.ljx.fishhub.oss.dto.DeleteFileReqDTO;
 import jakarta.annotation.Resource;
@@ -28,6 +30,13 @@ public class FileController {
     public Response<?> uploadFile(@RequestPart(value = "file") MultipartFile file) {
         log.info("当前用户 ID: {}", LoginUserContextHolder.getUserId());
         return fileService.uploadFile(file);
+    }
+
+    @PostMapping("/presigned-url")
+    public Response<PresignedUrlRspVO> getPresignedUrl(
+            @Validated @RequestBody PresignedUrlReqVO request) {
+        log.info("用户申请预签名直传凭证, userId: {}, fileName: {}", LoginUserContextHolder.getUserId(), request.getFileName());
+        return fileService.getPresignedUrl(request);
     }
 
     @PostMapping("/delete")
