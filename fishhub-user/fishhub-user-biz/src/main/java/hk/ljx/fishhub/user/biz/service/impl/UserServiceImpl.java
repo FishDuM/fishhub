@@ -82,8 +82,6 @@ public class UserServiceImpl implements UserService {
     @Resource(name = "fishhubTaskExecutor")
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Resource
-    private UserDOMapper userMapper;
-    @Resource
     private CountRpcService countRpcService;
     @Resource
     private RocketMQTemplate rocketMQTemplate;
@@ -264,12 +262,12 @@ public class UserServiceImpl implements UserService {
         String phone = request.getPhone();
 
         // 唯一索引上的行锁/间隙锁使同一手机号的“查询或注册”串行，避免并发重复创建。
-        UserDO userDO1 = userDOMapper.selectByPhoneForUpdate(phone);
+        UserDO existingUser = userDOMapper.selectByPhoneForUpdate(phone);
 
-        log.info("手机号查询完成，found={}", userDO1 != null);
+        log.info("手机号查询完成，found={}", existingUser != null);
 
-        if (Objects.nonNull(userDO1)) {
-            return resolvedLoginableUserResponse(userDO1);
+        if (Objects.nonNull(existingUser)) {
+            return resolvedLoginableUserResponse(existingUser);
         }
 
         // 否则注册新用户
@@ -279,7 +277,7 @@ public class UserServiceImpl implements UserService {
         String userIdStr = distributedIdGeneratorRpcService.getUserId();
         Long userId = Long.valueOf(userIdStr);
 
-        UserDO userDO = UserDO.builder()
+        UserDO newUser = UserDO.builder()
                 .id(userId)
                 .phone(phone)
                 .fishhubId(fishhubId) // 自动生成小鱼号 ID
@@ -290,12 +288,12 @@ public class UserServiceImpl implements UserService {
                 .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
                 .build();
 
-        if (userDOMapper.insertIfAbsent(userDO) == 0) {
-            UserDO existingUser = userDOMapper.selectByPhoneForUpdate(phone);
-            if (existingUser == null) {
+        if (userDOMapper.insertIfAbsent(newUser) == 0) {
+            UserDO concurrentUser = userDOMapper.selectByPhoneForUpdate(phone);
+            if (concurrentUser == null) {
                 throw new IllegalStateException("手机号账号创建后未找到");
             }
-            return resolvedLoginableUserResponse(existingUser);
+            return resolvedLoginableUserResponse(concurrentUser);
         }
 
         // 给该用户分配一个默认角色
@@ -310,7 +308,7 @@ public class UserServiceImpl implements UserService {
         // 装配默认角色后失效旧快照，下次登录按最新角色装配
         rolePermissionService.evict(userId);
 
-        return resolvedLoginableUserResponse(userDO);
+        return resolvedLoginableUserResponse(newUser);
     }
 
     private Response<ResolveLoginableUserRspDTO> resolvedLoginableUserResponse(UserDO user) {
@@ -604,7 +602,7 @@ public class UserServiceImpl implements UserService {
         }
 
         // 3. 若 Redis 中无缓存，再查询数据库
-        UserDO userDO = userMapper.selectByPrimaryKey(userId);
+        UserDO userDO = userDOMapper.selectByPrimaryKey(userId);
 
         if (Objects.isNull(userDO)) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);

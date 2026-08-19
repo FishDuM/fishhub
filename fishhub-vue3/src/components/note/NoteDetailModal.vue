@@ -77,7 +77,7 @@
                 ref="contentRef"
               >
                 <h1 class="title">{{ currNote.title }}</h1>
-                <div class="note-conten whitespace-pre-wrap">{{ currNote.content }}</div>
+                <div class="note-content whitespace-pre-wrap">{{ currNote.content }}</div>
                 <ul v-if="currNote.topics && currNote.topics.length > 0" class="text-[var(--color-link)] flex flex-wrap gap-2">
                   <li v-for="(topic, index) in currNote.topics" :key="index" class="cursor-pointer">#{{topic.name}}</li>
                 </ul>

@@ -10,7 +10,6 @@ export const useChannelStore = defineStore('channel', () => {
   const loadChannels = async () => {
     try {
       const res = await getAllChannel()
-      console
       if (res.success && res.data) {
         channels.value = res.data
       }

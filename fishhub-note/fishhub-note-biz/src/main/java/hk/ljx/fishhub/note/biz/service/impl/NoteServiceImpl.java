@@ -263,7 +263,8 @@ public class NoteServiceImpl implements NoteService {
         }
 
         // RPC: 调用分布式 ID 生成服务，生成笔记 ID
-        String snowflakeIdId = distributedIdGeneratorRpcService.getSnowflakeId();
+        String snowflakeId = distributedIdGeneratorRpcService.getSnowflakeId();
+        Long noteId = Long.valueOf(snowflakeId);
         // 笔记内容 UUID
         String contentUuid = null;
 
@@ -300,7 +301,7 @@ public class NoteServiceImpl implements NoteService {
 
         // 构建笔记 DO 对象
         NoteDO noteDO = NoteDO.builder()
-                .id(Long.valueOf(snowflakeIdId))
+                .id(Long.valueOf(snowflakeId))
                 .isContentEmpty(isContentEmpty)
                 .creatorId(creatorId)
                 .channelId(channelId)
@@ -438,17 +439,14 @@ public class NoteServiceImpl implements NoteService {
             if (!isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
                 stringRedisTemplate.delete(noteDetailRedisKey);
             } else {
-            // 异步线程中将用户信息存入本地缓存
-            threadPoolTaskExecutor.submit(() -> {
                 // 写入本地缓存
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
-            });
-            // 计数已随 JSON 内嵌，命中路径免 count Feign；旧缓存缺计数时回填。
-            if (needsCountRefresh(findNoteDetailRspVO)) {
-                fillNoteCounts(findNoteDetailRspVO);
-            }
-            return Response.success(findNoteDetailRspVO);
+                // 计数已随 JSON 内嵌，命中路径免 count Feign；旧缓存缺计数时回填。
+                if (needsCountRefresh(findNoteDetailRspVO)) {
+                    fillNoteCounts(findNoteDetailRspVO);
+                }
+                return Response.success(findNoteDetailRspVO);
             }
         }
 
@@ -530,9 +528,9 @@ public class NoteServiceImpl implements NoteService {
         // 异步线程中将笔记详情存入 Redis
         threadPoolTaskExecutor.submit(() -> {
             try {
-                String noteDetailJson1 = JsonUtils.toJsonString(findNoteDetailRspVO);
+                String freshNoteDetailJson = JsonUtils.toJsonString(findNoteDetailRspVO);
                 long expireSeconds = CacheTtl.basePlusRandom(30, 60);
-                stringRedisTemplate.opsForValue().set(noteDetailRedisKey, noteDetailJson1, expireSeconds, TimeUnit.SECONDS);
+                stringRedisTemplate.opsForValue().set(noteDetailRedisKey, freshNoteDetailJson, expireSeconds, TimeUnit.SECONDS);
             } catch (Exception e) {
                 log.warn("Redis 不可用，笔记详情缓存写入失败，响应将继续返回，noteId={}", noteId, e);
             }
@@ -1518,7 +1516,7 @@ public class NoteServiceImpl implements NoteService {
      */
     private void checkNoteVisible(Integer visible, Long currUserId, Long creatorId) {
         if (Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode())
-                && !Objects.equals(currUserId, creatorId)) { // 仅自己可见, 并且访问用户为笔记创建者
+                && !Objects.equals(currUserId, creatorId)) { // 仅自己可见, 并且访问用户不是笔记创建者
             throw new BizException(ResponseCodeEnum.NOTE_PRIVATE);
         }
     }

@@ -234,7 +234,7 @@ public class Comment2DBConsumer {
                     commentBO.setReplyCommentId(publishCommentMqDTO.getReplyCommentId());
                     // 父评论 ID
                     commentBO.setParentId(replyCommentDO.getId());
-                    if (Objects.equals(replyCommentDO.getLevel(), CommentLevelEnum.TWO.getCode())) { // 如果回复的评论属于一级评论
+                    if (Objects.equals(replyCommentDO.getLevel(), CommentLevelEnum.TWO.getCode())) { // 如果回复的评论属于二级评论
                         commentBO.setParentId(replyCommentDO.getParentId());
                     }
                     // 回复的哪个用户

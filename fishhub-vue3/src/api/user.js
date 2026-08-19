@@ -3,7 +3,8 @@ import axios from '@/axios'
 const API_PREFIX = '/user/user'
 
 export function getUserProfile(userId) {
-  return axios.post(`${API_PREFIX}/profile`, { userId: userId === 'undefined' ? null : userId })
+  const normalizedUserId = (userId && userId !== 'undefined') ? userId : null
+  return axios.post(`${API_PREFIX}/profile`, { userId: normalizedUserId })
 }
 
 /**

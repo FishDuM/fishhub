@@ -9,13 +9,14 @@ import java.time.temporal.ChronoUnit;
 public class DateUtils {
 
     /**
-     * LocalDateTime 转时间戳
+     * LocalDateTime 转时间戳（默认系统时区/东八区）
      *
      * @param localDateTime
      * @return
      */
     public static long localDateTime2Timestamp(LocalDateTime localDateTime) {
-        return localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
+        if (localDateTime == null) return 0L;
+        return localDateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
     }
 
     /**
@@ -24,7 +25,7 @@ public class DateUtils {
      * @return
      */
     public static String localDateTime2String(LocalDateTime time) {
-        return time.format(DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
+        return time == null ? "" : time.format(DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
     }
 
     /**
@@ -33,21 +34,27 @@ public class DateUtils {
      * @return
      */
     public static String formatRelativeTime(LocalDateTime dateTime) {
+        if (dateTime == null) return "";
         LocalDateTime now = LocalDateTime.now();
-        long daysDiff = ChronoUnit.DAYS.between(dateTime, now);
-        long hoursDiff = ChronoUnit.HOURS.between(dateTime, now);
         long minutesDiff = ChronoUnit.MINUTES.between(dateTime, now);
+        long hoursDiff = ChronoUnit.HOURS.between(dateTime, now);
 
-        if (daysDiff < 1) {
-            if (hoursDiff < 1) {
+        LocalDate targetDate = dateTime.toLocalDate();
+        LocalDate today = now.toLocalDate();
+        long calendarDaysDiff = ChronoUnit.DAYS.between(targetDate, today);
+
+        if (calendarDaysDiff == 0) {
+            if (minutesDiff < 1) {
+                return "刚刚";
+            } else if (minutesDiff < 60) {
                 return minutesDiff + "分钟前";
             } else {
                 return hoursDiff + "小时前";
             }
-        } else if (daysDiff == 1) {
+        } else if (calendarDaysDiff == 1) {
             return "昨天 " + dateTime.format(DateConstants.DATE_FORMAT_H_M);
-        } else if (daysDiff < 7) {
-            return daysDiff + "天前";
+        } else if (calendarDaysDiff < 7) {
+            return calendarDaysDiff + "天前";
         } else if (dateTime.getYear() == now.getYear()) {
             return dateTime.format(DateConstants.DATE_FORMAT_M_D);
         } else {

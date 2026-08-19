@@ -270,7 +270,7 @@ public class RelationServiceImpl implements RelationService {
         boolean hasMore = memberIds.size() > pageSize;
         List<String> pageMembers = hasMore ? memberIds.subList(0, (int) pageSize) : memberIds;
         List<Long> userIds = pageMembers.stream().map(Long::valueOf).toList();
-        List<FindFollowingUserRspVO> users = rpcUserServiceAndDTO2VO(userIds, Collections.emptyList());
+        List<FindFollowingUserRspVO> users = rpcUserServiceAndDTO2VO(userIds);
         Long nextCursor = hasMore ? offset + pageSize : null;
         return RelationCursorPageResponse.success(users, pageSize, nextCursor);
     }
@@ -290,7 +290,7 @@ public class RelationServiceImpl implements RelationService {
         boolean hasMore = memberIds.size() > pageSize;
         List<String> pageMembers = hasMore ? memberIds.subList(0, (int) pageSize) : memberIds;
         List<Long> userIds = pageMembers.stream().map(Long::valueOf).toList();
-        List<FindFansUserRspVO> users = rpcUserServiceAndCountServiceAndDTO2VO(userIds, Collections.emptyList());
+        List<FindFansUserRspVO> users = rpcUserServiceAndCountServiceAndDTO2VO(userIds);
         Long nextCursor = hasMore ? offset + pageSize : null;
         return RelationCursorPageResponse.success(users, pageSize, nextCursor);
     }
@@ -298,10 +298,12 @@ public class RelationServiceImpl implements RelationService {
     /**
      * RPC: 调用用户服务、计数服务，并将 DTO 转换为 VO 粉丝列表
      * @param userIds
-     * @param findFansUserRspVOS
      * @return
      */
-    private List<FindFansUserRspVO> rpcUserServiceAndCountServiceAndDTO2VO(List<Long> userIds, List<FindFansUserRspVO> findFansUserRspVOS) {
+    private List<FindFansUserRspVO> rpcUserServiceAndCountServiceAndDTO2VO(List<Long> userIds) {
+        if (CollUtil.isEmpty(userIds)) {
+            return Collections.emptyList();
+        }
         // RPC: 批量查询用户信息
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds);
         List<FindUserCountsByIdRspDTO> counts = countRpcService.findByUserIds(userIds);
@@ -311,47 +313,47 @@ public class RelationServiceImpl implements RelationService {
         }
 
         Set<Long> followedUserIds = findCurrentUserFollowedIds(userIds);
-        // 若不为空，DTO 转 VO
-        if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
-            findFansUserRspVOS = findUserByIdRspDTOS.stream()
-                    .map(dto -> FindFansUserRspVO.builder()
-                            .userId(dto.getId())
-                            .avatar(dto.getAvatar())
-                            .nickname(dto.getNickName())
-                            .noteTotal(Optional.ofNullable(countMap.get(dto.getId()))
-                                    .map(FindUserCountsByIdRspDTO::getNoteTotal).orElse(0L))
-                            .fansTotal(Optional.ofNullable(countMap.get(dto.getId()))
-                                    .map(FindUserCountsByIdRspDTO::getFansTotal).orElse(0L))
-                            .isFollowed(followedUserIds.contains(dto.getId()))
-                            .build())
-                    .toList();
+        if (CollUtil.isEmpty(findUserByIdRspDTOS)) {
+            return Collections.emptyList();
         }
-        return findFansUserRspVOS;
+        return findUserByIdRspDTOS.stream()
+                .map(dto -> FindFansUserRspVO.builder()
+                        .userId(dto.getId())
+                        .avatar(dto.getAvatar())
+                        .nickname(dto.getNickName())
+                        .noteTotal(Optional.ofNullable(countMap.get(dto.getId()))
+                                .map(FindUserCountsByIdRspDTO::getNoteTotal).orElse(0L))
+                        .fansTotal(Optional.ofNullable(countMap.get(dto.getId()))
+                                .map(FindUserCountsByIdRspDTO::getFansTotal).orElse(0L))
+                        .isFollowed(followedUserIds.contains(dto.getId()))
+                        .build())
+                .toList();
     }
 
     /**
      * RPC: 调用用户服务，并将 DTO 转换为 VO 关注列表
      * @param userIds
-     * @param findFollowingUserRspVOS
      * @return
      */
-    private List<FindFollowingUserRspVO> rpcUserServiceAndDTO2VO(List<Long> userIds, List<FindFollowingUserRspVO> findFollowingUserRspVOS) {
+    private List<FindFollowingUserRspVO> rpcUserServiceAndDTO2VO(List<Long> userIds) {
+        if (CollUtil.isEmpty(userIds)) {
+            return Collections.emptyList();
+        }
         // RPC: 批量查询用户信息
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userRpcService.findByIds(userIds);
 
-        // 若不为空，DTO 转 VO
-        if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
-            findFollowingUserRspVOS = findUserByIdRspDTOS.stream()
-                    .map(dto -> FindFollowingUserRspVO.builder()
-                            .userId(dto.getId())
-                            .avatar(dto.getAvatar())
-                            .nickname(dto.getNickName())
-                            .introduction(dto.getIntroduction())
-                            .isFollowed(true)
-                            .build())
-                    .toList();
+        if (CollUtil.isEmpty(findUserByIdRspDTOS)) {
+            return Collections.emptyList();
         }
-        return findFollowingUserRspVOS;
+        return findUserByIdRspDTOS.stream()
+                .map(dto -> FindFollowingUserRspVO.builder()
+                        .userId(dto.getId())
+                        .avatar(dto.getAvatar())
+                        .nickname(dto.getNickName())
+                        .introduction(dto.getIntroduction())
+                        .isFollowed(true)
+                        .build())
+                .toList();
     }
 
     private Set<Long> findCurrentUserFollowedIds(List<Long> candidateUserIds) {

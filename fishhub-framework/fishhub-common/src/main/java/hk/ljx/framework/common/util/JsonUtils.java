@@ -71,11 +71,6 @@ public class JsonUtils {
      * @throws Exception
      */
     public static <K, V> Map<K, V> parseMap(String jsonStr, Class<K> keyClass, Class<V> valueClass) throws Exception {
-        // 创建 TypeReference，指定泛型类型
-        TypeReference<Map<K, V>> typeRef = new TypeReference<Map<K, V>>() {
-        };
-
-        // 将 JSON 字符串转换为 Map
         return OBJECT_MAPPER.readValue(jsonStr, OBJECT_MAPPER.getTypeFactory().constructMapType(Map.class, keyClass, valueClass));
     }
 
@@ -89,13 +84,7 @@ public class JsonUtils {
      * @throws Exception
      */
     public static <T> List<T> parseList(String jsonStr, Class<T> clazz) throws Exception {
-        // 使用 TypeReference 指定 List<T> 的泛型类型
-        return OBJECT_MAPPER.readValue(jsonStr, new TypeReference<List<T>>() {
-            @Override
-            public CollectionType getType() {
-                return OBJECT_MAPPER.getTypeFactory().constructCollectionType(List.class, clazz);
-            }
-        });
+        return OBJECT_MAPPER.readValue(jsonStr, OBJECT_MAPPER.getTypeFactory().constructCollectionType(List.class, clazz));
     }
 
     /**
@@ -108,13 +97,7 @@ public class JsonUtils {
      * @throws Exception
      */
     public static <T> Set<T> parseSet(String jsonStr, Class<T> clazz) throws Exception {
-        // 使用 TypeReference 指定 Set<T> 的泛型类型
-        return OBJECT_MAPPER.readValue(jsonStr, new TypeReference<>() {
-            @Override
-            public CollectionType getType() {
-                return OBJECT_MAPPER.getTypeFactory().constructCollectionType(Set.class, clazz);
-            }
-        });
+        return OBJECT_MAPPER.readValue(jsonStr, OBJECT_MAPPER.getTypeFactory().constructCollectionType(Set.class, clazz));
     }
 
 }

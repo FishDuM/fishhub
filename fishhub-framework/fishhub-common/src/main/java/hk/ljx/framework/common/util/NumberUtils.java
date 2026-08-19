@@ -23,7 +23,11 @@ public class NumberUtils {
             String formatted = df.format(result);
             return formatted + "万";
         } else {
-            return "9999万";  // 超过 1 亿，统一显示 9999万
+            // 超过 1 亿，显示亿单位
+            double result = number / 100000000.0;
+            DecimalFormat df = new DecimalFormat("#.#");
+            df.setRoundingMode(RoundingMode.DOWN);
+            return df.format(result) + "亿";
         }
     }
 

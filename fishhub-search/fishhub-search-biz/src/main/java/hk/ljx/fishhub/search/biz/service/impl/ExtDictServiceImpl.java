@@ -7,6 +7,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.DigestUtils;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -41,8 +42,9 @@ public class ExtDictServiceImpl implements ExtDictService {
                 }
                 try (InputStream inputStream = resource.getInputStream()) {
                     String fileContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+                    String eTag = DigestUtils.md5DigestAsHex(fileContent.getBytes(StandardCharsets.UTF_8));
                     return ResponseEntity.ok()
-                            .eTag(String.valueOf(fileContent.hashCode()))
+                            .eTag(eTag)
                             .contentType(MediaType.valueOf("text/plain;charset=UTF-8"))
                             .body(fileContent);
                 }
@@ -51,9 +53,9 @@ public class ExtDictServiceImpl implements ExtDictService {
             Path path = Paths.get(hotUpdateExtDict);
             long lastModifiedTime = Files.getLastModifiedTime(path).toMillis();
 
-            // 生成 ETag（使用文件内容的哈希值）
+            // 生成 ETag（使用文件内容的 MD5 哈希值）
             String fileContent = Files.readString(path, StandardCharsets.UTF_8);
-            String eTag = String.valueOf(fileContent.hashCode());
+            String eTag = DigestUtils.md5DigestAsHex(fileContent.getBytes(StandardCharsets.UTF_8));
 
             // 设置响应头
             HttpHeaders headers = new HttpHeaders();

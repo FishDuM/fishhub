@@ -340,7 +340,7 @@
                         @click="selectChannel(channel)"
                       >
                         <div class="flex items-center text-[var(--color-primary-label)]">
-                          <component :is="channel.icon" class="w-4 h-4 mr-2"/>
+                          <component v-if="channel.icon" :is="channel.icon" class="w-4 h-4 mr-2"/>
                           {{ channel.name }}
                         </div>
                         <div v-if="selectedChannel?.id === channel.id" class="text-[var(--color-primary)]">
@@ -831,7 +831,6 @@ const handlePublish = async () => {
       message.show('发布成功')
       onClose()
       router.push('/discover')
-      location.reload()
     } else {
       message.show(res.message || '未知错误')
     }

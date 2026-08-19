@@ -49,13 +49,7 @@ mysql -h 192.168.0.100 -u root -p < sql/create.sql
 mvn clean package -DskipTests
 ```
 
-`ops/fishhubctl.sh` 在 macOS 上通过 launchd 托管后端服务。脚本还需要 `xxl-job/xxl-job-admin/target/xxl-job-admin-2.4.1.jar` 已经构建完成。
-
-```bash
-zsh ops/fishhubctl.sh start
-zsh ops/fishhubctl.sh status
-zsh ops/fishhubctl.sh stop
-```
+各微服务可通过 IDE 直接启动对应的 SpringBoot Application，或通过 `java -jar` 运行各模块 target 下生成的 jar 包。
 
 前端启动方式见 `fishhub-vue3/README.md`。
 

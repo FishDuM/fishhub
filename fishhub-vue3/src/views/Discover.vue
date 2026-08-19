@@ -116,7 +116,7 @@ const getChannelIdFromRoute = () => {
 const loadNotes = async (channelId = '0', isFirstPage = true) => {
   if (!isFirstPage && isLoading.value) return
 
-  const requestId = isFirstPage ? beginRequest() : beginRequest()
+  const requestId = beginRequest()
   const cursor = isFirstPage ? 0 : nextCursor.value
 
   isLoading.value = true

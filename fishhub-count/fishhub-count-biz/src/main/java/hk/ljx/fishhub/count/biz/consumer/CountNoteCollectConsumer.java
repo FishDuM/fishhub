@@ -81,7 +81,7 @@ public class CountNoteCollectConsumer implements RocketMQListener<String> {
                 CollectUnCollectNoteTypeEnum collectUnCollectNoteTypeEnum = CollectUnCollectNoteTypeEnum.valueOf(type);
 
                 switch (collectUnCollectNoteTypeEnum) {
-                    case COLLECT -> finalCount += 1; // 如果为收藏操作，点赞数 +1
+                    case COLLECT -> finalCount += 1; // 如果为收藏操作，收藏数 +1
                     case UN_COLLECT -> finalCount -= 1;
                 }
             }

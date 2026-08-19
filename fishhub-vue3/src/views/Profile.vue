@@ -120,82 +120,31 @@
           :tabs="profileTabs"
         />
         
-      <div class="masonry-container mt-[16px]" v-if="activeTab === 'notes'">
-            <div v-if="notes.length > 0" class="masonry-grid">
-              <div v-for="colIndex in columnCount" :key="colIndex" class="masonry-column">
-                <div 
-                  v-for="note in getColumnNotes(colIndex-1)" 
-                  :key="note.id" 
-                  class="masonry-item"
-                >
-                  <NoteCard 
-                    :note="note" 
-                    @click="onNoteClick"
-                    @like-change="handleCardLikeChange"
-                  />
-                </div>
+        <div class="masonry-container mt-[16px]">
+          <div v-if="notes.length > 0" class="masonry-grid">
+            <div v-for="colIndex in columnCount" :key="colIndex" class="masonry-column">
+              <div 
+                v-for="note in getColumnNotes(colIndex-1)" 
+                :key="note.id" 
+                class="masonry-item"
+              >
+                <NoteCard 
+                  :note="note" 
+                  @click="onNoteClick" 
+                  @like-change="handleCardLikeChange" 
+                />
               </div>
             </div>
-            <div v-else class="flex flex-col items-center justify-center mt-[16px]">
-                <div class="divider"></div>
-                <div>
-          <EmptyStateIllustration variant="profile" class="mt-10" />
-                  </div>
-                  <div class="empty-text">该用户暂未发布笔记</div>
           </div>
-        </div>
-
-        
-
-
-        <div v-else-if="activeTab === 'collect'" class="masonry-container mt-[16px]">
-          <div v-if="notes.length > 0" class="masonry-grid">
-                <div v-for="colIndex in columnCount" :key="colIndex" class="masonry-column">
-                  <div 
-                    v-for="note in getColumnNotes(colIndex-1)" 
-                    :key="note.id" 
-                    class="masonry-item"
-                  >
-                    <NoteCard 
-                      :note="note" 
-                      @click="onNoteClick"
-                      @like-change="handleCardLikeChange"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div v-else class="flex flex-col items-center justify-center mt-[16px]">
-                  <div class="divider"></div>
-                  <div class="mt-5">
-                    <EmptyStateIllustration variant="content" class="mt-10" />
-                  </div>
-                  <div class="empty-text">该用户暂未收藏笔记</div>
-              </div>
-        </div>
-
-        <div v-else class="masonry-container mt-[16px]">
-          <div v-if="notes.length > 0" class="masonry-grid">
-                <div v-for="colIndex in columnCount" :key="colIndex" class="masonry-column">
-                  <div 
-                    v-for="note in getColumnNotes(colIndex-1)" 
-                    :key="note.id" 
-                    class="masonry-item"
-                  >
-                    <NoteCard 
-                      :note="note" 
-                      @click="onNoteClick"
-                      @like-change="handleCardLikeChange"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div v-else class="flex flex-col items-center justify-center mt-[16px]">
-                  <div class="divider"></div>
-                  <div class="mt-5">
-                    <EmptyStateIllustration variant="content" class="mt-10" />
-                  </div>
-                  <div class="empty-text">该用户暂未点赞笔记</div>
-              </div>
+          <div v-else class="flex flex-col items-center justify-center mt-[16px]">
+            <div class="divider"></div>
+            <div class="mt-5">
+              <EmptyStateIllustration :variant="activeTab === 'notes' ? 'profile' : 'content'" class="mt-10" />
+            </div>
+            <div class="empty-text">
+              {{ activeTab === 'notes' ? '该用户暂未发布笔记' : (activeTab === 'collect' ? '该用户暂未收藏笔记' : '该用户暂未点赞笔记') }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -515,8 +464,7 @@ watch(() => route.params.userId, (newUserId, oldUserId) => {
     font-size: 12px;
     line-height: 120%;
     color: var(--color-tertiary-label);
-    display: flex
-;
+    display: flex;
 }
 
 .info {
@@ -539,7 +487,6 @@ watch(() => route.params.userId, (newUserId, oldUserId) => {
     justify-content: center;
     padding: 4px 8px;
     gap: 4px;
-    height: 18px;
     border-radius: 41px;
     background: var(--color-active-background);
     height: 24px;

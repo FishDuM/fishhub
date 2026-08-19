@@ -79,19 +79,7 @@ const handleScroll = (e) => {
   }
 }
 
-// 组件挂载时添加滚动监听
-onMounted(() => {
-  if (commentListRef.value) {
-    commentListRef.value.addEventListener('scroll', handleScroll)
-  }
-})
 
-// 组件卸载时移除滚动监听
-onBeforeUnmount(() => {
-  if (commentListRef.value) {
-    commentListRef.value.removeEventListener('scroll', handleScroll)
-  }
-})
 
 // 点击评论处理
 const onClickComment = () => {

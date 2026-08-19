@@ -1281,7 +1281,7 @@ public class CommentServiceImpl implements CommentService {
                     .build();
 
             // 用户信息
-            setUserInfo(commentIdAndDOMap, userIdAndDTOMap, userId, oneLevelCommentRspVO);
+            setUserInfo(userIdAndDTOMap, userId, oneLevelCommentRspVO);
             // 笔记内容
             setCommentContent(commentUuidAndContentMap, commentDO, oneLevelCommentRspVO);
 
@@ -1301,7 +1301,7 @@ public class CommentServiceImpl implements CommentService {
                             .heat(firstReplyCommentDO.getHeat())
                             .build();
 
-                    setUserInfo(commentIdAndDOMap, userIdAndDTOMap, firstReplyCommentUserId, firstReplyCommentRspVO);
+                    setUserInfo(userIdAndDTOMap, firstReplyCommentUserId, firstReplyCommentRspVO);
 
                     // 用户信息
                     oneLevelCommentRspVO.setFirstReplyComment(firstReplyCommentRspVO);
@@ -1440,12 +1440,11 @@ public class CommentServiceImpl implements CommentService {
 
     /**
      * 设置用户信息
-     * @param commentIdAndDOMap
      * @param userIdAndDTOMap
      * @param userId
      * @param oneLevelCommentRspVO
      */
-    private static void setUserInfo(Map<Long, CommentDO> commentIdAndDOMap, Map<Long, FindUserByIdRspDTO> userIdAndDTOMap, Long userId, FindCommentItemRspVO oneLevelCommentRspVO) {
+    private static void setUserInfo(Map<Long, FindUserByIdRspDTO> userIdAndDTOMap, Long userId, FindCommentItemRspVO oneLevelCommentRspVO) {
         if (CollUtil.isNotEmpty(userIdAndDTOMap)) {
             FindUserByIdRspDTO findUserByIdRspDTO = userIdAndDTOMap.get(userId);
             if (Objects.nonNull(findUserByIdRspDTO)) {
