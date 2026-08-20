@@ -742,9 +742,14 @@ const handleTopicBackspace = (e) => {
   }
 }
 
+let topicBlurTimer = null
+
 const handleTopicBlur = () => {
+  if (topicBlurTimer) {
+    clearTimeout(topicBlurTimer)
+  }
   // 延迟关闭，保证建议项的 click 先于输入框 blur 完成。
-  setTimeout(() => {
+  topicBlurTimer = setTimeout(() => {
     if (!topicKeyword.value.trim()) {
       isTopicInputActive.value = false
     }
@@ -883,6 +888,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (topicBlurTimer) {
+    clearTimeout(topicBlurTimer)
+  }
   document.removeEventListener('keydown', handleEscKey)
   document.removeEventListener('mousedown', closeChannelSelector)
 })

@@ -78,9 +78,10 @@
     <if test="!includePrivate">
       and visible = 0
     </if>
-    <if test="cursor != null">
+    <if test="cursor != null and cursor &gt; 0">
       <![CDATA[ and id < #{cursor} ]]>
     </if>
+
     order by id desc
     limit 20
   </select>
@@ -117,9 +118,10 @@
     <if test="channelId != null and channelId &gt; 0">
       and channel_id = #{channelId}
     </if>
-    <if test="cursor != null">
+    <if test="cursor != null and cursor &gt; 0">
       <![CDATA[ and id < #{cursor} ]]>
     </if>
+
     order by id desc
     limit #{limit}
   </select>

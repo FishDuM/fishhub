@@ -204,10 +204,13 @@ const onNoteClick = (note) => {
 
 const handleNoteInteractionChange = ({ noteId, likeTotal, collectTotal, isLiked, isCollected }) => {
   const selectedNoteId = selectedNote.value?.id ?? selectedNote.value?.noteId
-  if (String(selectedNoteId) !== String(noteId)) return
-
-  Object.assign(selectedNote.value, { likeTotal, collectTotal, isLiked, isCollected })
+  if (selectedNote.value && String(selectedNoteId) === String(noteId)) {
+    Object.assign(selectedNote.value, { likeTotal, collectTotal, isLiked, isCollected })
+  }
+  const note = notes.value.find(item => String(item.id ?? item.noteId) === String(noteId))
+  if (note) Object.assign(note, { likeTotal, collectTotal, isLiked, isCollected })
 }
+
 
 const handleCardLikeChange = ({ noteId, isLiked, likeTotal }) => {
   const note = notes.value.find(item => String(item.id ?? item.noteId) === String(noteId))

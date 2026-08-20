@@ -11,10 +11,12 @@ import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -103,14 +105,16 @@ public class MinioFileStrategy implements FileStrategy  {
         String suffix = fileName != null && fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase(Locale.ROOT) : "";
         String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
 
-        String uploadUrl = minioClient.getPresignedObjectUrl(
-                GetPresignedObjectUrlArgs.builder()
-                        .method(Method.PUT)
-                        .bucket(bucketName)
-                        .object(objectName)
-                        .expiry(10, TimeUnit.MINUTES)
-                        .build()
-        );
+        GetPresignedObjectUrlArgs.Builder builder = GetPresignedObjectUrlArgs.builder()
+                .method(Method.PUT)
+                .bucket(bucketName)
+                .object(objectName)
+                .expiry(10, TimeUnit.MINUTES);
+        if (StringUtils.isNotBlank(contentType)) {
+            builder.extraHeaders(Map.of("Content-Type", contentType));
+        }
+
+        String uploadUrl = minioClient.getPresignedObjectUrl(builder.build());
 
         String downloadUrl = String.format("%s/%s/%s", minioProperties.getEndpoint(), bucketName, objectName);
         return PresignedUrlRspVO.builder()

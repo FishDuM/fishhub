@@ -81,6 +81,16 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
                 });
 
         if (!isDelete) {
+            List<String> parentCountKeys = event.getItems().stream()
+                    .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
+                    .map(CommentItemMqDTO::getParentId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .map(CountKeyConstants::buildCountCommentKey)
+                    .toList();
+            if (CollUtil.isNotEmpty(parentCountKeys)) {
+                stringRedisTemplate.delete(parentCountKeys);
+            }
             return;
         }
 

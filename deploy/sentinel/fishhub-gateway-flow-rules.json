@@ -1,0 +1,47 @@
+[
+  {
+    "resource": "auth",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 500.0,
+    "intervalSec": 1,
+    "controlBehavior": 0,
+    "burst": 0,
+    "maxQueueingTimeoutMs": 500
+  },
+  {
+    "resource": "loginApi",
+    "resourceMode": 1,
+    "grade": 1,
+    "count": 10.0,
+    "intervalSec": 1,
+    "controlBehavior": 0,
+    "paramItem": {
+      "parseStrategy": 0
+    }
+  },
+  {
+    "resource": "note",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 1000.0,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "comment",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 800.0,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  },
+  {
+    "resource": "oss",
+    "resourceMode": 0,
+    "grade": 1,
+    "count": 200.0,
+    "intervalSec": 1,
+    "controlBehavior": 0
+  }
+]

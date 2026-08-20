@@ -321,7 +321,8 @@ public class CommentServiceImpl implements CommentService {
                 throw new BizException(ResponseCodeEnum.PARENT_COMMENT_NOT_FOUND);
             }
 
-            count = countRecord.getChildCommentTotal();
+            Long childTotal = countRecord.getChildCommentTotal();
+            count = Objects.isNull(childTotal) ? 0L : childTotal;
             threadPoolTaskExecutor.execute(() -> syncCommentCount2Redis(countCommentKey, countRecord));
         }
 
@@ -552,8 +553,9 @@ public class CommentServiceImpl implements CommentService {
         if (CollUtil.isNotEmpty(authorIds)) {
             List<FindUserByIdRspDTO> users = userClient.findByIds(authorIds);
             userIdAndDTOMap = CollUtil.isNotEmpty(users)
-                    ? users.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto))
+                    ? users.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto, (a, b) -> a))
                     : Collections.emptyMap();
+
         } else {
             userIdAndDTOMap = Collections.emptyMap();
         }
@@ -849,7 +851,7 @@ public class CommentServiceImpl implements CommentService {
         Map<String, String> commentUuidAndContentMap = null;
         if (CollUtil.isNotEmpty(findCommentContentRspDTOS)) {
             commentUuidAndContentMap = findCommentContentRspDTOS.stream()
-                    .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent));
+                    .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent, (a, b) -> a));
         }
 
         // RPC: 调用用户服务，批量获取用户信息（头像、昵称等）
@@ -859,8 +861,9 @@ public class CommentServiceImpl implements CommentService {
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();
         if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
             userIdAndDTOMap = findUserByIdRspDTOS.stream()
-                    .collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto));
+                    .collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto, (a, b) -> a));
         }
+
 
         // DO 转 VO
         for (CommentDO childCommentDO : childCommentDOS) {
@@ -1207,7 +1210,7 @@ public class CommentServiceImpl implements CommentService {
 
             // 转 Map 集合，方便后续拼装数据
             commentIdAndDOMap = twoLevelCommonDOS.stream()
-                    .collect(Collectors.toMap(CommentDO::getId, commentDO -> commentDO));
+                    .collect(Collectors.toMap(CommentDO::getId, commentDO -> commentDO, (a, b) -> a));
         }
 
         // 调用 KV 服务需要的入参
@@ -1244,18 +1247,20 @@ public class CommentServiceImpl implements CommentService {
         Map<String, String> commentUuidAndContentMap = null;
         if (CollUtil.isNotEmpty(findCommentContentRspDTOS)) {
             commentUuidAndContentMap = findCommentContentRspDTOS.stream()
-                    .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent));
+                    .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent, (a, b) -> a));
         }
 
         // RPC: 调用用户服务，批量获取用户信息（头像、昵称等）
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
+        List<Long> distinctUserIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
+        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(distinctUserIds);
 
         // DTO 集合转 Map, 方便后续拼装数据
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();
         if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
             userIdAndDTOMap = findUserByIdRspDTOS.stream()
-                    .collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto));
+                    .collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto, (a, b) -> a));
         }
+
 
         // DO 转 VO, 组合拼装一二级评论数据
         for (CommentDO commentDO : oneLevelCommentDOS) {

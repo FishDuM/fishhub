@@ -222,13 +222,10 @@ public class FeedServiceImpl implements FeedService {
         if (CollUtil.isEmpty(notes)) {
             return;
         }
-        // 仅计数为空（库重建路径）才调 count Feign。
-        boolean countEmbedded = notes.stream().allMatch(note -> note.getLikeTotal() != null);
-        if (!countEmbedded) {
-            fillCountsIntoNoteItems(notes);
-        }
+        fillCountsIntoNoteItems(notes);
         setLikedState(notes);
     }
+
 
     /** 从 count 服务回填点赞数到快照项（仅重建路径调用；命中路径见 {@link #hydrateVolatileFields}）。 */
     private void fillCountsIntoNoteItems(List<NoteItemRspVO> notes) {

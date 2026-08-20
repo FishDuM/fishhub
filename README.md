@@ -60,3 +60,7 @@ mvn clean package -DskipTests
 ```bash
 FISHHUB_RUN_INTEGRATION_TESTS=true mvn test
 ```
+
+## 生产部署
+
+生产环境下 Nginx 前端静态资源托管、反向代理与 Sentinel 网关限流规则导入，请参考 [deploy/README.md](file:///D:/AAAPorject/main/fishhub/deploy/README.md)。

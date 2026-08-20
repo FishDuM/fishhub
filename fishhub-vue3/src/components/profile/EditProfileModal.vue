@@ -352,14 +352,13 @@ const handleConfirm = async () => {
       return
     }
 
-    message.show('更新成功')
-
     const profileRes = await getUserProfile()
+    const latestProfile = profileRes.success ? profileRes.data : { ...profileData, avatar: userStore.profile?.avatar }
     if (profileRes.success) {
       userStore.setProfile(profileRes.data)
     }
 
-    emit('update-success', profileData)
+    emit('update-success', latestProfile)
     emit('update:visible', false)
 
   } catch (error) {

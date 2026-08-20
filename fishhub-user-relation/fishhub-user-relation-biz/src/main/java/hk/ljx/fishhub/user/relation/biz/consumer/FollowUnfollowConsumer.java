@@ -159,6 +159,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
             }
         }
         log.error("关注/取关计数事件重试 3 次仍发送失败, userId={}, targetUserId={}", userId, targetUserId, lastEx);
+        throw new IllegalStateException("关注/取关计数事件重试 3 次仍发送失败", lastEx);
     }
 
 }

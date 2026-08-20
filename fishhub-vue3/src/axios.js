@@ -15,15 +15,23 @@ instance.interceptors.request.use((config) => {
   return config
 })
 
+let isLoggingOut = false
+
 instance.interceptors.response.use(
   response => response.data,
   (error) => {
     const status = error.response?.status
     if (status === 401) {
-      message.show('请先登录')
-      const userStore = useUserStore()
-      userStore.logout()
-      userStore.openLoginModal()
+      if (!isLoggingOut) {
+        isLoggingOut = true
+        message.show('请先登录')
+        const userStore = useUserStore()
+        userStore.logout()
+        userStore.openLoginModal()
+        setTimeout(() => {
+          isLoggingOut = false
+        }, 1000)
+      }
     } else {
       message.show(error.response?.data?.message || '请求失败')
     }

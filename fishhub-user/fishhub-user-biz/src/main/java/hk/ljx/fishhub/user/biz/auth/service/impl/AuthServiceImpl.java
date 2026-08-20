@@ -64,7 +64,7 @@ public class AuthServiceImpl implements AuthService {
 
                 Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
 
-                verifyAndConsumeVerificationCode(phone, verificationCode);
+                verifyVerificationCode(phone, verificationCode);
 
                 ResolveLoginableUserRspDTO resolvedUser = userRpcService.resolveOrRegisterLoginableUser(phone);
 
@@ -75,6 +75,7 @@ public class AuthServiceImpl implements AuthService {
                     throw new BizException(ResponseCodeEnum.ACCOUNT_NOT_LOGINABLE);
                 }
 
+                deleteVerificationCode(phone);
                 userId = resolvedUser.getUserId();
                 break;
             case PASSWORD: // 密码登录
@@ -150,24 +151,29 @@ public class AuthServiceImpl implements AuthService {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        verifyAndConsumeVerificationCode(phone, verificationCode);
+        verifyVerificationCode(phone, verificationCode);
 
         String newPassword = updatePasswordReqVO.getNewPassword();
         String encodePassword = passwordEncoder.encode(newPassword);
 
         userRpcService.updatePassword(encodePassword);
+        deleteVerificationCode(phone);
 
         StpUtil.logout(LoginUserContextHolder.getUserId());
 
         return Response.success();
     }
 
-    private void verifyAndConsumeVerificationCode(String phone, String verificationCode) {
-        Long consumed = stringRedisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT,
-                List.of(RedisKeyConstants.buildVerificationCodeKey(phone)), verificationCode);
-        if (!Long.valueOf(1L).equals(consumed)) {
+    private void verifyVerificationCode(String phone, String verificationCode) {
+        String key = RedisKeyConstants.buildVerificationCodeKey(phone);
+        String code = stringRedisTemplate.opsForValue().get(key);
+        if (StringUtils.isBlank(code) || !StringUtils.equals(code, verificationCode)) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
         }
+    }
+
+    private void deleteVerificationCode(String phone) {
+        stringRedisTemplate.delete(RedisKeyConstants.buildVerificationCodeKey(phone));
     }
 
 }

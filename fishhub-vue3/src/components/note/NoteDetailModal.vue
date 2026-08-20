@@ -219,10 +219,11 @@
                       <svg class="w-[20px] h-[20px]" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" stroke-width="2"/>
                       </svg>
-                      <span class="text-sm">{{ currNote.commentTotal }}</span>
+                      <span class="text-sm">{{ commentTotal }}</span>
                     </div>
                   </div>
                 </div>
+
 
 
                 <div v-if="isInputFocused" class="flex items-center justify-between mt-3">
@@ -455,7 +456,6 @@ const loadMoreComments = () => {
       await hydrateCommentLikeState(newComments)
       comments.value = [...comments.value, ...newComments]
       currCommentPageNo.value = res.pageNo
-      commentTotal.value = res.totalCount
       totalCommentPage.value = res.totalPage
     }
   }).finally(() => {
@@ -574,10 +574,14 @@ watch(() => props.visible, (newVisible) => {
     currNote.value = { ...props.note }
     isNoteLiked.value = false
     isNoteCollected.value = false
+    commentTotal.value = Number(props.note.commentTotal) || 0
 
     getNoteDetail(props.note.id).then(res => {
       if (res.success && res.data) {
         currNote.value = mergeNoteDetail(res.data)
+        if (res.data.commentTotal != null) {
+          commentTotal.value = Number(res.data.commentTotal) || 0
+        }
       }
     })
 
@@ -605,11 +609,16 @@ watch(() => props.visible, (newVisible) => {
       if (res.success) {
         comments.value = (res.data || []).map(normalizeComment)
         hydrateCommentLikeState(comments.value)
-        commentTotal.value = res.totalCount
         currCommentPageNo.value = res.pageNo
         totalCommentPage.value = res.totalPage
+        if (commentTotal.value === 0 && res.totalCount) {
+          commentTotal.value = res.totalCount
+          currNote.value.commentTotal = res.totalCount
+        }
       }
     })
+
+
   } else {
     isCreatorFollowed.value = false
     currNote.value = {}
@@ -715,17 +724,18 @@ const handleFileChange = (event) => {
 const findParentComment = (commentId, commentsList) => {
   for (const comment of commentsList) {
     if (comment.childComments) {
-      const childIndex = comment.childComments.findIndex(child => child.commentId === commentId)
+      const childIndex = comment.childComments.findIndex(child => String(child.commentId) === String(commentId))
       if (childIndex !== -1) {
         return { parentComment: comment, isChild: true, childIndex }
       }
     }
-    if (comment.commentId === commentId) {
+    if (String(comment.commentId) === String(commentId)) {
       return { parentComment: comment, isChild: false }
     }
   }
   return null
 }
+
 
 const handlePublishComment = () => {
   if (!commentContent.value.trim() && !commentImage.value) {
@@ -746,6 +756,7 @@ const handlePublishComment = () => {
 
       const newComment = {
         commentId: commentId,
+        userId: userStore.profile.userId,
         content: commentContent.value,
         createTime: '刚刚',
         nickname: userStore.profile.nickname,
@@ -760,7 +771,10 @@ const handlePublishComment = () => {
         const result = findParentComment(replyTo.value.commentId, comments.value)
         if (result) {
           if (result.isChild) {
+            newComment.replyUserName = replyTo.value.nickname
+            newComment.replyUserId = replyTo.value.userId
             result.parentComment.childComments.splice(result.childIndex + 1, 0, newComment)
+            result.parentComment.childCommentTotal = (result.parentComment.childCommentTotal || 0) + 1
           } else {
             if (!result.parentComment.childComments) {
               result.parentComment.childComments = []
@@ -786,6 +800,8 @@ const handlePublishComment = () => {
       }
 
       commentTotal.value += 1
+      currNote.value.commentTotal = commentTotal.value
+
 
       isInputFocused.value = false
       commentContent.value = ''
@@ -949,7 +965,9 @@ const handleDeleteComment = async (comment) => {
       const removedTotal = 1 + Number(comment.childCommentTotal || 0)
       commentTotal.value = Math.max(0, Number(commentTotal.value || 0) - removedTotal)
     }
+    currNote.value.commentTotal = commentTotal.value
     message.show('删除成功')
+
   } catch (error) {
     console.error('删除评论失败:', error)
     message.show('删除评论失败')

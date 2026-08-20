@@ -90,6 +90,15 @@ class NoteChangedContentSyncConsumerTest {
         verify(keyValueClient).deleteNoteContent("uuid-new");
     }
 
+    @Test
+    void shouldAcknowledgeCleanlyWhenContentTasksAreEmpty() {
+        consumer.onMessage(body(List.of()));
+
+        verify(noteDOMapper, never()).selectByPrimaryKey(anyLong());
+        verify(keyValueClient, never()).saveNoteContent(anyString(), anyString());
+        verify(keyValueClient, never()).deleteNoteContent(anyString());
+    }
+
     private String body(List<NoteContentTaskMqDTO> tasks) {
         return JsonUtils.toJsonString(NoteChangedEventMqDTO.builder()
                 .noteId(5L)

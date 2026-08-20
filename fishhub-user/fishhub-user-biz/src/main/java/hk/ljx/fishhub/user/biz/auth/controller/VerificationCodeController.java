@@ -29,9 +29,13 @@ public class VerificationCodeController {
     }
 
     /**
-     * 解析客户端 IP：优先取 X-Forwarded-For 首段，否则回退 getRemoteAddr()。
+     * 解析客户端 IP
      */
     private String resolveClientIp(HttpServletRequest request) {
+        String realIp = request.getHeader("X-Real-IP");
+        if (StringUtils.isNotBlank(realIp)) {
+            return realIp.trim();
+        }
         String forwarded = request.getHeader("X-Forwarded-For");
         if (StringUtils.isNotBlank(forwarded)) {
             return forwarded.split(",")[0].trim();

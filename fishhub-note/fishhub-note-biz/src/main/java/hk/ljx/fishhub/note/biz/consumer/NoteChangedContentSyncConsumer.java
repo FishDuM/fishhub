@@ -10,6 +10,8 @@ import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.kv.client.KeyValueClient;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import cn.hutool.core.collection.CollUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,7 @@ import java.util.Objects;
  * 写前校验 contentUuid 归属 + 写后复核，天然幂等于消息重投递。
  */
 @Component
+@Slf4j
 @RocketMQMessageListener(
         consumerGroup = "fishhub_group_" + MQConstants.TOPIC_NOTE_CHANGED + "_content_sync",
         topic = MQConstants.TOPIC_NOTE_CHANGED)
@@ -35,9 +38,12 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
     @Override
     public void onMessage(String body) {
         NoteChangedEventMqDTO event = JsonUtils.parseObject(body, NoteChangedEventMqDTO.class);
-        if (event == null || event.getNoteId() == null || event.getContentTasks() == null
-                || event.getContentTasks().isEmpty()) {
+        if (event == null || event.getNoteId() == null) {
             throw new IllegalArgumentException("笔记变更消息缺少必要字段");
+        }
+        if (CollUtil.isEmpty(event.getContentTasks())) {
+            log.info("笔记变更消息无正文同步任务，跳过同步, noteId={}", event.getNoteId());
+            return;
         }
         for (NoteContentTaskMqDTO task : event.getContentTasks()) {
             if (task == null || task.getNoteId() == null || StringUtils.isBlank(task.getContentUuid())

@@ -17,6 +17,9 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
     @Value("${spring.cassandra.port}")
     private int port;
 
+    @Value("${spring.cassandra.local-datacenter:datacenter1}")
+    private String localDataCenter;
+
     /*
      * Provide a keyspace name to the configuration.
      */
@@ -33,5 +36,10 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
     @Override
     public int getPort() {
         return port;
+    }
+
+    @Override
+    public String getLocalDataCenter() {
+        return localDataCenter;
     }
 }

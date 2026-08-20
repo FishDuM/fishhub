@@ -44,11 +44,11 @@ public class SentinelGatewayConfig {
     private final ServerCodecConfigurer serverCodecConfigurer;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${spring.cloud.sentinel.transport.dashboard:192.168.0.100:8858}")
+    @Value("${spring.cloud.sentinel.transport.dashboard:127.0.0.1:8858}")
     private String dashboard;
     @Value("${spring.cloud.sentinel.transport.port:8719}")
     private String apiPort;
-    @Value("${spring.cloud.sentinel.datasource.nacos.server-addr:192.168.0.100:8848}")
+    @Value("${spring.cloud.sentinel.datasource.nacos.server-addr:127.0.0.1:8848}")
     private String nacosServerAddr;
     @Value("${spring.cloud.sentinel.datasource.nacos.group-id:DEFAULT_GROUP}")
     private String nacosGroupId;

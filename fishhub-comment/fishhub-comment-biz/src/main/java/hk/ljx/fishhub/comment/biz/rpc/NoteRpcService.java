@@ -29,6 +29,9 @@ public class NoteRpcService {
     }
 
     public List<Long> findAccessibleNoteIds(List<Long> noteIds) {
+        if (noteIds == null || noteIds.isEmpty()) {
+            return Collections.emptyList();
+        }
         Response<List<Long>> response = noteFeignApi.findAccessibleNoteIds(noteIds);
         if (response == null || !response.isSuccess()) {
             throw new IllegalStateException("笔记批量访问鉴权服务调用失败");
@@ -40,10 +43,14 @@ public class NoteRpcService {
      * 仅供 MQ 消费端调用，服务端直接以 MySQL 当前状态裁决写权限。
      */
     public List<NoteWriteAccessCheckReqDTO> findWritableNoteAccesses(List<NoteWriteAccessCheckReqDTO> requests) {
+        if (requests == null || requests.isEmpty()) {
+            return Collections.emptyList();
+        }
         Response<List<NoteWriteAccessCheckReqDTO>> response = noteFeignApi.findWritableNoteAccesses(requests);
         if (response == null || !response.isSuccess()) {
             throw new IllegalStateException("笔记写权限鉴权服务调用失败");
         }
         return response.getData() == null ? Collections.emptyList() : response.getData();
     }
+
 }

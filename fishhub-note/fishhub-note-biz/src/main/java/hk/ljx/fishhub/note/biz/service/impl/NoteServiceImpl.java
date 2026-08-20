@@ -394,10 +394,8 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
             if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                // 计数已随 JSON 内嵌，命中路径免 count Feign；旧缓存缺计数时回填。
-                if (needsCountRefresh(findNoteDetailRspVO)) {
-                    fillNoteCounts(findNoteDetailRspVO);
-                }
+                // 实时回填最新计数
+                fillNoteCounts(findNoteDetailRspVO);
                 return Response.success(findNoteDetailRspVO);
             }
             LOCAL_CACHE.invalidate(noteId);
@@ -419,13 +417,12 @@ public class NoteServiceImpl implements NoteService {
                 // 写入本地缓存
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
-                // 计数已随 JSON 内嵌，命中路径免 count Feign；旧缓存缺计数时回填。
-                if (needsCountRefresh(findNoteDetailRspVO)) {
-                    fillNoteCounts(findNoteDetailRspVO);
-                }
+                // 实时回填最新计数
+                fillNoteCounts(findNoteDetailRspVO);
                 return Response.success(findNoteDetailRspVO);
             }
         }
+
 
         // 若 Redis 缓存中获取不到，则走数据库查询
         // 查询笔记

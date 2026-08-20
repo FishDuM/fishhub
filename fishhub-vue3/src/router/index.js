@@ -34,4 +34,12 @@ const router = createRouter({
   ]
 })
 
+router.beforeEach((to, from, next) => {
+  if (to.params && to.params.userId === 'undefined') {
+    next('/discover')
+    return
+  }
+  next()
+})
+
 export default router

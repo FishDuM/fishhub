@@ -5,10 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+
+import org.apache.commons.lang3.StringUtils;
 
 import static hk.ljx.framework.common.constant.GlobalConstants.USER_ID;
 import static hk.ljx.fishhub.gateway.auth.SaTokenConfigure.USER_ID_ATTR;
@@ -43,6 +46,23 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
                     requestBuilder.header(USER_ID, loginId.toString());
                 }
             }
+        }
+
+        // 注入真实客户端 IP 到 X-Real-IP 头（兼容 Nginx 反向代理）
+        HttpHeaders headers = exchange.getRequest().getHeaders();
+        String clientIp = headers == null ? null : headers.getFirst("X-Real-IP");
+        if (StringUtils.isBlank(clientIp) && headers != null) {
+            String forwarded = headers.getFirst("X-Forwarded-For");
+            if (StringUtils.isNotBlank(forwarded)) {
+                clientIp = forwarded.split(",")[0].trim();
+            }
+        }
+        if (StringUtils.isBlank(clientIp) && exchange.getRequest().getRemoteAddress() != null
+                && exchange.getRequest().getRemoteAddress().getAddress() != null) {
+            clientIp = exchange.getRequest().getRemoteAddress().getAddress().getHostAddress();
+        }
+        if (StringUtils.isNotBlank(clientIp)) {
+            requestBuilder.header("X-Real-IP", clientIp);
         }
 
         ServerWebExchange newExchange = exchange.mutate()

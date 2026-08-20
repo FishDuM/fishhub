@@ -33,7 +33,11 @@ public class LoginUserContextHolder {
         if (Objects.isNull(value)) {
             return null;
         }
-        return Long.valueOf(value.toString());
+        try {
+            return Long.valueOf(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
