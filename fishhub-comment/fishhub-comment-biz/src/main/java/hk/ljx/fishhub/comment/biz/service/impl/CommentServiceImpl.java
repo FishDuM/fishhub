@@ -39,9 +39,7 @@ import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.logging.log4j.util.Strings;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
+import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -128,7 +126,9 @@ public class CommentServiceImpl implements CommentService {
                 .creatorId(creatorId)
                 .build();
 
-        rocketMQTemplate.syncSend(MQConstants.TOPIC_PUBLISH_COMMENT, JsonUtils.toJsonString(publishCommentMqDTO));
+        // 异步发送发布评论 MQ（失败时同步重发一次）
+        String publishMsg = JsonUtils.toJsonString(publishCommentMqDTO);
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_PUBLISH_COMMENT, publishMsg, "发布评论");
 
         return Response.success(Long.valueOf(commentId));
     }
@@ -443,11 +443,8 @@ public class CommentServiceImpl implements CommentService {
 
         String hashKey = String.valueOf(userId);
 
-        try {
-            rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
-        } catch (RuntimeException e) {
-            throw new IllegalStateException("评论点赞消息发送失败", e);
-        }
+        // 异步顺序发送点赞 MQ（失败时同步重发一次）
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论点赞");
 
         // 实时更新点赞状态及计数
         commentLikeRealtimeService.markLiked(userId, commentId);
@@ -485,11 +482,8 @@ public class CommentServiceImpl implements CommentService {
 
         String hashKey = String.valueOf(userId);
 
-        try {
-            rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
-        } catch (RuntimeException e) {
-            throw new IllegalStateException("评论取消点赞消息发送失败", e);
-        }
+        // 异步顺序发送取消点赞 MQ（失败时同步重发一次）
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论取消点赞");
 
         // 实时更新点赞状态及计数
         commentLikeRealtimeService.markUnliked(userId, commentId);
@@ -642,7 +636,8 @@ public class CommentServiceImpl implements CommentService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(commentDO))
                 .build();
 
-        rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT, message);
+        // 异步发送删除评论 MQ（失败时同步重发一次）
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论");
 
         return Response.success();
     }

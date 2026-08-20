@@ -30,6 +30,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
+import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.stereotype.Service;
 
@@ -139,13 +140,8 @@ public class RelationServiceImpl implements RelationService {
         // 分区键
         String hashKey = String.valueOf(userId);
 
-        try {
-            rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
-        } catch (Exception e) {
-            // Redis 是加速层；发送失败时清空本次关系缓存，后续从 MySQL 重新加载。
-            stringRedisTemplate.delete(followingRedisKey);
-            throw new IllegalStateException("关注消息发送失败", e);
-        }
+        // 异步顺序发送关注 MQ（失败时同步重发一次）
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "关注用户");
 
         return Response.success();
     }
@@ -232,12 +228,8 @@ public class RelationServiceImpl implements RelationService {
 
         String hashKey = String.valueOf(userId);
 
-        try {
-            rocketMQTemplate.syncSendOrderly(destination, message, hashKey);
-        } catch (Exception e) {
-            stringRedisTemplate.delete(followingRedisKey);
-            throw new IllegalStateException("取关消息发送失败", e);
-        }
+        // 异步顺序发送取关 MQ（失败时同步重发一次）
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "取关用户");
 
         return Response.success();
     }

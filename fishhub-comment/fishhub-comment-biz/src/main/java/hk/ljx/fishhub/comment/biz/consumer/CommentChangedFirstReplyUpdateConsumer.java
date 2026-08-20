@@ -14,9 +14,11 @@ import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -138,11 +140,9 @@ public class CommentChangedFirstReplyUpdateConsumer implements RocketMQListener<
                     RandomUtil.randomInt(1, 5 * 60 * 60),
                     TimeUnit.SECONDS);
             stringRedisTemplate.delete(RedisKeyConstants.buildCommentDetailKey(commentId));
-            try {
-                rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE, String.valueOf(commentId));
-            } catch (Exception e) {
-                log.warn("评论本地缓存失效消息发送失败, commentId={}", commentId, e);
-            }
+            // 异步广播失效本地缓存
+            RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT_LOCAL_CACHE,
+                    String.valueOf(commentId), "评论本地缓存失效");
         });
     }
 }

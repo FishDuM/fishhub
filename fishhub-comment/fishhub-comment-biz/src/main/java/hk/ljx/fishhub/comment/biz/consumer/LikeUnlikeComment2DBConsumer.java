@@ -15,9 +15,11 @@ import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import lombok.extern.slf4j.Slf4j;
+import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
@@ -171,10 +173,10 @@ public class LikeUnlikeComment2DBConsumer {
                 appliedCommentIds.addAll(persistenceService.applyBatch(persistOps));
             }
 
-            // 触发热度更新
+            // 异步触发热度更新
             if (CollUtil.isNotEmpty(appliedCommentIds)) {
                 Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(appliedCommentIds)).build();
-                rocketMQTemplate.syncSend(MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage);
+                RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage, "评论热度更新");
             }
 
             return true;

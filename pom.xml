@@ -45,12 +45,14 @@
     <properties>
         <!-- 项目版本号 -->
         <revision>0.0.1-SNAPSHOT</revision>
-        <!-- JDK 版本 -->
-        <java.version>17</java.version>
+        <!-- JDK 21：虚拟线程等 API 依赖 Java 21，编译/运行/字节码均使用 21（Spring Boot 3.2+ 支持 class major 65） -->
+        <java.version>21</java.version>
+
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <!-- 项目编码 -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
 
         <!-- Maven 相关版本号 -->
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -58,9 +60,10 @@
         <flatten-maven-plugin.version>1.5.0</flatten-maven-plugin.version>
 
         <!-- 依赖包版本 -->
-        <spring-boot.version>3.0.2</spring-boot.version>
-        <spring-cloud-alibaba.version>2022.0.0.0</spring-cloud-alibaba.version>
-        <spring-cloud.version>2022.0.0</spring-cloud.version>
+        <spring-boot.version>3.2.5</spring-boot.version>
+        <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
+        <spring-cloud.version>2023.0.1</spring-cloud.version>
+        <mybatis-spring-boot.version>3.0.4</mybatis-spring-boot.version>
         <lombok.version>1.18.30</lombok.version>
         <jackson.version>2.16.1</jackson.version>
         <mysql-connector-java.version>8.0.29</mysql-connector-java.version>
@@ -77,14 +80,16 @@
         <activation.version>1.1.1</activation.version>
         <jaxb-runtime.version>2.3.3</jaxb-runtime.version>
         <feign-form.version>3.8.0</feign-form.version>
+        <feign-hc5.version>13.2.1</feign-hc5.version>
         <caffeine.version>3.1.8</caffeine.version>
+
         <rocketmq.version>2.2.3</rocketmq.version>
         <rocketmq-client.version>4.9.4</rocketmq-client.version>
         <xxl-job.version>2.4.1</xxl-job.version>
         <elasticsearch.version>7.3.0</elasticsearch.version>
         <canal.version>1.1.7</canal.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
-        <!-- 覆盖 SCA BOM 中 sentinel 版本，1.8.8 起支持 Spring Boot 3 / Spring Cloud Gateway 4 -->
+        <!-- 覆盖 SCA BOM 中 sentinel 1.8.6；1.8.8 适配 Spring Cloud Gateway 4.1 / Spring Boot 3.2 -->
         <sentinel.version>1.8.8</sentinel.version>
     </properties>
 
@@ -183,15 +188,10 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- Sentinel 组件版本管理（显式覆盖 SCA BOM 中的 1.8.6，需声明在 BOM import 之前） -->
+            <!-- Sentinel 组件版本管理（1.8.8 适配 Spring Cloud Gateway 4.1 / Spring Boot 3.2） -->
             <dependency>
                 <groupId>com.alibaba.csp</groupId>
-                <artifactId>sentinel-spring-cloud-gateway-adapter</artifactId>
-                <version>${sentinel.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.alibaba.csp</groupId>
-                <artifactId>sentinel-api-gateway-adapter-common</artifactId>
+                <artifactId>sentinel-core</artifactId>
                 <version>${sentinel.version}</version>
             </dependency>
             <dependency>
@@ -201,7 +201,22 @@
             </dependency>
             <dependency>
                 <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-datasource-extension</artifactId>
+                <version>${sentinel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
                 <artifactId>sentinel-datasource-nacos</artifactId>
+                <version>${sentinel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-spring-cloud-gateway-adapter</artifactId>
+                <version>${sentinel.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.csp</groupId>
+                <artifactId>sentinel-api-gateway-adapter-common</artifactId>
                 <version>${sentinel.version}</version>
             </dependency>
 
@@ -247,7 +262,7 @@
             <dependency>
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
-                <version>${spring-boot.version}</version>
+                <version>${mybatis-spring-boot.version}</version>
             </dependency>
 
             <!-- MySQL 驱动 -->
@@ -354,7 +369,16 @@
                 <version>${feign-form.version}</version>
             </dependency>
 
+            <!-- Feign Apache HttpClient 5 连接池 -->
+            <dependency>
+                <groupId>io.github.openfeign</groupId>
+                <artifactId>feign-hc5</artifactId>
+                <version>${feign-hc5.version}</version>
+            </dependency>
+
+
             <!-- Caffeine 本地缓存 -->
+
             <dependency>
                 <groupId>com.github.ben-manes.caffeine</groupId>
                 <artifactId>caffeine</artifactId>
@@ -371,6 +395,28 @@
             <dependency>
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-client</artifactId>
+                <version>${rocketmq-client.version}</version>
+            </dependency>
+
+            <!-- RocketMQ 4.x 核心依赖版本对齐 -->
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-acl</artifactId>
+                <version>${rocketmq-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-remoting</artifactId>
+                <version>${rocketmq-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-srvutil</artifactId>
+                <version>${rocketmq-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-logging</artifactId>
                 <version>${rocketmq-client.version}</version>
             </dependency>
 

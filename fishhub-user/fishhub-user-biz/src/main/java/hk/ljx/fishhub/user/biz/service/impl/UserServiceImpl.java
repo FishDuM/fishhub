@@ -45,8 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
+import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.SessionCallback;
@@ -197,34 +196,20 @@ public class UserServiceImpl implements UserService {
             // 延时双删
             sendDelayDeleteUserRedisCacheMQ(userId);
 
-            // 广播用于清理其他节点的本地缓存；失败不应影响已经成功的资料更新。
-            try {
-                rocketMQTemplate.syncSend(MQConstants.TOPIC_DELETE_USER_LOCAL_CACHE, String.valueOf(userId));
-            } catch (Exception e) {
-                log.error("发送本地缓存清理消息失败, userId: {}", userId, e);
-            }
+            // 异步广播清理本地缓存
+            RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_DELETE_USER_LOCAL_CACHE,
+                    String.valueOf(userId), "清理用户本地缓存");
         }
         return Response.success();
     }
 
     /**
      * 异步发送延时消息
-     * @param userId
      */
     private void sendDelayDeleteUserRedisCacheMQ(Long userId) {
         Message<String> message = MessageBuilder.withPayload(String.valueOf(userId)).build();
-        rocketMQTemplate.asyncSend(MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE, message, new SendCallback() {
-                    @Override
-                    public void onSuccess(SendResult sendResult) {
-                    }
-                    @Override
-                    public void onException(Throwable e) {
-                        log.error("## 延时删除 Redis 用户缓存消息发送失败...", e);
-                    }
-                },
-                3000, // 超时时间
-                1 // 延迟级别，1 表示延时 1s
-        );
+        RocketMqHelper.asyncSendDelay(rocketMQTemplate, MQConstants.TOPIC_DELAY_DELETE_USER_REDIS_CACHE,
+                message, 3000, 1, "延时删除 Redis 用户缓存");
     }
 
     /**

@@ -4,7 +4,7 @@ FishHub 是一个基于 Spring Boot 3、Spring Cloud Alibaba 和 Vue 3 的社区
 
 ## 本地环境
 
-- JDK 17
+- JDK 21（编译/运行/字节码均为 21；平台：Spring Boot 3.2.5 + Spring Cloud 2023.0.1 + Spring Cloud Alibaba 2023.0.1.0）
 - Maven 3.8+
 - Node.js 18+
 - MySQL 8、Redis（含 RedisBloom 模块）、RocketMQ、Canal、Elasticsearch 7.3、Cassandra、MinIO、Nacos、ZooKeeper

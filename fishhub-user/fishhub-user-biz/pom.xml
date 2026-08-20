@@ -132,6 +132,12 @@
             </exclusions>
         </dependency>
 
+        <!-- MQ 组件 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
+        </dependency>
+
         <!-- Rocket MQ -->
         <dependency>
             <groupId>org.apache.rocketmq</groupId>
@@ -187,7 +193,11 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>hk.ljx.fishhub.user.biz.FishhubUserBizApplication</mainClass>
+                </configuration>
             </plugin>
+
             <!-- 代码生成器 -->
             <plugin>
                 <groupId>org.mybatis.generator</groupId>
