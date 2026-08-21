@@ -209,19 +209,27 @@ public class CommentServiceImpl implements CommentService {
                     }
                 }
 
-                // 若存在已命中的本地缓存数据，转换为实体类添加到 VO 返参集合中
+                // 若存在已命中的本地缓存数据，转换为实体类放入 Map
+                Map<Long, FindCommentItemRspVO> detailMap = new HashMap<>();
                 if (CollUtil.isNotEmpty(commentIdAndDetailJsonMap)) {
-                    for (String value : commentIdAndDetailJsonMap.values()) {
+                    for (Map.Entry<Long, String> entry : commentIdAndDetailJsonMap.entrySet()) {
+                        String value = entry.getValue();
                         if (StringUtils.isBlank(value)) continue;
                         FindCommentItemRspVO commentRspVO = JsonUtils.parseObject(value, FindCommentItemRspVO.class);
                         if (commentRspVO != null) {
-                            commentRspVOS.add(commentRspVO);
+                            detailMap.put(entry.getKey(), commentRspVO);
                         }
                     }
                 }
 
-                // 若 localCacheExpiredCommentIds 大小等于 0，说明评论详情数据都在本地缓存中，直接响应返参
-                if (CollUtil.size(localCacheExpiredCommentIds) == 0) {
+                // 若 localCacheExpiredCommentIds 大小等于 0，说明评论详情数据都在本地缓存中，直接按原始顺序返参
+                if (CollUtil.isEmpty(localCacheExpiredCommentIds)) {
+                    for (Long commentId : localCacheKeys) {
+                        FindCommentItemRspVO vo = detailMap.get(commentId);
+                        if (vo != null) {
+                            commentRspVOS.add(vo);
+                        }
+                    }
                     boolean missingCount = commentRspVOS.stream().anyMatch(vo -> vo.getLikeTotal() == null);
                     if (missingCount && CollUtil.isNotEmpty(commentRspVOS)) {
                         setCommentCountData(commentRspVOS, localCacheExpiredCommentIds);
@@ -245,9 +253,11 @@ public class CommentServiceImpl implements CommentService {
                     String commentJson = commentsJsonList.get(i);
                     Long commentId = localCacheExpiredCommentIds.get(i);
                     if (Objects.nonNull(commentJson)) {
-                        // 缓存中存在的评论 Json，直接转换为 VO 添加到返参集合中
+                        // 缓存中存在的评论 Json，直接转换为 VO
                         FindCommentItemRspVO commentRspVO = JsonUtils.parseObject(commentJson, FindCommentItemRspVO.class);
-                        commentRspVOS.add(commentRspVO);
+                        if (commentRspVO != null) {
+                            detailMap.put(commentId, commentRspVO);
+                        }
                     } else {
                         // 评论失效，添加到失效评论列表
                         expiredCommentIds.add(commentId);
@@ -255,21 +265,30 @@ public class CommentServiceImpl implements CommentService {
                 }
 
                 // 对于缓存中存在的评论详情, 需要再次查询其计数数据
-                if (CollUtil.isNotEmpty(commentRspVOS)) {
-                    setCommentCountData(commentRspVOS, expiredCommentIds);
+                if (CollUtil.isNotEmpty(detailMap)) {
+                    setCommentCountData(new ArrayList<>(detailMap.values()), expiredCommentIds);
                 }
 
-                // 对于不存在的一级评论，需要批量从数据库中查询，并添加到 commentRspVOS 中
+                // 对于不存在的一级评论，需要批量从数据库中查询，并添加到 detailMap 中
                 if (CollUtil.isNotEmpty(expiredCommentIds)) {
                     List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredCommentIds);
-                    getCommentDataAndSync2Redis(commentDOS, noteId, commentRspVOS);
+                    List<FindCommentItemRspVO> dbFetchedVOs = Lists.newArrayList();
+                    getCommentDataAndSync2Redis(commentDOS, noteId, dbFetchedVOs);
+                    for (FindCommentItemRspVO vo : dbFetchedVOs) {
+                        if (vo != null && vo.getCommentId() != null) {
+                            detailMap.put(vo.getCommentId(), vo);
+                        }
+                    }
+                }
+
+                // 严格按照原始 ZSet 有序 ID 列表组装返回集合，保留原有热度顺序
+                for (Long commentId : localCacheKeys) {
+                    FindCommentItemRspVO vo = detailMap.get(commentId);
+                    if (vo != null) {
+                        commentRspVOS.add(vo);
+                    }
                 }
             }
-
-            // 按热度值进行降序排列
-            commentRspVOS = commentRspVOS.stream()
-                    .sorted(Comparator.comparing(FindCommentItemRspVO::getHeat).reversed())
-                    .collect(Collectors.toList());
 
             // 异步将评论详情，同步到本地缓存
             syncCommentDetail2LocalCache(commentRspVOS);

@@ -14,6 +14,7 @@ import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserNoteListService {
@@ -58,18 +60,29 @@ public class UserNoteListService {
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
-        Map<Long, FindUserByIdRspDTO> users = userClient.findByIds(noteDOS.stream()
-                .map(NoteDO::getCreatorId).distinct().toList()).stream()
-                .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
-        notes.forEach(note -> {
-            FindUserByIdRspDTO user = users.get(note.getCreatorId());
-            if (user != null) {
-                note.setNickname(user.getNickName());
-                note.setAvatar(user.getAvatar());
+        try {
+            List<FindUserByIdRspDTO> userList = userClient.findByIds(noteDOS.stream()
+                    .map(NoteDO::getCreatorId).distinct().toList());
+            if (CollUtil.isNotEmpty(userList)) {
+                Map<Long, FindUserByIdRspDTO> users = userList.stream()
+                        .collect(Collectors.toMap(FindUserByIdRspDTO::getId, user -> user, (left, right) -> left));
+                notes.forEach(note -> {
+                    FindUserByIdRspDTO user = users.get(note.getCreatorId());
+                    if (user != null) {
+                        note.setNickname(user.getNickName());
+                        note.setAvatar(user.getAvatar());
+                    }
+                });
             }
-        });
+        } catch (Exception e) {
+            log.warn("RPC 调用用户服务批量获取用户信息失败，执行降级处理", e);
+        }
 
-        applyLikeTotals(notes, countClient.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
+        try {
+            applyLikeTotals(notes, countClient.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
+        } catch (Exception e) {
+            log.warn("RPC 调用计数服务批量获取点赞数失败，执行降级处理", e);
+        }
         applyLikeState(notes);
         NoteDO lastNote = noteDOS.get(noteDOS.size() - 1);
         return Response.success(FindNoteActionListRspVO.builder()

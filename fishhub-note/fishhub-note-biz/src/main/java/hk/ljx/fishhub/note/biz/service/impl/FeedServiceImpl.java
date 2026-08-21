@@ -205,16 +205,23 @@ public class FeedServiceImpl implements FeedService {
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
-        Map<Long, FindUserByIdRspDTO> users = userClient.findByIds(noteDOS.stream()
-                        .map(NoteDO::getCreatorId).distinct().toList())
-                .stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, Function.identity(), (left, right) -> left));
-        notes.forEach(note -> {
-            FindUserByIdRspDTO user = users.get(note.getCreatorId());
-            if (user != null) {
-                note.setNickname(user.getNickName());
-                note.setAvatar(user.getAvatar());
+        try {
+            List<FindUserByIdRspDTO> userList = userClient.findByIds(noteDOS.stream()
+                    .map(NoteDO::getCreatorId).distinct().toList());
+            if (CollUtil.isNotEmpty(userList)) {
+                Map<Long, FindUserByIdRspDTO> users = userList.stream()
+                        .collect(Collectors.toMap(FindUserByIdRspDTO::getId, Function.identity(), (left, right) -> left));
+                notes.forEach(note -> {
+                    FindUserByIdRspDTO user = users.get(note.getCreatorId());
+                    if (user != null) {
+                        note.setNickname(user.getNickName());
+                        note.setAvatar(user.getAvatar());
+                    }
+                });
             }
-        });
+        } catch (Exception e) {
+            log.warn("RPC 调用用户服务批量获取用户信息失败，发现页列表执行降级", e);
+        }
         return notes;
     }
 
@@ -259,8 +266,13 @@ public class FeedServiceImpl implements FeedService {
     }
 
     private List<FindNoteCountsByIdRspDTO> safeCounts(List<Long> noteIds) {
-        List<FindNoteCountsByIdRspDTO> counts = countClient.findByNoteIds(noteIds);
-        return counts == null ? Collections.emptyList() : counts;
+        try {
+            List<FindNoteCountsByIdRspDTO> counts = countClient.findByNoteIds(noteIds);
+            return counts == null ? Collections.emptyList() : counts;
+        } catch (Exception e) {
+            log.warn("RPC 调用计数服务批量获取点赞数失败，发现页列表执行降级默认值 0", e);
+            return Collections.emptyList();
+        }
     }
 
     private String discoverFeedVersion(Long channelId) {

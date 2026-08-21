@@ -64,7 +64,7 @@ public class AuthServiceImpl implements AuthService {
 
                 Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
 
-                verifyVerificationCode(phone, verificationCode);
+                verifyAndConsumeVerificationCode(phone, verificationCode);
 
                 ResolveLoginableUserRspDTO resolvedUser = userRpcService.resolveOrRegisterLoginableUser(phone);
 
@@ -75,7 +75,6 @@ public class AuthServiceImpl implements AuthService {
                     throw new BizException(ResponseCodeEnum.ACCOUNT_NOT_LOGINABLE);
                 }
 
-                deleteVerificationCode(phone);
                 userId = resolvedUser.getUserId();
                 break;
             case PASSWORD: // 密码登录
@@ -151,29 +150,24 @@ public class AuthServiceImpl implements AuthService {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        verifyVerificationCode(phone, verificationCode);
+        verifyAndConsumeVerificationCode(phone, verificationCode);
 
         String newPassword = updatePasswordReqVO.getNewPassword();
         String encodePassword = passwordEncoder.encode(newPassword);
 
         userRpcService.updatePassword(encodePassword);
-        deleteVerificationCode(phone);
 
         StpUtil.logout(LoginUserContextHolder.getUserId());
 
         return Response.success();
     }
 
-    private void verifyVerificationCode(String phone, String verificationCode) {
+    private void verifyAndConsumeVerificationCode(String phone, String verificationCode) {
         String key = RedisKeyConstants.buildVerificationCodeKey(phone);
-        String code = stringRedisTemplate.opsForValue().get(key);
-        if (StringUtils.isBlank(code) || !StringUtils.equals(code, verificationCode)) {
+        Long result = stringRedisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT, Collections.singletonList(key), verificationCode);
+        if (!Objects.equals(result, 1L)) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
         }
-    }
-
-    private void deleteVerificationCode(String phone) {
-        stringRedisTemplate.delete(RedisKeyConstants.buildVerificationCodeKey(phone));
     }
 
 }

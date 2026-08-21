@@ -8,6 +8,7 @@
                n.video_uri as video_uri,
                DATE_FORMAT(n.create_time, '%Y-%m-%d %H:%i:%s') AS create_time,
                DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
+               IFNULL(UNIX_TIMESTAMP(n.update_time) * 1000, 1) AS update_time_millis,
                u.nickname AS nickname, u.avatar AS avatar,
                 IFNULL(nc.like_total, 0) as like_total,
                 IFNULL(nc.collect_total, 0) as collect_total,
@@ -26,6 +27,7 @@
 
     <select id="selectEsUserIndexData" resultType="map" parameterType="map">
         select u.id, u.nickname, u.avatar, u.fishhub_id,
+        IFNULL(UNIX_TIMESTAMP(u.update_time) * 1000, 1) AS update_time_millis,
         IFNULL(uc.note_total, 0) as note_total,
         IFNULL(uc.fans_total, 0) as fans_total
         from fishhub_user.t_user u
@@ -42,6 +44,7 @@
                n.video_uri as video_uri,
                DATE_FORMAT(n.create_time, '%Y-%m-%d %H:%i:%s') AS create_time,
                DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
+               IFNULL(UNIX_TIMESTAMP(n.update_time) * 1000, 1) AS update_time_millis,
                u.nickname AS nickname, u.avatar AS avatar,
                 IFNULL(nc.like_total, 0) as like_total,
                 IFNULL(nc.collect_total, 0) as collect_total,
@@ -63,6 +66,7 @@
 
     <select id="selectEsUserIndexDataByIds" resultType="map">
         select u.id, u.nickname, u.avatar, u.fishhub_id,
+        IFNULL(UNIX_TIMESTAMP(u.update_time) * 1000, 1) AS update_time_millis,
         IFNULL(uc.note_total, 0) as note_total,
         IFNULL(uc.fans_total, 0) as fans_total
         from fishhub_user.t_user u

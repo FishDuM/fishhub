@@ -5,12 +5,15 @@ import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.index.VersionType;
+import org.elasticsearch.rest.RestStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -173,7 +176,15 @@ public class EsIndexSyncAggregator {
                 // 笔记已不可检索（删除/下架/私密），从索引移除
                 bulk.add(new DeleteRequest(NoteIndex.NAME, String.valueOf(noteId)));
             } else {
-                bulk.add(new IndexRequest(NoteIndex.NAME).id(String.valueOf(noteId)).source(row));
+                IndexRequest request = new IndexRequest(NoteIndex.NAME).id(String.valueOf(noteId)).source(row);
+                Object versionObj = row.get("update_time_millis");
+                if (versionObj != null) {
+                    long version = Long.parseLong(String.valueOf(versionObj));
+                    if (version > 0) {
+                        request.version(version).versionType(VersionType.EXTERNAL);
+                    }
+                }
+                bulk.add(request);
             }
         }
         submitInBatches(bulk);
@@ -187,7 +198,15 @@ public class EsIndexSyncAggregator {
             if (row == null) {
                 bulk.add(new DeleteRequest(UserIndex.NAME, String.valueOf(userId)));
             } else {
-                bulk.add(new IndexRequest(UserIndex.NAME).id(String.valueOf(userId)).source(row));
+                IndexRequest request = new IndexRequest(UserIndex.NAME).id(String.valueOf(userId)).source(row);
+                Object versionObj = row.get("update_time_millis");
+                if (versionObj != null) {
+                    long version = Long.parseLong(String.valueOf(versionObj));
+                    if (version > 0) {
+                        request.version(version).versionType(VersionType.EXTERNAL);
+                    }
+                }
+                bulk.add(request);
             }
         }
         submitInBatches(bulk);
@@ -231,7 +250,22 @@ public class EsIndexSyncAggregator {
         }
         BulkResponse response = restHighLevelClient.bulk(part, RequestOptions.DEFAULT);
         if (response.hasFailures()) {
-            throw new IllegalStateException("ES 批量同步部分失败: " + response.buildFailureMessage());
+            boolean hasRealFailure = false;
+            StringBuilder errorMsg = new StringBuilder();
+            for (BulkItemResponse item : response.getItems()) {
+                if (item.isFailed()) {
+                    // 外部版本冲突说明当前 ES 已有更新的数据版本，跳过不报错
+                    if (item.getFailure().getStatus() == RestStatus.CONFLICT) {
+                        log.debug("ES 同步外部版本冲突（已有更新版本），跳过: {}", item.getFailureMessage());
+                        continue;
+                    }
+                    hasRealFailure = true;
+                    errorMsg.append(item.getFailureMessage()).append("; ");
+                }
+            }
+            if (hasRealFailure) {
+                throw new IllegalStateException("ES 批量同步部分失败: " + errorMsg);
+            }
         }
     }
 }
