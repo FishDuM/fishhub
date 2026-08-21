@@ -634,12 +634,15 @@ public class UserServiceImpl implements UserService {
             Long collectTotal = findUserCountsByIdRspDTO.getCollectTotal();
             Long noteTotal = findUserCountsByIdRspDTO.getNoteTotal();
 
-            findUserProfileRspVO.setFansTotal(NumberUtils.formatNumberString(fansTotal));
-            findUserProfileRspVO.setFollowingTotal(NumberUtils.formatNumberString(followingTotal));
-            findUserProfileRspVO.setLikeAndCollectTotal(NumberUtils.formatNumberString(likeTotal + collectTotal));
-            findUserProfileRspVO.setNoteTotal(NumberUtils.formatNumberString(noteTotal));
-            findUserProfileRspVO.setLikeTotal(NumberUtils.formatNumberString(likeTotal));
-            findUserProfileRspVO.setCollectTotal(NumberUtils.formatNumberString(collectTotal));
+            long safeLike = likeTotal == null ? 0L : likeTotal;
+            long safeCollect = collectTotal == null ? 0L : collectTotal;
+
+            findUserProfileRspVO.setFansTotal(NumberUtils.formatNumberString(fansTotal == null ? 0L : fansTotal));
+            findUserProfileRspVO.setFollowingTotal(NumberUtils.formatNumberString(followingTotal == null ? 0L : followingTotal));
+            findUserProfileRspVO.setLikeAndCollectTotal(NumberUtils.formatNumberString(safeLike + safeCollect));
+            findUserProfileRspVO.setNoteTotal(NumberUtils.formatNumberString(noteTotal == null ? 0L : noteTotal));
+            findUserProfileRspVO.setLikeTotal(NumberUtils.formatNumberString(safeLike));
+            findUserProfileRspVO.setCollectTotal(NumberUtils.formatNumberString(safeCollect));
         }
     }
 

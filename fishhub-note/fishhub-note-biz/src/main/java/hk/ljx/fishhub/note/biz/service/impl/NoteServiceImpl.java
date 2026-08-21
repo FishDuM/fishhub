@@ -432,12 +432,13 @@ public class NoteServiceImpl implements NoteService {
 
         // 若该笔记不存在，则抛出业务异常
         if (Objects.isNull(noteDO)) {
-            threadPoolTaskExecutor.execute(() -> {
-                // 防止缓存穿透，将空数据存入 Redis 缓存 (过期时间不宜设置过长)
-                // 保底1分钟 + 随机秒数
+            try {
+                // 防止缓存穿透，同步将空数据存入 Redis 缓存 (过期时间不宜设置过长)
                 long expireSeconds = CacheTtl.minutes(1, 1);
                 stringRedisTemplate.opsForValue().set(noteDetailRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
-            });
+            } catch (Exception e) {
+                log.warn("Redis 不可用，写入防穿透空值缓存失败, noteId={}", noteId, e);
+            }
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
 
@@ -504,6 +505,11 @@ public class NoteServiceImpl implements NoteService {
         // 异步线程中将笔记详情存入 Redis
         threadPoolTaskExecutor.submit(() -> {
             try {
+                // 如果笔记包含正文但正文尚未异步落库完毕（content == null），不写入详情缓存，避免产生长达一分钟的正文空白缓存污染
+                if (Objects.equals(noteDO.getIsContentEmpty(), Boolean.FALSE) && StringUtils.isBlank(findNoteDetailRspVO.getContent())) {
+                    log.warn("笔记正文尚未就绪，跳过详情缓存写入, noteId={}", noteId);
+                    return;
+                }
                 String freshNoteDetailJson = JsonUtils.toJsonString(findNoteDetailRspVO);
                 long expireSeconds = CacheTtl.basePlusRandom(30, 60);
                 stringRedisTemplate.opsForValue().set(noteDetailRedisKey, freshNoteDetailJson, expireSeconds, TimeUnit.SECONDS);
@@ -770,7 +776,6 @@ public class NoteServiceImpl implements NoteService {
      * @return
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Response<?> visibleOnlyMe(UpdateNoteVisibleOnlyMeReqVO updateNoteVisibleOnlyMeReqVO) {
         return updateVisibility(UpdateNoteVisibilityReqVO.builder()
                 .id(updateNoteVisibleOnlyMeReqVO.getId())
@@ -779,7 +784,6 @@ public class NoteServiceImpl implements NoteService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Response<?> updateVisibility(UpdateNoteVisibilityReqVO request) {
         Long noteId = request.getId();
         Integer visible = request.getVisible();
@@ -808,16 +812,22 @@ public class NoteServiceImpl implements NoteService {
                 .updateTime(LocalDateTime.now())
                 .build();
 
-        int count = noteDOMapper.updateVisibility(noteDO);
+        NoteChangedEventMqDTO event = NoteChangedEventMqDTO.builder()
+                .creatorId(selectNoteDO.getCreatorId())
+                .noteId(noteId)
+                .changeType(NoteOperateEnum.UPDATE.getCode())
+                .contentTasks(List.of())
+                .build();
 
-        // 若影响的行数为 0，则表示该笔记无法修改可见性
-        if (count == 0) {
-            throw new BizException(ResponseCodeEnum.NOTE_CANT_VISIBLE_ONLY_ME);
-        }
+        // 可见性变更经由事务消息分发变更事件，确保下游（如 Elasticsearch）及时同步下架/上架状态
+        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_NOTE_CHANGED, JsonUtils.toJsonString(event),
+                txId -> {
+                    notePersistenceService.updateNoteVisibility(noteDO, txId);
+                    return true;
+                });
 
-        // 可见性变更无跨服务事件；共享 Redis 缓存提交后于本进程内失效，
-        // 各节点本地缓存由读路径的最小事实校验兜底。
-        registerPostCommitCacheInvalidation(currUserId, noteId, selectNoteDO.getChannelId());
+        invalidateNoteRedisCaches(currUserId, noteId, selectNoteDO.getChannelId());
+        LOCAL_CACHE.invalidate(noteId);
 
         return Response.success();
     }

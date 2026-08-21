@@ -50,4 +50,15 @@ public class NotePersistenceService {
         }
         txJournalStore.record(txId);
     }
+
+    /**
+     * 修改笔记可见性。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateNoteVisibility(NoteDO note, String txId) {
+        if (noteDOMapper.updateVisibility(note) != 1) {
+            throw new BizException(ResponseCodeEnum.NOTE_CANT_VISIBLE_ONLY_ME);
+        }
+        txJournalStore.record(txId);
+    }
 }
