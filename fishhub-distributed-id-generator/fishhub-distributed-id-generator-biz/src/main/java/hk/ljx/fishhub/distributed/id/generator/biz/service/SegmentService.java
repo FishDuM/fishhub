@@ -5,7 +5,6 @@ import hk.ljx.fishhub.distributed.id.generator.biz.constant.Constants;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.IDGen;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.PropertyFactory;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Result;
-import hk.ljx.fishhub.distributed.id.generator.biz.core.common.ZeroIDGen;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.segment.SegmentIDGenImpl;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.segment.dao.IDAllocDao;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.segment.dao.impl.IDAllocDaoImpl;
@@ -49,12 +48,15 @@ public class SegmentService {
                 throw new InitException("Segment Service Init Fail");
             }
         } else {
-            idGen = new ZeroIDGen();
-            logger.info("Zero ID Gen Service Init Successfully");
+            logger.warn("Segment Service is disabled");
+            idGen = null;
         }
     }
 
     public Result getId(String key) {
+        if (idGen == null) {
+            throw new IllegalStateException("segment id generation is disabled");
+        }
         return idGen.get(key);
     }
 

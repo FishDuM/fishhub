@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
+import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentHeatBO;
 import hk.ljx.fishhub.comment.biz.util.HeatCalculator;
 import hk.ljx.framework.common.util.RedisScriptHelper;
@@ -17,6 +18,7 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -48,9 +50,17 @@ public class CommentHeatService {
             return;
         }
 
+        List<CommentDO> levelOneComments = commentDOS.stream()
+                .filter(commentDO -> Objects.equals(commentDO.getLevel(), CommentLevelEnum.ONE.getCode()))
+                .toList();
+        if (levelOneComments.isEmpty()) {
+            log.info("==> 热度请求中没有一级评论，忽略本次热度更新, commentIds: {}", commentIds);
+            return;
+        }
+
         List<Long> ids = Lists.newArrayList();
         List<CommentHeatBO> commentBOS = Lists.newArrayList();
-        commentDOS.forEach(commentDO -> {
+        levelOneComments.forEach(commentDO -> {
             BigDecimal heatNum = HeatCalculator.calculateHeat(
                     commentDO.getLikeTotal(), commentDO.getChildCommentTotal());
             ids.add(commentDO.getId());

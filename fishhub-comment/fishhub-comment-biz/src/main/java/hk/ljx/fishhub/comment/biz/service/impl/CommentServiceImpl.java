@@ -816,8 +816,8 @@ public class CommentServiceImpl implements CommentService {
                             // 添加 Hash 数据
                             operations.opsForHash().putAll(key, fieldsMap);
 
-                            // 设置随机过期时间 (5小时以内)
-                            long expireTime = CacheTtl.hours(0, 5);
+                            // 设置随机过期时间 (1~5小时)
+                            long expireTime = CacheTtl.hours(1, 4);
                             operations.expire(key, expireTime, TimeUnit.SECONDS);
                         });
                         return null;
@@ -1427,7 +1427,7 @@ public class CommentServiceImpl implements CommentService {
                 }
 
                 // 设置随机过期时间，单位：秒
-                long randomExpiryTime = CacheTtl.hours(0, 5); // 5小时以内
+                long randomExpiryTime = CacheTtl.hours(1, 4); // 1~5小时
                 stringRedisTemplate.expire(key, randomExpiryTime, TimeUnit.SECONDS);
                 return null; // 无返回值
             });

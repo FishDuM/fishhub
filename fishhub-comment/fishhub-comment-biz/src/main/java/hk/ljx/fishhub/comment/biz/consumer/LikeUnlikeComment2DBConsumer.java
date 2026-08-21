@@ -7,6 +7,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
+import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
@@ -191,7 +192,10 @@ public class LikeUnlikeComment2DBConsumer {
             // 异步触发热度更新（仅对仍存在的一级/有效评论发送，避免对已删评论空转重算）
             if (CollUtil.isNotEmpty(appliedCommentIds)) {
                 Set<Long> validAppliedCommentIds = appliedCommentIds.stream()
-                        .filter(comments::containsKey)
+                        .filter(commentId -> {
+                            CommentDO comment = comments.get(commentId);
+                            return comment != null && Objects.equals(comment.getLevel(), CommentLevelEnum.ONE.getCode());
+                        })
                         .collect(Collectors.toSet());
                 if (CollUtil.isNotEmpty(validAppliedCommentIds)) {
                     Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(validAppliedCommentIds)).build();

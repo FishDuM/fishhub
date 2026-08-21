@@ -4,6 +4,7 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
+import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -132,8 +134,12 @@ class LikeUnlikeComment2DBConsumerTest {
     }
 
     @Test
-    void shouldPersistLikeAndSendHeatUpdateWhenNoteWritable() {
-        CommentDO commentDO = CommentDO.builder().id(100L).noteId(50L).build();
+    void shouldPersistFirstLevelLikeWhenNoteWritable() {
+        CommentDO commentDO = CommentDO.builder()
+                .id(100L)
+                .noteId(50L)
+                .level(CommentLevelEnum.ONE.getCode())
+                .build();
         when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(List.of(commentDO));
         when(noteRpcService.findWritableNoteAccesses(anyList()))
                 .thenReturn(List.of(NoteWriteAccessCheckReqDTO.builder().noteId(50L).userId(2L).build()));
@@ -145,5 +151,25 @@ class LikeUnlikeComment2DBConsumerTest {
         assertTrue(success);
         verify(persistenceService, times(1)).applyBatch(anyList());
         verify(commentLikeRealtimeService, never()).markUnliked(any(), any());
+    }
+
+    @Test
+    void shouldNotSendHeatForSecondLevelCommentLike() {
+        CommentDO commentDO = CommentDO.builder()
+                .id(100L)
+                .noteId(50L)
+                .level(CommentLevelEnum.TWO.getCode())
+                .build();
+        when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(List.of(commentDO));
+        when(noteRpcService.findWritableNoteAccesses(anyList()))
+                .thenReturn(List.of(NoteWriteAccessCheckReqDTO.builder().noteId(50L).userId(2L).build()));
+        when(persistenceService.applyBatch(anyList())).thenReturn(List.of(100L));
+
+        MessageExt message = createMessage(100L, 2L, LikeUnlikeCommentTypeEnum.LIKE.getCode());
+        boolean success = ReflectionTestUtils.invokeMethod(consumer, "consumeBatch", List.of(message));
+
+        assertTrue(success);
+        verify(persistenceService, times(1)).applyBatch(anyList());
+        verifyNoInteractions(rocketMQTemplate);
     }
 }

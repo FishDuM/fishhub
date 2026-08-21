@@ -13,7 +13,7 @@ public final class CacheTtl {
 
     /** baseSeconds + [0, jitterSeconds) 的随机抖动，单位秒 */
     public static long basePlusRandom(long baseSeconds, long jitterSeconds) {
-        return baseSeconds + ThreadLocalRandom.current().nextLong(jitterSeconds);
+        return Math.max(1L, baseSeconds + ThreadLocalRandom.current().nextLong(jitterSeconds));
     }
 
     public static long minutes(int baseMinutes, int jitterMinutes) {

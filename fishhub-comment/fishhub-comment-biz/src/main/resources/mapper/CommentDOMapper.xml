@@ -113,7 +113,7 @@
   </select>
 
   <select id="selectNoteIdsByCommentIds" resultMap="BaseResultMap" parameterType="list">
-    select id, note_id
+    select id, note_id, `level`
     from t_comment
     where id in
     <foreach collection="commentIds" open="(" separator="," close=")" item="commentId">

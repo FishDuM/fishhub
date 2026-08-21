@@ -4,7 +4,6 @@ import hk.ljx.fishhub.distributed.id.generator.biz.constant.Constants;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.IDGen;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.PropertyFactory;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Result;
-import hk.ljx.fishhub.distributed.id.generator.biz.core.common.ZeroIDGen;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.snowflake.SnowflakeIDGenImpl;
 import hk.ljx.fishhub.distributed.id.generator.biz.exception.InitException;
 import org.slf4j.Logger;
@@ -31,20 +30,25 @@ public class SnowflakeService {
                     idGen = snowflakeIDGen;
                     logger.info("Snowflake Service Init Successfully");
                 } else {
-                    logger.error("Snowflake Service Init Fail, fallback to ZeroIDGen");
-                    idGen = new ZeroIDGen();
+                    logger.error("Snowflake Service Init Fail");
+                    throw new InitException("Snowflake Service Init Fail");
                 }
+            } catch (InitException e) {
+                throw e;
             } catch (Exception e) {
-                logger.error("Snowflake Service Init Exception, fallback to ZeroIDGen", e);
-                idGen = new ZeroIDGen();
+                logger.error("Snowflake Service Init Exception", e);
+                throw new InitException("Snowflake Service Init Exception: " + e.getMessage());
             }
         } else {
-            idGen = new ZeroIDGen();
-            logger.info("Zero ID Gen Service Init Successfully");
+            logger.warn("Snowflake Service is disabled");
+            idGen = null;
         }
     }
 
     public Result getId(String key) {
+        if (idGen == null) {
+            throw new IllegalStateException("snowflake id generation is disabled");
+        }
         return idGen.get(key);
     }
 }

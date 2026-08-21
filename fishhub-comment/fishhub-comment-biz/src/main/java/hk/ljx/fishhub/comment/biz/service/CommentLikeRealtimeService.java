@@ -207,7 +207,7 @@ public class CommentLikeRealtimeService {
                             RedisKeyConstants.buildUserCommentLikeZSetKey(userId)),
                     String.valueOf(commentId),
                     String.valueOf(incr),
-                    String.valueOf(CacheTtl.hours(0, 5)),
+                    String.valueOf(CacheTtl.hours(1, 4)),
                     String.valueOf(System.currentTimeMillis()));
         } catch (Exception e) {
             // 实时层尽力而为：Redis 故障时回退到 MySQL 异步落盘，读侧在缓存 miss 时回源数据库
@@ -237,7 +237,7 @@ public class CommentLikeRealtimeService {
                 fields.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
                         String.valueOf(comment.getChildCommentTotal() == null ? 0L : comment.getChildCommentTotal()));
             }
-            long expireSeconds = CacheTtl.hours(0, 5);
+            long expireSeconds = CacheTtl.hours(1, 4);
             stringRedisTemplate.opsForHash().putAll(key, fields);
             stringRedisTemplate.expire(key, expireSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
