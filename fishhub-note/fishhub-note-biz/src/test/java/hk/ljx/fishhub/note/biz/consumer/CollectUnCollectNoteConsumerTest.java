@@ -71,28 +71,37 @@ class CollectUnCollectNoteConsumerTest {
     }
 
     @Test
-    void shouldDropCollectOnPrivateNoteAndEvictOptimisticCache() {
+    void shouldDropCollectOnPrivateNoteAndRemoveSingleCacheRecordOnly() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(1).build()));
 
         consumer.consumeEventBodies(List.of(
                 body(1L, 10L, CollectUnCollectNoteTypeEnum.COLLECT.getCode())));
 
-        verify(noteInteractionCacheService).evictCollectCaches(1L);
+        verify(noteInteractionCacheService).removeCollect(1L, 10L);
+        verify(noteInteractionCacheService, never()).evictCollectCaches(1L);
         verify(persistenceService, never()).saveNoteCollectBatch(anyList(), anyString(), anyString(), anyString());
     }
 
+    /**
+     * 针对公开时期已收藏的笔记，即使作者后续转为私密，取消收藏仍应正常扣减计数并更新数据库状态
+     */
     @Test
-    void shouldAllowUncollectOnExistingNote() {
+    void shouldAllowUncollectOnExistingNoteEvenIfTurnedPrivate() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(1).build()));
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         runLocalTx();
 
         consumer.consumeEventBodies(List.of(
                 body(1L, 10L, CollectUnCollectNoteTypeEnum.UN_COLLECT.getCode())));
 
-        verify(noteInteractionCacheService, never()).evictCollectCaches(1L);
+        verify(noteInteractionCacheService, never()).removeCollect(any(), any());
         verify(persistenceService).saveNoteCollectBatch(anyList(), anyString(), anyString(), anyString());
+        verify(transactionalMqSender).sendInTransaction(
+                eq(MQConstants.TOPIC_COUNT_NOTE_COLLECT), payloadCaptor.capture(), any());
+        assertTrue(payloadCaptor.getValue().contains("\"noteId\":10"));
+        assertTrue(payloadCaptor.getValue().contains("\"type\":0"));
     }
 
     private void runLocalTx() {

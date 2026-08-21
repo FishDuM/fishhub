@@ -66,35 +66,42 @@ class LikeUnlikeNoteConsumerTest {
         verify(transactionalMqSender).sendInTransaction(
                 eq(MQConstants.TOPIC_COUNT_NOTE_LIKE), payloadCaptor.capture(), any());
         assertTrue(payloadCaptor.getValue().startsWith("["));
-        // 计数端强校验 noteCreatorId，缺失会导致整批重投死循环
         assertTrue(payloadCaptor.getValue().contains("\"noteCreatorId\":99"));
     }
 
     @Test
-    void shouldDropLikeOnPrivateNoteAndEvictOptimisticCache() {
+    void shouldDropLikeOnPrivateNoteAndRemoveSingleCacheRecordOnly() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(1).build()));
 
         consumer.consumeEventBodies(List.of(
                 body(1L, 10L, LikeUnlikeNoteTypeEnum.LIKE.getCode())));
 
-        verify(noteInteractionCacheService).evictLikeCaches(1L);
+        verify(noteInteractionCacheService).removeLike(1L, 10L);
+        verify(noteInteractionCacheService, never()).evictLikeCaches(1L);
         verify(persistenceService, never()).saveNoteLikeBatch(anyList(), anyString(), anyString(), anyString());
         verify(transactionalMqSender, never()).sendInTransaction(any(), any(), any());
     }
 
+    /**
+     * 针对公开时期已点赞的笔记，即使作者后续转为私密，取消点赞仍应正常扣减计数并更新数据库状态
+     */
     @Test
-    void shouldAllowUnlikeOnMissingLikeRowAndCountNegativeDelta() {
-        // 未点赞过的取消事件：允许入批（upsert 时间守卫兜底乱序），计数 -1 由聚合端累加
+    void shouldAllowUnlikeOnExistingNoteEvenIfTurnedPrivate() {
         when(noteDOMapper.selectInteractionInfosByNoteIds(List.of(10L))).thenReturn(List.of(
                 NoteDO.builder().id(10L).creatorId(99L).visible(1).status(1).build()));
 
+        ArgumentCaptor<String> payloadCaptor = ArgumentCaptor.forClass(String.class);
         runLocalTx();
         consumer.consumeEventBodies(List.of(
                 body(1L, 10L, LikeUnlikeNoteTypeEnum.UNLIKE.getCode())));
 
-        verify(noteInteractionCacheService, never()).evictLikeCaches(1L);
+        verify(noteInteractionCacheService, never()).removeLike(any(), any());
         verify(persistenceService).saveNoteLikeBatch(anyList(), anyString(), anyString(), anyString());
+        verify(transactionalMqSender).sendInTransaction(
+                eq(MQConstants.TOPIC_COUNT_NOTE_LIKE), payloadCaptor.capture(), any());
+        assertTrue(payloadCaptor.getValue().contains("\"noteId\":10"));
+        assertTrue(payloadCaptor.getValue().contains("\"type\":0"));
     }
 
     private void runLocalTx() {

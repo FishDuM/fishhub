@@ -30,6 +30,7 @@ public class CanalSyncService {
 
     private final RestHighLevelClient restHighLevelClient;
     private final SelectMapper selectMapper;
+    private final EsIndexSyncAggregator esIndexSyncAggregator;
 
     /**
      * 处理 Canal FlatMessage 消息
@@ -74,7 +75,8 @@ public class CanalSyncService {
         }
         Long noteId = parseRequiredId(columnMap, "note_id");
         if (noteId != null) {
-            syncNoteIndex(noteId);
+            // 计数变化只影响文档内的数值字段，交由聚合器合并去重 + Bulk 重建
+            esIndexSyncAggregator.submitNote(noteId);
         }
     }
 
@@ -86,7 +88,7 @@ public class CanalSyncService {
         }
         Long userId = parseRequiredId(columnMap, "user_id");
         if (userId != null) {
-            syncUserIndex(userId);
+            esIndexSyncAggregator.submitUser(userId);
         }
     }
 
@@ -108,14 +110,13 @@ public class CanalSyncService {
             Object visibleObj = columnMap.get("visible");
             Integer visible = visibleObj == null ? null : Integer.parseInt(visibleObj.toString());
 
-            if (Objects.equals(status, NoteStatusEnum.NORMAL.getCode())
-                    && Objects.equals(visible, NoteVisibleEnum.PUBLIC.getCode())) {
-                syncNoteIndex(noteId);
-            } else if (Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode())
+            if (Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode())
                     || Objects.equals(status, NoteStatusEnum.DELETED.getCode())
                     || Objects.equals(status, NoteStatusEnum.DOWNED.getCode())) {
                 deleteNoteDocument(String.valueOf(noteId));
+                return;
             }
+            syncNoteIndex(noteId);
         } else if ("DELETE".equalsIgnoreCase(eventType)) {
             deleteNoteDocument(String.valueOf(noteId));
         }
@@ -134,13 +135,12 @@ public class CanalSyncService {
             Object isDeletedObj = columnMap.get("is_deleted");
             Integer isDeleted = isDeletedObj == null ? null : Integer.parseInt(isDeletedObj.toString());
 
-            if (Objects.equals(status, StatusEnum.ENABLE.getValue())
-                    && Objects.equals(isDeleted, 0)) {
-                syncNotesIndexAndUserIndex(userId);
-            } else if (Objects.equals(status, StatusEnum.DISABLED.getValue())
+            if (Objects.equals(status, StatusEnum.DISABLED.getValue())
                     || Objects.equals(isDeleted, 1)) {
                 deleteUserDocument(String.valueOf(userId));
+                return;
             }
+            syncNotesIndexAndUserIndex(userId);
         } else if ("DELETE".equalsIgnoreCase(eventType)) {
             deleteUserDocument(String.valueOf(userId));
         }

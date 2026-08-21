@@ -104,9 +104,14 @@ public class LikeUnlikeNoteConsumer {
         for (LikeUnlikeNoteMqDTO event : events) {
             NoteDO note = noteById.get(event.getNoteId());
             boolean like = Objects.equals(event.getType(), LikeUnlikeNoteTypeEnum.LIKE.getCode());
-            if (like ? !isWritable(note, event.getUserId()) : note == null) {
-                noteInteractionCacheService.evictLikeCaches(event.getUserId());
-                log.info("丢弃不可处理的笔记点赞消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
+            if (like) {
+                if (!isWritable(note, event.getUserId())) {
+                    noteInteractionCacheService.removeLike(event.getUserId(), event.getNoteId());
+                    log.info("丢弃不可写的点赞消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
+                    continue;
+                }
+            } else if (note == null) {
+                log.info("丢弃笔记不存在的取消点赞消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
                 continue;
             }
             event.setNoteCreatorId(note.getCreatorId());

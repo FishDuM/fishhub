@@ -6,6 +6,7 @@ import com.alibaba.otter.canal.protocol.Message;
 import com.google.common.collect.Maps;
 import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
+import hk.ljx.fishhub.search.biz.canal.service.EsIndexSyncAggregator;
 import hk.ljx.fishhub.search.biz.enums.NoteStatusEnum;
 import hk.ljx.fishhub.search.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
@@ -40,6 +41,7 @@ public class CanalSchedule implements Runnable {
     private final CanalConnector canalConnector;
     private final RestHighLevelClient restHighLevelClient;
     private final SelectMapper selectMapper;
+    private final EsIndexSyncAggregator esIndexSyncAggregator;
 
     @Override
     @Scheduled(fixedDelay = 100) // 每隔 100ms 被执行一次
@@ -143,7 +145,8 @@ public class CanalSchedule implements Runnable {
         }
         Long noteId = parseRequiredId(columnMap, "note_id");
         if (noteId != null) {
-            syncNoteIndex(noteId);
+            // 计数变化交给聚合器合并去重 + Bulk 重建，避免每次点赞/收藏/评论都全量写 ES
+            esIndexSyncAggregator.submitNote(noteId);
         }
     }
 
@@ -155,7 +158,7 @@ public class CanalSchedule implements Runnable {
         }
         Long userId = parseRequiredId(columnMap, "user_id");
         if (userId != null) {
-            syncUserIndex(userId);
+            esIndexSyncAggregator.submitUser(userId);
         }
     }
 
@@ -187,15 +190,12 @@ public class CanalSchedule implements Runnable {
                 Object visibleObj = columnMap.get("visible");
                 Integer visible = visibleObj == null ? null : Integer.parseInt(visibleObj.toString());
 
-                if (Objects.equals(status, NoteStatusEnum.NORMAL.getCode())
-                        && Objects.equals(visible, NoteVisibleEnum.PUBLIC.getCode())) { // 正常展示，并且可见性为公开
-                    // 对索引进行覆盖更新
-                    syncNoteIndex(noteId);
-                } else if (Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode()) // 仅对自己可见
+                if (Objects.equals(visible, NoteVisibleEnum.PRIVATE.getCode())
                         || Objects.equals(status, NoteStatusEnum.DELETED.getCode())
-                        || Objects.equals(status, NoteStatusEnum.DOWNED.getCode())) { // 被逻辑删除、被下架
-                    // 删除笔记文档
+                        || Objects.equals(status, NoteStatusEnum.DOWNED.getCode())) {
                     deleteNoteDocument(String.valueOf(noteId));
+                } else {
+                    syncNoteIndex(noteId);
                 }
             }
             case DELETE -> deleteNoteDocument(String.valueOf(noteId));
@@ -216,23 +216,18 @@ public class CanalSchedule implements Runnable {
 
         // 不同的事件，处理逻辑不同
         switch (eventType) {
-            case INSERT -> syncUserIndex(userId); // 记录新增事件
-            case UPDATE -> { // 记录更新事件
-                // 用户变更后的状态
+            case INSERT -> syncUserIndex(userId);
+            case UPDATE -> {
                 Object statusObj = columnMap.get("status");
                 Integer status = statusObj == null ? null : Integer.parseInt(statusObj.toString());
-                // 逻辑删除
                 Object isDeletedObj = columnMap.get("is_deleted");
                 Integer isDeleted = isDeletedObj == null ? null : Integer.parseInt(isDeletedObj.toString());
 
-                if (Objects.equals(status, StatusEnum.ENABLE.getValue())
-                        && Objects.equals(isDeleted, 0)) { // 用户状态为已启用，并且未被逻辑删除
-                    // 更新用户索引、笔记索引
-                    syncNotesIndexAndUserIndex(userId);
-                } else if (Objects.equals(status, StatusEnum.DISABLED.getValue()) // 用户状态为禁用
-                        || Objects.equals(isDeleted, 1)) { // 被逻辑删除
-                    // 删除用户文档
+                if (Objects.equals(status, StatusEnum.DISABLED.getValue())
+                        || Objects.equals(isDeleted, 1)) {
                     deleteUserDocument(String.valueOf(userId));
+                } else {
+                    syncNotesIndexAndUserIndex(userId);
                 }
             }
             case DELETE -> deleteUserDocument(String.valueOf(userId));

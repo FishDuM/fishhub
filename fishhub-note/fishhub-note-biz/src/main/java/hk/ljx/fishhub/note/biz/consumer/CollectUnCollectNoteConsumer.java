@@ -104,9 +104,14 @@ public class CollectUnCollectNoteConsumer {
         for (CollectUnCollectNoteMqDTO event : events) {
             NoteDO note = noteById.get(event.getNoteId());
             boolean collect = Objects.equals(event.getType(), CollectUnCollectNoteTypeEnum.COLLECT.getCode());
-            if (collect ? !isWritable(note, event.getUserId()) : note == null) {
-                noteInteractionCacheService.evictCollectCaches(event.getUserId());
-                log.info("丢弃不可处理的笔记收藏消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
+            if (collect) {
+                if (!isWritable(note, event.getUserId())) {
+                    noteInteractionCacheService.removeCollect(event.getUserId(), event.getNoteId());
+                    log.info("丢弃不可写的收藏消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
+                    continue;
+                }
+            } else if (note == null) {
+                log.info("丢弃笔记不存在的取消收藏消息，noteId={}, userId={}", event.getNoteId(), event.getUserId());
                 continue;
             }
             event.setNoteCreatorId(note.getCreatorId());

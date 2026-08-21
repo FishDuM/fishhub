@@ -36,4 +36,47 @@
         </if>
     </select>
 
+    <select id="selectEsNoteIndexDataByIds" resultType="map">
+        select n.id, n.creator_id as creator_id, n.title, n.topic_name as topic, n.type,
+                SUBSTRING_INDEX(n.img_uris, ',', 1) AS cover,
+               n.video_uri as video_uri,
+               DATE_FORMAT(n.create_time, '%Y-%m-%d %H:%i:%s') AS create_time,
+               DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
+               u.nickname AS nickname, u.avatar AS avatar,
+                IFNULL(nc.like_total, 0) as like_total,
+                IFNULL(nc.collect_total, 0) as collect_total,
+                IFNULL(nc.comment_total, 0) as comment_total
+        from fishhub_note.t_note n
+                      left join fishhub_user.t_user u on n.creator_id = u.id
+                      left join fishhub_count.t_note_count nc on n.id = nc.note_id
+        where n.visible = 0 and n.`status` = 1
+        <if test="noteIds != null and noteIds.size() > 0">
+          and n.id in
+          <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
+              #{noteId}
+          </foreach>
+        </if>
+        <if test="noteIds == null or noteIds.size() == 0">
+          and 1 = 0
+        </if>
+    </select>
+
+    <select id="selectEsUserIndexDataByIds" resultType="map">
+        select u.id, u.nickname, u.avatar, u.fishhub_id,
+        IFNULL(uc.note_total, 0) as note_total,
+        IFNULL(uc.fans_total, 0) as fans_total
+        from fishhub_user.t_user u
+        left join fishhub_count.t_user_count uc on u.id = uc.user_id
+        where u.`status` = 0 and u.is_deleted = 0
+        <if test="userIds != null and userIds.size() > 0">
+          and u.id in
+          <foreach collection="userIds" item="userId" open="(" separator="," close=")">
+              #{userId}
+          </foreach>
+        </if>
+        <if test="userIds == null or userIds.size() == 0">
+          and 1 = 0
+        </if>
+    </select>
+
 </mapper>
