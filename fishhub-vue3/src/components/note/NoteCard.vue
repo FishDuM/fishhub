@@ -25,7 +25,8 @@
     </div>
 
     <div class="p-[12px]">
-      <h3 class="note-title">{{ note.title }}</h3>
+      <h3 class="note-title" v-if="note.highlightTitle" v-html="note.highlightTitle"></h3>
+      <h3 class="note-title" v-else>{{ note.title }}</h3>
       <div class="flex items-center">
         <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
           <UserAvatar

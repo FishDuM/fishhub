@@ -79,16 +79,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class NoteServiceImpl implements NoteService {
 
-    private static final long ZSET_NOT_INITIALIZED = -1L;
-
     private static final int ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES = 3;
     private static final long ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
     private static final long ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS = 2L;
-
-    private static final DefaultRedisScript<Long> NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT = RedisScriptHelper.loadLongScript("/lua/note_like_check_and_update_zset.lua");
-    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/batch_add_note_like_zset_and_expire.lua");
-    private static final DefaultRedisScript<Long> NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT = RedisScriptHelper.loadLongScript("/lua/note_collect_check_and_update_zset.lua");
-    private static final DefaultRedisScript<Long> BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/batch_add_note_collect_zset_and_expire.lua");
 
     private final NoteDOMapper noteDOMapper;
     private final TopicDOMapper topicDOMapper;
@@ -892,42 +885,13 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public Response<?> likeNote(LikeNoteReqVO likeNoteReqVO) {
         Long noteId = likeNoteReqVO.getId();
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.addLike(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_ALREADY_LIKED);
         }
 
-        String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
-
         LocalDateTime now = LocalDateTime.now();
-        Long result = stringRedisTemplate.execute(NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
-
-        // 若 ZSet 列表不存在，需要重新初始化
-        if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
-            List<NoteLikeDO> noteLikeDOS = noteLikeDOMapper.selectLikedByUserIdAndLimit(userId, 100);
-
-            long expireSeconds = CacheTtl.days(1, 1);
-
-            // 若数据库中存在点赞记录，需要批量同步
-            if (CollUtil.isNotEmpty(noteLikeDOS)) {
-                String[] luaArgs = buildNoteLikeZSetLuaArgs(noteLikeDOS, expireSeconds);
-
-                stringRedisTemplate.execute(BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), luaArgs);
-
-                // 再次调用 note_like_check_and_update_zset.lua 脚本，将点赞的笔记添加到 zset 中
-                stringRedisTemplate.execute(NOTE_LIKE_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
-            } else { // 若数据库中，无点赞的笔记记录，则直接将当前点赞的笔记 ID 添加到 ZSet 中，随机过期时间
-                List<String> luaArgs = Lists.newArrayList();
-                luaArgs.add(String.valueOf(DateUtils.localDateTime2Timestamp(LocalDateTime.now()))); // score
-                luaArgs.add(String.valueOf(noteId)); // 当前点赞的笔记 ID
-                luaArgs.add(String.valueOf(expireSeconds)); // 随机过期时间
-
-                stringRedisTemplate.execute(BATCH_ADD_NOTE_LIKE_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteLikeZSetKey), luaArgs.toArray());
-            }
-        }
-
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
@@ -965,16 +929,11 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public Response<?> unlikeNote(UnlikeNoteReqVO unlikeNoteReqVO) {
         Long noteId = unlikeNoteReqVO.getId();
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeLike(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_LIKED);
         }
-
-        String userNoteLikeZSetKey = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
-
-        stringRedisTemplate.opsForZSet().remove(userNoteLikeZSetKey, String.valueOf(noteId));
 
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
                 .userId(userId)
@@ -1013,42 +972,13 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public Response<?> collectNote(CollectNoteReqVO collectNoteReqVO) {
         Long noteId = collectNoteReqVO.getId();
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.addCollect(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_ALREADY_COLLECTED);
         }
 
-        String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
-
         LocalDateTime now = LocalDateTime.now();
-        Long result = stringRedisTemplate.execute(NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
-
-        // 若 ZSet 列表不存在，需要重新初始化
-        if (Objects.equals(result, ZSET_NOT_INITIALIZED)) {
-            List<NoteCollectionDO> noteCollectionDOS = noteCollectionDOMapper.selectCollectedByUserIdAndLimit(userId, 300);
-
-            long expireSeconds = CacheTtl.days(1, 1);
-
-            // 若数据库中存在已收藏笔记记录，需要批量同步
-            if (CollUtil.isNotEmpty(noteCollectionDOS)) {
-                String[] luaArgs = buildNoteCollectZSetLuaArgs(noteCollectionDOS, expireSeconds);
-
-                stringRedisTemplate.execute(BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), luaArgs);
-
-                // 再次调用 note_collect_check_and_update_zset.lua 脚本，将当前收藏的笔记添加到 zset 中
-                stringRedisTemplate.execute(NOTE_COLLECT_CHECK_AND_UPDATE_ZSET_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), String.valueOf(noteId), String.valueOf(DateUtils.localDateTime2Timestamp(now)));
-            } else { // 若数据库中，未收藏任何笔记，则直接将当前收藏的笔记 ID 添加到 ZSet 中，随机过期时间
-                List<String> luaArgs = Lists.newArrayList();
-                luaArgs.add(String.valueOf(DateUtils.localDateTime2Timestamp(LocalDateTime.now()))); // score 收藏时间
-                luaArgs.add(String.valueOf(noteId)); // 当前收藏的笔记 ID
-                luaArgs.add(String.valueOf(expireSeconds)); // 随机过期时间
-
-                stringRedisTemplate.execute(BATCH_ADD_NOTE_COLLECT_ZSET_AND_EXPIRE_SCRIPT, Collections.singletonList(userNoteCollectZSetKey), luaArgs.toArray());
-            }
-        }
-
         CollectUnCollectNoteMqDTO collectUnCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
                 .userId(userId)
                 .noteId(noteId)
@@ -1086,16 +1016,11 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public Response<?> unCollectNote(UnCollectNoteReqVO unCollectNoteReqVO) {
         Long noteId = unCollectNoteReqVO.getId();
-
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeCollect(userId, noteId)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_COLLECTED);
         }
-
-        String userNoteCollectZSetKey = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
-
-        stringRedisTemplate.opsForZSet().remove(userNoteCollectZSetKey, String.valueOf(noteId));
 
         CollectUnCollectNoteMqDTO unCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
                 .userId(userId)
@@ -1393,49 +1318,6 @@ public class NoteServiceImpl implements NoteService {
         return noteInteractionCacheService.isCollected(currUserId, noteId);
     }
 
-    /**
-     * 构建笔记收藏 ZSET Lua 脚本参数
-     *
-     * @param noteCollectionDOS
-     * @param expireSeconds
-     * @return
-     */
-    private static String[] buildNoteCollectZSetLuaArgs(List<NoteCollectionDO> noteCollectionDOS, long expireSeconds) {
-        int argsLength = noteCollectionDOS.size() * 2 + 1; // 每个笔记收藏关系有 2 个参数（score 和 value），最后再跟一个过期时间
-        String[] luaArgs = new String[argsLength];
-
-        int i = 0;
-        for (NoteCollectionDO noteCollectionDO : noteCollectionDOS) {
-            luaArgs[i] = String.valueOf(DateUtils.localDateTime2Timestamp(noteCollectionDO.getCreateTime())); // 收藏时间作为 score
-            luaArgs[i + 1] = String.valueOf(noteCollectionDO.getNoteId());          // 笔记ID 作为 ZSet value
-            i += 2;
-        }
-
-        luaArgs[argsLength - 1] = String.valueOf(expireSeconds); // 最后一个参数是 ZSet 的过期时间
-        return luaArgs;
-    }
-
-    /**
-     * 构建笔记点赞 ZSET Lua 脚本参数
-     *
-     * @param noteLikeDOS
-     * @param expireSeconds
-     * @return
-     */
-    private static String[] buildNoteLikeZSetLuaArgs(List<NoteLikeDO> noteLikeDOS, long expireSeconds) {
-        int argsLength = noteLikeDOS.size() * 2 + 1; // 每个笔记点赞关系有 2 个参数（score 和 value），最后再跟一个过期时间
-        String[] luaArgs = new String[argsLength];
-
-        int i = 0;
-        for (NoteLikeDO noteLikeDO : noteLikeDOS) {
-            luaArgs[i] = String.valueOf(DateUtils.localDateTime2Timestamp(noteLikeDO.getCreateTime())); // 点赞时间作为 score
-            luaArgs[i + 1] = String.valueOf(noteLikeDO.getNoteId());          // 笔记ID 作为 ZSet value
-            i += 2;
-        }
-
-        luaArgs[argsLength - 1] = String.valueOf(expireSeconds); // 最后一个参数是 ZSet 的过期时间
-        return luaArgs;
-    }
 
     /**
      * 校验笔记是否存在，若存在，则获取笔记的发布者 ID
