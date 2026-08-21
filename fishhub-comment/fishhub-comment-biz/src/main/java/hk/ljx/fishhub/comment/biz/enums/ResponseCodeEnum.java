@@ -21,6 +21,7 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     COMMENT_CANT_OPERATE("COMMENT-20004", "您无法操作该评论"),
     NOTE_NOT_FOUND("COMMENT-20005", "笔记不存在或不可评论"),
     REPLY_COMMENT_INVALID("COMMENT-20006", "被回复评论不属于当前笔记"),
+    NOTE_NOT_WRITABLE("COMMENT-20007", "笔记已被删除或不可操作"),
     ;
 
     // 异常码

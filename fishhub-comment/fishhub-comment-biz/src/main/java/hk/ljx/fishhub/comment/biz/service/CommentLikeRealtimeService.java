@@ -12,7 +12,9 @@ import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
@@ -178,14 +180,16 @@ public class CommentLikeRealtimeService {
                 if (!members.isEmpty()) {
                     stringRedisTemplate.opsForSet().add(setKey, members.toArray(String[]::new));
                 }
-                for (CommentLikeDO like : allLikes) {
-                    if (like.getCommentId() == null) {
-                        continue;
-                    }
-                    double score = like.getCreateTime() == null ? 0D
-                            : like.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                    stringRedisTemplate.opsForZSet().add(
-                            zsetKey, String.valueOf(like.getCommentId()), score);
+                Set<ZSetOperations.TypedTuple<String>> tuples = allLikes.stream()
+                        .filter(like -> like.getCommentId() != null)
+                        .map(like -> {
+                            double score = like.getCreateTime() == null ? 0D
+                                    : like.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+                            return (ZSetOperations.TypedTuple<String>) new DefaultTypedTuple<>(String.valueOf(like.getCommentId()), score);
+                        })
+                        .collect(Collectors.toSet());
+                if (!tuples.isEmpty()) {
+                    stringRedisTemplate.opsForZSet().add(zsetKey, tuples);
                 }
             }
             stringRedisTemplate.expire(setKey, FOOTPRINT_TTL_SECONDS, TimeUnit.SECONDS);

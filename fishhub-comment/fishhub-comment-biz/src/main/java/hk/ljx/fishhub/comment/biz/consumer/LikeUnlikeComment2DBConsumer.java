@@ -11,6 +11,7 @@ import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
+import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.consumer.BatchPushConsumer;
@@ -48,6 +49,7 @@ public class LikeUnlikeComment2DBConsumer {
     private final CommentLikePersistenceService persistenceService;
     private final CommentDOMapper commentDOMapper;
     private final NoteRpcService noteRpcService;
+    private final CommentLikeRealtimeService commentLikeRealtimeService;
     private final RocketMQTemplate rocketMQTemplate;
     private final BatchPushConsumer batchPushConsumer;
 
@@ -57,11 +59,13 @@ public class LikeUnlikeComment2DBConsumer {
     public LikeUnlikeComment2DBConsumer(CommentLikePersistenceService persistenceService,
                                         CommentDOMapper commentDOMapper,
                                         NoteRpcService noteRpcService,
+                                        CommentLikeRealtimeService commentLikeRealtimeService,
                                         RocketMQTemplate rocketMQTemplate,
                                         BatchConsumerFactory batchConsumerFactory) throws MQClientException {
         this.persistenceService = persistenceService;
         this.commentDOMapper = commentDOMapper;
         this.noteRpcService = noteRpcService;
+        this.commentLikeRealtimeService = commentLikeRealtimeService;
         this.rocketMQTemplate = rocketMQTemplate;
         this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
                 "fishhub_group_" + MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE,
@@ -152,8 +156,16 @@ public class LikeUnlikeComment2DBConsumer {
             for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
                 CommentDO comment = comments.get(operation.getCommentId());
                 if (comment == null) {
-                    log.info("点赞/取消点赞落库时评论不存在或已被删除，丢弃消息, commentId={}, userId={}, type={}",
-                            operation.getCommentId(), operation.getUserId(), operation.getType());
+                    if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.UNLIKE.getCode())) {
+                        // 评论已在 t_comment 中删除，仍放行执行 t_comment_like 的物理删除以清理残留关系行
+                        persistOps.add(operation);
+                    } else {
+                        log.warn("丢弃不可写/已删除评论上的点赞并回滚实时缓存，commentId={}, userId={}",
+                                operation.getCommentId(), operation.getUserId());
+                        if (commentLikeRealtimeService != null) {
+                            commentLikeRealtimeService.markUnliked(operation.getUserId(), operation.getCommentId());
+                        }
+                    }
                     continue;
                 }
                 if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())
@@ -161,8 +173,11 @@ public class LikeUnlikeComment2DBConsumer {
                         .noteId(comment.getNoteId())
                         .userId(operation.getUserId())
                         .build())) {
-                    log.info("丢弃不可写笔记上的评论点赞，commentId={}, userId={}",
+                    log.warn("丢弃不可写笔记上的评论点赞并回滚实时缓存，commentId={}, userId={}",
                             operation.getCommentId(), operation.getUserId());
+                    if (commentLikeRealtimeService != null) {
+                        commentLikeRealtimeService.markUnliked(operation.getUserId(), operation.getCommentId());
+                    }
                     continue;
                 }
                 persistOps.add(operation);
@@ -173,10 +188,15 @@ public class LikeUnlikeComment2DBConsumer {
                 appliedCommentIds.addAll(persistenceService.applyBatch(persistOps));
             }
 
-            // 异步触发热度更新
+            // 异步触发热度更新（仅对仍存在的一级/有效评论发送，避免对已删评论空转重算）
             if (CollUtil.isNotEmpty(appliedCommentIds)) {
-                Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(appliedCommentIds)).build();
-                RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage, "评论热度更新");
+                Set<Long> validAppliedCommentIds = appliedCommentIds.stream()
+                        .filter(comments::containsKey)
+                        .collect(Collectors.toSet());
+                if (CollUtil.isNotEmpty(validAppliedCommentIds)) {
+                    Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(validAppliedCommentIds)).build();
+                    RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage, "评论热度更新");
+                }
             }
 
             return true;

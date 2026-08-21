@@ -112,6 +112,11 @@ public class CommentServiceImpl implements CommentService {
         // 发布者 ID
         Long creatorId = LoginUserContextHolder.getUserId();
 
+        // 同步前置校验笔记可写性（防止静默丢弃与假成功）
+        if (!noteRpcService.isWritable(noteId, creatorId)) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_WRITABLE);
+        }
+
         // RPC: 调用分布式 ID 生成服务，生成评论 ID
         String commentId = distributedIdGeneratorRpcService.generateCommentId();
 
@@ -422,8 +427,18 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public Response<?> likeComment(LikeCommentReqVO likeCommentReqVO) {
         Long commentId = likeCommentReqVO.getCommentId();
-
         Long userId = LoginUserContextHolder.getUserId();
+
+        CommentDO commentDO = commentDOMapper.selectByPrimaryKey(commentId);
+        if (commentDO == null) {
+            throw new BizException(ResponseCodeEnum.COMMENT_NOT_FOUND);
+        }
+
+        // 同步前置校验笔记可写性（防止静默丢弃与数据撕裂）
+        if (!noteRpcService.isWritable(commentDO.getNoteId(), userId)) {
+            throw new BizException(ResponseCodeEnum.NOTE_NOT_WRITABLE);
+        }
+
         // 校验是否已点赞
         if (commentLikeRealtimeService.containsLiked(userId, commentId)) {
             throw new BizException(ResponseCodeEnum.COMMENT_ALREADY_LIKED);
@@ -461,9 +476,10 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO) {
         Long commentId = unLikeCommentReqVO.getCommentId();
-
         Long userId = LoginUserContextHolder.getUserId();
-        // 校验是否已点赞
+
+        // 取消点赞仅校验当前用户点赞状态（纯 Redis 守卫，0 DB 读；即使评论/笔记已被删除，也必须允许用户取消点赞并清理足迹）
+        // 注：未再次主动取消的点赞足迹随 7 天 Redis ZSet TTL 自然过期自愈收敛
         if (!commentLikeRealtimeService.containsLiked(userId, commentId)) {
             throw new BizException(ResponseCodeEnum.COMMENT_NOT_LIKED);
         }
@@ -679,30 +695,22 @@ public class CommentServiceImpl implements CommentService {
     private void setChildCommentCountData(List<FindChildCommentItemRspVO> commentRspVOS,
                                           List<Long> expiredCommentIds) {
         // 准备从评论 Hash 中查询计数 (被点赞数)
-        // 缓存中存在的子评论 ID
-        List<Long> notExpiredCommentIds = Lists.newArrayList();
+        List<Long> allChildCommentIds = Lists.newArrayList();
 
-        // 遍历从缓存中解析出的 VO 集合，提取二级评论 ID
+        // 遍历从缓存中解析出的 VO 集合，提取二级评论 ID（统一查询 Redis Count Hash 权威源）
         commentRspVOS.forEach(commentRspVO -> {
             Long childCommentId = commentRspVO.getCommentId();
-            notExpiredCommentIds.add(childCommentId);
+            allChildCommentIds.add(childCommentId);
         });
 
         // 从 Redis 中查询评论计数 Hash 数据
-        Map<Long, Map<String, String>> commentIdAndCountMap = getCommentCountDataAndSync2RedisHash(notExpiredCommentIds);
+        Map<Long, Map<String, String>> commentIdAndCountMap = getCommentCountDataAndSync2RedisHash(allChildCommentIds);
 
         // 遍历 VO, 设置对应子评论的点赞数
         for (FindChildCommentItemRspVO commentRspVO : commentRspVOS) {
-            // 评论 ID
             Long commentId = commentRspVO.getCommentId();
 
-            // 若当前这条评论是从数据库中查询出来的, 则无需设置点赞数，以数据库查询出来的为主
-            if (CollUtil.isNotEmpty(expiredCommentIds)
-                    && expiredCommentIds.contains(commentId)) {
-                continue;
-            }
-
-            // 设置子评论的点赞数
+            // 设置子评论的点赞数（Hash 有则覆盖，无则保持 DB 初始值）
             Map<String, String> hash = commentIdAndCountMap.get(commentId);
             if (CollUtil.isNotEmpty(hash)) {
                 String likeTotalObj = hash.get(CountKeyConstants.FIELD_LIKE_TOTAL);
@@ -1113,32 +1121,25 @@ public class CommentServiceImpl implements CommentService {
     private void setCommentCountData(List<FindCommentItemRspVO> commentRspVOS,
                                      List<Long> expiredCommentIds) {
         // 准备从评论 Hash 中查询计数 (子评论总数、被点赞数)
-        // 缓存中存在的评论 ID
-        List<Long> notExpiredCommentIds = Lists.newArrayList();
+        List<Long> allCommentIds = Lists.newArrayList();
 
-        // 遍历从缓存中解析出的 VO 集合，提取一级、二级评论 ID
+        // 遍历 VO 集合，提取一级、二级评论 ID（统一查询 Redis Count Hash 权威源）
         commentRspVOS.forEach(commentRspVO -> {
             Long oneLevelCommentId = commentRspVO.getCommentId();
-            notExpiredCommentIds.add(oneLevelCommentId);
+            allCommentIds.add(oneLevelCommentId);
             FindCommentItemRspVO firstCommentVO = commentRspVO.getFirstReplyComment();
             if (Objects.nonNull(firstCommentVO)) {
-                notExpiredCommentIds.add(firstCommentVO.getCommentId());
+                allCommentIds.add(firstCommentVO.getCommentId());
             }
         });
 
         // 已失效的 Hash 评论 ID
-        Map<Long, Map<String, String>> commentIdAndCountMap = getCommentCountDataAndSync2RedisHash(notExpiredCommentIds);
+        Map<Long, Map<String, String>> commentIdAndCountMap = getCommentCountDataAndSync2RedisHash(allCommentIds);
 
         // 遍历 VO, 设置对应评论的二级评论数、点赞数
         for (FindCommentItemRspVO commentRspVO : commentRspVOS) {
             // 评论 ID
             Long commentId = commentRspVO.getCommentId();
-
-            // 若当前这条评论是从数据库中查询出来的, 则无需设置二级评论数、点赞数，以数据库查询出来的为主
-            if (CollUtil.isNotEmpty(expiredCommentIds)
-                    && expiredCommentIds.contains(commentId)) {
-                continue;
-            }
 
             // 设置一级评论的子评论总数、点赞数
             Map<String, String> hash = commentIdAndCountMap.get(commentId);

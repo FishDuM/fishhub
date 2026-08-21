@@ -130,6 +130,16 @@ public class Comment2DBConsumer {
                                     .userId(comment.getCreatorId())
                                     .build())
                             .toList()));
+            List<PublishCommentMqDTO> nonWritable = publishCommentMqDTOS.stream()
+                    .filter(comment -> !writableAccesses.contains(NoteWriteAccessCheckReqDTO.builder()
+                            .noteId(comment.getNoteId())
+                            .userId(comment.getCreatorId())
+                            .build()))
+                    .toList();
+            if (CollUtil.isNotEmpty(nonWritable)) {
+                log.warn("消费端检测到不可写笔记上的评论发布（并发或已被删除），丢弃消息, commentIds={}",
+                        nonWritable.stream().map(PublishCommentMqDTO::getCommentId).toList());
+            }
             publishCommentMqDTOS = publishCommentMqDTOS.stream()
                     .filter(comment -> writableAccesses.contains(NoteWriteAccessCheckReqDTO.builder()
                             .noteId(comment.getNoteId())

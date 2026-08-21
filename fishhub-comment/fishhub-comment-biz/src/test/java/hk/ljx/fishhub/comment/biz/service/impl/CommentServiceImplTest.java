@@ -135,8 +135,23 @@ class CommentServiceImplTest {
     }
 
     @Test
+    void publishCommentShouldRejectWhenNoteNotWritable() {
+        LoginUserContextHolder.setUserId(2L);
+        when(noteRpcService.isWritable(50L, 2L)).thenReturn(false);
+
+        hk.ljx.fishhub.comment.biz.model.vo.PublishCommentReqVO req = new hk.ljx.fishhub.comment.biz.model.vo.PublishCommentReqVO();
+        req.setNoteId(50L);
+        req.setContent("hello");
+
+        assertThrows(BizException.class, () -> service.publishComment(req));
+    }
+
+    @Test
     void likeCommentShouldRejectWhenAlreadyLiked() {
         LoginUserContextHolder.setUserId(2L);
+        when(commentDOMapper.selectByPrimaryKey(100L))
+                .thenReturn(hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO.builder().id(100L).noteId(50L).build());
+        when(noteRpcService.isWritable(50L, 2L)).thenReturn(true);
         when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(true);
 
         assertThrows(BizException.class, () -> service.likeComment(
@@ -157,5 +172,20 @@ class CommentServiceImplTest {
 
         verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(Message.class), anyString());
         verify(commentLikeRealtimeService, never()).markUnliked(anyLong(), anyLong());
+        verify(commentDOMapper, never()).selectByPrimaryKey(anyLong());
+    }
+
+    @Test
+    void unlikeCommentShouldSucceedEvenWhenCommentOrNoteDeletedInDb() {
+        LoginUserContextHolder.setUserId(2L);
+        when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(true);
+
+        var response = service.unlikeComment(
+                UnLikeCommentReqVO.builder().commentId(100L).build());
+
+        org.junit.jupiter.api.Assertions.assertTrue(response.isSuccess());
+        verify(commentDOMapper, never()).selectByPrimaryKey(anyLong());
+        verify(noteRpcService, never()).isWritable(anyLong(), anyLong());
+        verify(commentLikeRealtimeService).markUnliked(2L, 100L);
     }
 }

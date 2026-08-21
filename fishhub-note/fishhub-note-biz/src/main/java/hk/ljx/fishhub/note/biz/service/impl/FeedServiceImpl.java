@@ -222,7 +222,9 @@ public class FeedServiceImpl implements FeedService {
         if (CollUtil.isEmpty(notes)) {
             return;
         }
-        fillCountsIntoNoteItems(notes);
+        if (notes.stream().anyMatch(note -> note.getLikeTotal() == null)) {
+            fillCountsIntoNoteItems(notes);
+        }
         setLikedState(notes);
     }
 

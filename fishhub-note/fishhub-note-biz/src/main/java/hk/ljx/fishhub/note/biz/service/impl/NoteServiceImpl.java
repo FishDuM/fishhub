@@ -54,6 +54,8 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.messaging.Message;
@@ -1172,14 +1174,17 @@ public class NoteServiceImpl implements NoteService {
 
             if (StringUtils.isNotBlank(publishedNoteListJson)) {
                 try {
-                    log.info("## 已发布笔记列表命中了 Redis 缓存...");
+                    log.info("已发布笔记列表命中了 Redis 缓存...");
                     // Json 字符串转 VO 集合
                     List<NoteItemRspVO> noteItemRspVOS = JsonUtils.parseList(publishedNoteListJson, NoteItemRspVO.class);
                     // 按笔记 ID 降序，最新发布的笔记排最前面
                     List<NoteItemRspVO> sortedList = noteItemRspVOS.stream().sorted(Comparator.comparing(NoteItemRspVO::getNoteId).reversed()).toList();
 
+                    // 实时回填当前用户点赞状态（计数复用快照内嵌基准值，零 Feign 零 Hash 往返）
+                    batchGetAndSetNoteIsLiked(sortedList);
+
                     // 过滤出最早发布的笔记 ID，充当下一页的游标
-                    Optional<Long> earliestNoteId = noteItemRspVOS.stream().map(NoteItemRspVO::getNoteId).min(Long::compareTo);
+                    Optional<Long> earliestNoteId = sortedList.stream().map(NoteItemRspVO::getNoteId).min(Long::compareTo);
 
                     findPublishedNoteListRspVO = FindPublishedNoteListRspVO.builder()
                             .notes(sortedList)
@@ -1187,7 +1192,7 @@ public class NoteServiceImpl implements NoteService {
                             .build();
                     return Response.success(findPublishedNoteListRspVO);
                 } catch (Exception e) {
-                    log.error("", e);
+                    log.error("读取已发布笔记缓存失败", e);
                 }
             }
         }
@@ -1450,6 +1455,9 @@ public class NoteServiceImpl implements NoteService {
 
     private void fillNoteCounts(FindNoteDetailRspVO noteDetail) {
         if (noteDetail == null || noteDetail.getId() == null) {
+            return;
+        }
+        if (!needsCountRefresh(noteDetail)) {
             return;
         }
         Long noteId = noteDetail.getId();

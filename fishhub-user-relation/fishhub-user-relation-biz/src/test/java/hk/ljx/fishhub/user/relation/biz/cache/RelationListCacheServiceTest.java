@@ -138,9 +138,8 @@ class RelationListCacheServiceTest {
     @Test
     void shouldFindFollowedUserIdsFromZSetWhenKeyExists() {
         when(stringRedisTemplate.hasKey("following:1")).thenReturn(true);
-        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(zSetOperations.range("following:1", 0L, -1L))
-                .thenReturn(new LinkedHashSet<>(Arrays.asList("1", "2", "9", "5")));
+        when(stringRedisTemplate.executePipelined(any(org.springframework.data.redis.core.RedisCallback.class)))
+                .thenReturn(Arrays.asList(100.0, 200.0, null));
 
         Set<Long> followed = cacheService.findFollowedUserIds(1L, Arrays.asList(2L, 9L, 7L));
 

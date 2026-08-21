@@ -7,6 +7,7 @@ import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
+import hk.ljx.fishhub.note.biz.model.vo.FindPublishedNoteListReqVO;
 import hk.ljx.fishhub.count.client.CountClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,8 @@ class NoteServiceImplAccessTest {
     private ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @Mock
     private CountClient countClient;
+    @Mock
+    private hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService noteInteractionCacheService;
     @InjectMocks
     private NoteServiceImpl service;
 
@@ -224,5 +227,29 @@ class NoteServiceImplAccessTest {
         assertEquals(List.of(requests.get(0), requests.get(1)), response.getData());
         verify(noteDOMapper).selectAccessInfosByNoteIds(List.of(11L, 12L, 13L));
         verify(stringRedisTemplate, never()).opsForValue();
+    }
+
+    @Test
+    void shouldReturnEmbeddedCountsAndHydrateIsLikedOnPublishedListCacheHit() {
+        hk.ljx.framework.biz.context.holder.LoginUserContextHolder.setUserId(2L);
+        try {
+            when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+            when(valueOperations.get(RedisKeyConstants.buildPublishedNoteListKey(1L)))
+                    .thenReturn("[{\"noteId\":11,\"type\":0,\"title\":\"t\",\"likeTotal\":\"8\",\"isLiked\":false}]");
+            when(noteInteractionCacheService.findLikedNoteIds(eq(2L), eq(List.of(11L))))
+                    .thenReturn(java.util.Set.of(11L));
+
+            FindPublishedNoteListReqVO request = new FindPublishedNoteListReqVO();
+            request.setUserId(1L);
+
+            var response = service.findPublishedNoteList(request);
+
+            assertEquals(1, response.getData().getNotes().size());
+            assertEquals("8", response.getData().getNotes().get(0).getLikeTotal());
+            assertEquals(true, response.getData().getNotes().get(0).getIsLiked());
+            verify(countClient, never()).findByNoteIds(any());
+        } finally {
+            hk.ljx.framework.biz.context.holder.LoginUserContextHolder.remove();
+        }
     }
 }

@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.comment.biz.rpc;
 
+import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.note.api.NoteFeignApi;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
@@ -53,4 +54,15 @@ public class NoteRpcService {
         return response.getData() == null ? Collections.emptyList() : response.getData();
     }
 
+    /**
+     * 同步校验单篇笔记是否允许当前用户写入（发表评论/点赞等）
+     */
+    public boolean isWritable(Long noteId, Long userId) {
+        if (noteId == null || userId == null) {
+            return false;
+        }
+        List<NoteWriteAccessCheckReqDTO> writable = findWritableNoteAccesses(
+                List.of(NoteWriteAccessCheckReqDTO.builder().noteId(noteId).userId(userId).build()));
+        return CollUtil.isNotEmpty(writable);
+    }
 }

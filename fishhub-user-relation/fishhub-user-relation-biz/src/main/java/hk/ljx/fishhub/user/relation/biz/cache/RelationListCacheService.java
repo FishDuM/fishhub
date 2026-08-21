@@ -9,6 +9,7 @@ import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.ZSetOperations;
@@ -96,7 +97,7 @@ public class RelationListCacheService {
         }
     }
 
-    /** 当前用户已关注的候选用户集合：优先读 following ZSet，缺失回源 DB */
+    /** 当前用户已关注的候选用户集合：优先读 following ZSet（Pipeline 批量查 score），缺失回源 DB */
     public Set<Long> findFollowedUserIds(Long userId, Collection<Long> candidates) {
         if (Objects.isNull(userId) || CollUtil.isEmpty(candidates)) {
             return Collections.emptySet();
@@ -104,17 +105,25 @@ public class RelationListCacheService {
         String key = RedisKeyConstants.buildUserFollowingKey(userId);
         try {
             if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                Set<String> all = stringRedisTemplate.opsForZSet().range(key, 0, -1);
-                if (CollUtil.isEmpty(all)) {
+                List<Long> candidateList = candidates.stream().filter(Objects::nonNull).distinct().toList();
+                if (candidateList.isEmpty()) {
                     return Collections.emptySet();
                 }
-                all.remove("-1");
-                if (all.isEmpty()) {
-                    return Collections.emptySet();
+                List<Object> scores = stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                    byte[] rawKey = stringRedisTemplate.getStringSerializer().serialize(key);
+                    for (Long candidateId : candidateList) {
+                        connection.zSetCommands().zScore(rawKey,
+                                stringRedisTemplate.getStringSerializer().serialize(String.valueOf(candidateId)));
+                    }
+                    return null;
+                });
+                Set<Long> followed = new HashSet<>();
+                for (int i = 0; i < candidateList.size(); i++) {
+                    if (scores != null && i < scores.size() && scores.get(i) != null) {
+                        followed.add(candidateList.get(i));
+                    }
                 }
-                Set<String> wanted = candidates.stream().map(String::valueOf).collect(Collectors.toSet());
-                all.retainAll(wanted);
-                return all.stream().map(Long::valueOf).collect(Collectors.toSet());
+                return followed;
             }
         } catch (Exception e) {
             log.warn("读取关注 ZSet 失败, userId={}", userId, e);
