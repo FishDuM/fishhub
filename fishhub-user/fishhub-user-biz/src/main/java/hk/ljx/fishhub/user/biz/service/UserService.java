@@ -13,7 +13,6 @@ import java.util.List;
 
 
 public interface UserService {
-    void deleteUserLocalCache(Long userId);
 
     /**
      * 更新用户信息

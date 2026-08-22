@@ -82,24 +82,6 @@ public class UserServiceImpl implements UserService {
     private final RolePermissionService rolePermissionService;
     private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 用户信息本地缓存
-     */
-    private static final Cache<Long, FindUserByIdRspDTO> LOCAL_CACHE = Caffeine.newBuilder()
-            .initialCapacity(10000) // 设置初始容量为 10000 个条目
-            .maximumSize(10000) // 设置缓存的最大容量为 10000 个条目
-            .expireAfterWrite(1, TimeUnit.HOURS) // 设置缓存条目在写入后 1 小时过期
-            .build();
-
-    /**
-     * 用户主页信息本地缓存
-     */
-    private static final Cache<Long, FindUserProfileRspVO> PROFILE_LOCAL_CACHE = Caffeine.newBuilder()
-            .initialCapacity(10000) // 设置初始容量为 10000 个条目
-            .maximumSize(10000) // 设置缓存的最大容量为 10000 个条目
-            .expireAfterWrite(5, TimeUnit.MINUTES) // 设置缓存条目在写入后 5 分钟过期
-            .build();
-
     /** 可关注用户本地缓存：Caffeine.get 自带单飞，只做本节点合并，不做跨节点锁 */
     private final Cache<Long, Optional<FindUserByIdRspDTO>> activeUserLocalCache = Caffeine.newBuilder()
             .maximumSize(10000)
@@ -191,16 +173,11 @@ public class UserServiceImpl implements UserService {
             userDO.setUpdateTime(LocalDateTime.now());
             userDOMapper.updateByPrimaryKeySelective(userDO);
 
-            // 数据落库后立即清理当前节点和 Redis 缓存，避免读到旧资料。
-            deleteUserLocalCache(userId);
+            // 数据落库后立即清理 Redis 缓存，避免读到旧资料。
             deleteUserRedisCache(userId);
 
             // 延时双删
             sendDelayDeleteUserRedisCacheMQ(userId);
-
-            // 异步广播清理本地缓存
-            RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_DELETE_USER_LOCAL_CACHE,
-                    String.valueOf(userId), "清理用户本地缓存");
         }
         return Response.success();
     }
@@ -224,13 +201,6 @@ public class UserServiceImpl implements UserService {
         String userActiveRedisKey = RedisKeyConstants.buildUserActiveKey(userId);
 
         stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey, userActiveRedisKey));
-    }
-
-    @Override
-    public void deleteUserLocalCache(Long userId) {
-        LOCAL_CACHE.invalidate(userId);
-        PROFILE_LOCAL_CACHE.invalidate(userId);
-        activeUserLocalCache.invalidate(userId);
     }
 
     /**
@@ -365,12 +335,6 @@ public class UserServiceImpl implements UserService {
     public Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO) {
         Long userId = findUserByIdReqDTO.getId();
 
-        FindUserByIdRspDTO findUserByIdRspDTOLocalCache = LOCAL_CACHE.getIfPresent(userId);
-        if (Objects.nonNull(findUserByIdRspDTOLocalCache)) {
-            log.info("==> 命中了本地缓存；{}", findUserByIdRspDTOLocalCache);
-            return Response.success(findUserByIdRspDTOLocalCache);
-        }
-
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
 
         String userInfoRedisValue = stringRedisTemplate.opsForValue().get(userInfoRedisKey);
@@ -380,9 +344,6 @@ public class UserServiceImpl implements UserService {
                 throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
             }
             FindUserByIdRspDTO findUserByIdRspDTO = JsonUtils.parseObject(userInfoRedisValue, FindUserByIdRspDTO.class);
-            threadPoolTaskExecutor.submit(() -> {
-                LOCAL_CACHE.put(userId, findUserByIdRspDTO);
-            });
             return Response.success(findUserByIdRspDTO);
         }
 
@@ -586,21 +547,12 @@ public class UserServiceImpl implements UserService {
             userId = LoginUserContextHolder.getUserId();
         }
 
-        if (!Objects.equals(userId, LoginUserContextHolder.getUserId())) { // 如果是用户本人查看自己的主页，则不走本地缓存（对本人保证实时性）
-            FindUserProfileRspVO userProfileLocalCache = PROFILE_LOCAL_CACHE.getIfPresent(userId);
-            if (Objects.nonNull(userProfileLocalCache)) {
-                log.info("用户主页信息命中本地缓存，userId={}", userId);
-                return Response.success(userProfileLocalCache);
-            }
-        }
-
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
         String userProfileJson = stringRedisTemplate.opsForValue().get(userProfileRedisKey);
 
         if (StringUtils.isNotBlank(userProfileJson)) {
             FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
-            syncUserProfile2LocalCache(userId, findUserProfileRspVO);
             // 如果是作者本人查看，保证计数的实时性
             authorGetActualCountData(userId, findUserProfileRspVO);
 
@@ -631,7 +583,6 @@ public class UserServiceImpl implements UserService {
         rpcCountServiceAndSetData(userId, findUserProfileRspVO);
 
         syncUserProfile2Redis(userProfileRedisKey, findUserProfileRspVO);
-        syncUserProfile2LocalCache(userId, findUserProfileRspVO);
 
         return Response.success(findUserProfileRspVO);
     }
@@ -672,18 +623,6 @@ public class UserServiceImpl implements UserService {
         if (Objects.equals(userId, LoginUserContextHolder.getUserId())) {
             rpcCountServiceAndSetData(userId, findUserProfileRspVO);
         }
-    }
-
-    /**
-     * 异步同步到本地缓存
-     *
-     * @param userId
-     * @param findUserProfileRspVO
-     */
-    private void syncUserProfile2LocalCache(Long userId, FindUserProfileRspVO findUserProfileRspVO) {
-        threadPoolTaskExecutor.submit(() -> {
-            PROFILE_LOCAL_CACHE.put(userId, findUserProfileRspVO);
-        });
     }
 
     /**

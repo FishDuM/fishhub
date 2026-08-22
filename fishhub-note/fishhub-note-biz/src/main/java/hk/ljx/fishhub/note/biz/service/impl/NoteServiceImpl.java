@@ -847,6 +847,7 @@ public class NoteServiceImpl implements NoteService {
 
         LocalDateTime now = LocalDateTime.now();
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
+                .eventId(UUID.randomUUID().toString())
                 .userId(userId)
                 .noteId(noteId)
                 .type(LikeUnlikeNoteTypeEnum.LIKE.getCode()) // 点赞笔记
@@ -888,6 +889,7 @@ public class NoteServiceImpl implements NoteService {
         }
 
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
+                .eventId(UUID.randomUUID().toString())
                 .userId(userId)
                 .noteId(noteId)
                 .type(LikeUnlikeNoteTypeEnum.UNLIKE.getCode()) // 取消点赞笔记
@@ -929,6 +931,7 @@ public class NoteServiceImpl implements NoteService {
 
         LocalDateTime now = LocalDateTime.now();
         CollectUnCollectNoteMqDTO collectUnCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
+                .eventId(UUID.randomUUID().toString())
                 .userId(userId)
                 .noteId(noteId)
                 .type(CollectUnCollectNoteTypeEnum.COLLECT.getCode()) // 收藏笔记
@@ -969,6 +972,7 @@ public class NoteServiceImpl implements NoteService {
         }
 
         CollectUnCollectNoteMqDTO unCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()
+                .eventId(UUID.randomUUID().toString())
                 .userId(userId)
                 .noteId(noteId)
                 .type(CollectUnCollectNoteTypeEnum.UN_COLLECT.getCode()) // 取消收藏笔记
@@ -1328,6 +1332,11 @@ public class NoteServiceImpl implements NoteService {
      */
     private NoteAccessSnapshot loadAccessSnapshot(Long noteId) {
         String key = RedisKeyConstants.buildNoteAccessKey(noteId);
+        // 负缓存（"null" 哨兵）直接短路，避免已删除/不存在的笔记反复回源重建
+        String cachedValue = getAccessSnapshotCacheValue(key);
+        if ("null".equals(cachedValue)) {
+            return null;
+        }
         NoteAccessSnapshot cachedSnapshot = readAccessSnapshot(key);
         if (cachedSnapshot != null) {
             return cachedSnapshot;

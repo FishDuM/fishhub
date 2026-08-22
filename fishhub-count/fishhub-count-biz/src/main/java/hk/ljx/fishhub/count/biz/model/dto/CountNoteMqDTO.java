@@ -16,6 +16,11 @@ import java.time.LocalDateTime;
 @Builder
 public class CountNoteMqDTO {
 
+    /**
+     * 事件唯一 ID（与发送方事件一致，用于计数事件级幂等）
+     */
+    private String eventId;
+
     private Long userId;
 
     private Long noteId;

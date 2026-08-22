@@ -58,9 +58,4 @@ public interface CommentService {
      */
     Response<?> deleteComment(DeleteCommentReqVO deleteCommentReqVO);
 
-    /**
-     * 删除本地评论缓存
-     * @param commentId
-     */
-    void deleteCommentLocalCache(Long commentId);
 }

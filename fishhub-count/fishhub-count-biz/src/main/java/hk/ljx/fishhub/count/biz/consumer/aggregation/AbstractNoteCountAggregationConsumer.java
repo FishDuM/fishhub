@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.count.biz.consumer.aggregation;
 
+import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
@@ -12,8 +13,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -78,44 +81,33 @@ public abstract class AbstractNoteCountAggregationConsumer {
     protected final void consumeBatches(List<String> bodys) {
         log.info("==> 【{}】聚合落库消息, size: {}", bizLabel(), bodys.size());
 
-        // 计算批次 batchId
-        String batchId = cn.hutool.crypto.digest.DigestUtil.sha256Hex(
-                bodys.stream().sorted().collect(Collectors.joining("|")));
-
         List<CountNoteMqDTO> events = bodys.stream()
                 .flatMap(body -> parseEvents(body).stream())
                 .toList();
         if (events.stream().anyMatch(item -> item == null || item.getNoteId() == null
-                || item.getNoteCreatorId() == null || !isValidType(item.getType()))) {
+                || item.getNoteCreatorId() == null || item.getEventId() == null
+                || item.getEventId().isBlank() || !isValidType(item.getType()))) {
             throw new IllegalArgumentException(bizLabel() + "计数消息缺少必要字段或操作类型无效");
         }
 
-        // 按笔记 ID 分组
-        Map<Long, List<CountNoteMqDTO>> groupMap = events.stream()
-                .collect(Collectors.groupingBy(CountNoteMqDTO::getNoteId));
-
-        // 汇总计数增量
-        List<AggregationNoteCountMqDTO> countList = new ArrayList<>();
-        for (Map.Entry<Long, List<CountNoteMqDTO>> entry : groupMap.entrySet()) {
-            Long noteId = entry.getKey();
-            Long creatorId = null;
-            int finalCount = 0;
-            for (CountNoteMqDTO event : entry.getValue()) {
-                creatorId = event.getNoteCreatorId();
-                finalCount += deltaOf(event.getType());
-            }
-            countList.add(AggregationNoteCountMqDTO.builder()
-                    .noteId(noteId)
-                    .creatorId(creatorId)
-                    .count(finalCount)
-                    .batchId(batchId)
-                    .build());
+        // 事件级幂等：以 sha256(eventId) 为键，只对本次新增事件累加，批次重组/重投不重复计数
+        Map<String, CountNoteMqDTO> eventByKey = new HashMap<>();
+        for (CountNoteMqDTO event : events) {
+            eventByKey.put(DigestUtil.sha256Hex(event.getEventId()), event);
         }
+        List<String> eventKeys = new ArrayList<>(eventByKey.keySet());
 
-        log.info("## 【{}】聚合后的计数数据: {}", bizLabel(), JsonUtils.toJsonString(countList));
+        boolean applied = mqIdempotentExecutor.executeBatch(idempotentGroup(), eventKeys, freshKeys -> {
+            List<CountNoteMqDTO> freshEvents = freshKeys.stream()
+                    .map(eventByKey::get)
+                    .filter(Objects::nonNull)
+                    .toList();
+            if (freshEvents.isEmpty()) {
+                return false;
+            }
+            List<AggregationNoteCountMqDTO> countList = aggregateCounts(freshEvents);
+            log.info("## 【{}】聚合后的计数数据: {}", bizLabel(), JsonUtils.toJsonString(countList));
 
-        // 幂等写入数据库
-        boolean applied = mqIdempotentExecutor.execute(idempotentGroup(), batchId, () -> {
             // 1. 按 noteId 升序更新笔记计数
             countList.stream()
                     .collect(Collectors.groupingBy(AggregationNoteCountMqDTO::getNoteId,
@@ -131,17 +123,42 @@ public abstract class AbstractNoteCountAggregationConsumer {
                     .entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> updateUserCount(entry.getKey(), entry.getValue()));
+            return true;
         });
 
-        stringRedisTemplate.delete(countList.stream()
-                .map(item -> CountKeyConstants.buildCountNoteKey(item.getNoteId()))
-                .distinct()
-                .toList());
-        countList.stream().map(AggregationNoteCountMqDTO::getCreatorId).distinct()
+        // 无论是否重复投递，都失效对应计数缓存并推进版本，确保读侧尽快看到最新值
+        List<String> noteCountKeys = events.stream().map(CountNoteMqDTO::getNoteId).distinct()
+                .map(CountKeyConstants::buildCountNoteKey)
+                .toList();
+        if (!noteCountKeys.isEmpty()) {
+            stringRedisTemplate.delete(noteCountKeys);
+        }
+        events.stream().map(CountNoteMqDTO::getNoteCreatorId).distinct()
                 .forEach(userCountCacheVersionService::advanceVersion);
         if (!applied) {
-            log.info("{}计数消息已处理，忽略重复投递, batchId={}", bizLabel(), batchId);
+            log.info("{}计数消息已处理，忽略重复投递, eventCount={}", bizLabel(), events.size());
         }
+    }
+
+    private List<AggregationNoteCountMqDTO> aggregateCounts(List<CountNoteMqDTO> freshEvents) {
+        Map<Long, List<CountNoteMqDTO>> groupMap = freshEvents.stream()
+                .collect(Collectors.groupingBy(CountNoteMqDTO::getNoteId));
+        List<AggregationNoteCountMqDTO> countList = new ArrayList<>();
+        for (Map.Entry<Long, List<CountNoteMqDTO>> entry : groupMap.entrySet()) {
+            Long noteId = entry.getKey();
+            Long creatorId = null;
+            int finalCount = 0;
+            for (CountNoteMqDTO event : entry.getValue()) {
+                creatorId = event.getNoteCreatorId();
+                finalCount += deltaOf(event.getType());
+            }
+            countList.add(AggregationNoteCountMqDTO.builder()
+                    .noteId(noteId)
+                    .creatorId(creatorId)
+                    .count(finalCount)
+                    .build());
+        }
+        return countList;
     }
 
     private List<CountNoteMqDTO> parseEvents(String body) {

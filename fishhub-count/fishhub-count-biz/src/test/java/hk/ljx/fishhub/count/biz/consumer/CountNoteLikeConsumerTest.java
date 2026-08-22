@@ -16,9 +16,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.function.Function;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,14 +48,16 @@ class CountNoteLikeConsumerTest {
     void shouldAggregateAndDirectlyPersistToDb() throws Exception {
         // 同 note 两赞 + 另一 note 一取消的数组 payload
         String body = JsonUtils.toJsonString(List.of(
-                event(1L, 100L, 7L, 1),
-                event(2L, 100L, 7L, 1),
-                event(3L, 200L, 8L, 0)));
+                event("e1", 1L, 100L, 7L, 1),
+                event("e2", 2L, 100L, 7L, 1),
+                event("e3", 3L, 200L, 8L, 0)));
 
-        when(mqIdempotentExecutor.execute(eq("count-note-like"), anyString(), any())).thenAnswer(inv -> {
-            Runnable action = inv.getArgument(2);
-            action.run();
-            return true;
+        when(mqIdempotentExecutor.executeBatch(eq("count-note-like"), anyList(), any())).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Function<List<String>, Boolean> action = inv.getArgument(2);
+            @SuppressWarnings("unchecked")
+            List<String> freshKeys = inv.getArgument(1);
+            return action.apply(freshKeys);
         });
 
         invokeConsumeMessage(body);
@@ -68,8 +71,9 @@ class CountNoteLikeConsumerTest {
         verify(userCountCacheVersionService).advanceVersion(8L);
     }
 
-    private CountNoteMqDTO event(Long userId, Long noteId, Long creatorId, Integer type) {
+    private CountNoteMqDTO event(String eventId, Long userId, Long noteId, Long creatorId, Integer type) {
         return CountNoteMqDTO.builder()
+                .eventId(eventId)
                 .userId(userId)
                 .noteId(noteId)
                 .noteCreatorId(creatorId)

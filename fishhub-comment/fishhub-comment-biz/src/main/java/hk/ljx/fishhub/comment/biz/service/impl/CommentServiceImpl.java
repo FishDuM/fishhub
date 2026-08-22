@@ -5,8 +5,6 @@ import hk.ljx.framework.common.util.CacheTtl;
 import hk.ljx.framework.common.util.RebuildLock;
 
 import cn.hutool.core.collection.CollUtil;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -78,15 +76,6 @@ public class CommentServiceImpl implements CommentService {
     private final TransactionTemplate transactionTemplate;
     private final RedissonClient redissonClient;
     private final CommentLikeRealtimeService commentLikeRealtimeService;
-
-    /**
-     * 评论详情本地缓存
-     */
-    private static final Cache<Long, String> LOCAL_CACHE = Caffeine.newBuilder()
-            .initialCapacity(10000) // 设置初始容量为 10000 个条目
-            .maximumSize(10000) // 设置缓存的最大容量为 10000 个条目
-            .expireAfterWrite(1, TimeUnit.HOURS) // 设置缓存条目在写入后 1 小时过期
-            .build();
 
     private static final int CACHE_REBUILD_RETRY_TIMES = 3;
     private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
@@ -175,60 +164,22 @@ public class CommentServiceImpl implements CommentService {
                     .reverseRangeByScore(commentZSetKey, -Double.MAX_VALUE, Double.MAX_VALUE, offset, pageSize);
 
             if (CollUtil.isNotEmpty(commentIds)) {
-                List<String> commentIdList = Lists.newArrayList(commentIds);
-
-                List<Long> localCacheExpiredCommentIds = Lists.newArrayList();
-
-                List<Long> localCacheKeys = commentIdList.stream()
+                List<Long> commentIdList = commentIds.stream()
                         .map(Long::valueOf)
                         .toList();
 
-                Map<Long, String> commentIdAndDetailJsonMap = LOCAL_CACHE.getAllPresent(localCacheKeys);
-                Set<Long> hitKeys = commentIdAndDetailJsonMap.keySet();
-                for (Long key : localCacheKeys) {
-                    if (!hitKeys.contains(key)) {
-                        localCacheExpiredCommentIds.add(key);
-                    }
-                }
-
-                Map<Long, FindCommentItemRspVO> detailMap = new HashMap<>();
-                if (CollUtil.isNotEmpty(commentIdAndDetailJsonMap)) {
-                    for (Map.Entry<Long, String> entry : commentIdAndDetailJsonMap.entrySet()) {
-                        String value = entry.getValue();
-                        if (StringUtils.isBlank(value)) continue;
-                        FindCommentItemRspVO commentRspVO = JsonUtils.parseObject(value, FindCommentItemRspVO.class);
-                        if (commentRspVO != null) {
-                            detailMap.put(entry.getKey(), commentRspVO);
-                        }
-                    }
-                }
-
-                if (CollUtil.isEmpty(localCacheExpiredCommentIds)) {
-                    for (Long commentId : localCacheKeys) {
-                        FindCommentItemRspVO vo = detailMap.get(commentId);
-                        if (vo != null) {
-                            commentRspVOS.add(vo);
-                        }
-                    }
-                    // 本地缓存只存静态详情，计数统一从 Redis Count Hash 刷新（一次 MGET），保证实时
-                    if (CollUtil.isNotEmpty(commentRspVOS)) {
-                        setCommentCountData(commentRspVOS, Collections.emptyList());
-                    }
-
-                    return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
-                }
-
-                List<String> commentIdKeys = localCacheExpiredCommentIds.stream()
+                List<String> commentIdKeys = commentIdList.stream()
                         .map(RedisKeyConstants::buildCommentDetailKey)
                         .toList();
 
                 List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
 
+                Map<Long, FindCommentItemRspVO> detailMap = new HashMap<>();
                 List<Long> expiredCommentIds = Lists.newArrayList();
 
                 for (int i = 0; i < commentsJsonList.size(); i++) {
                     String commentJson = commentsJsonList.get(i);
-                    Long commentId = localCacheExpiredCommentIds.get(i);
+                    Long commentId = commentIdList.get(i);
                     if (Objects.nonNull(commentJson)) {
                         FindCommentItemRspVO commentRspVO = JsonUtils.parseObject(commentJson, FindCommentItemRspVO.class);
                         if (commentRspVO != null) {
@@ -254,7 +205,7 @@ public class CommentServiceImpl implements CommentService {
                     }
                 }
 
-                for (Long commentId : localCacheKeys) {
+                for (Long commentId : commentIdList) {
                     FindCommentItemRspVO vo = detailMap.get(commentId);
                     if (vo != null) {
                         commentRspVOS.add(vo);
@@ -262,15 +213,11 @@ public class CommentServiceImpl implements CommentService {
                 }
             }
 
-            syncCommentDetail2LocalCache(commentRspVOS);
-
             return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
         }
 
         List<CommentDO> oneLevelCommentDOS = commentDOMapper.selectPageList(noteId, offset, pageSize);
         getCommentDataAndSync2Redis(oneLevelCommentDOS, noteId, commentRspVOS);
-
-        syncCommentDetail2LocalCache(commentRspVOS);
 
         return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
     }
@@ -630,16 +577,6 @@ public class CommentServiceImpl implements CommentService {
         RocketMqHelper.syncSend(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论");
 
         return Response.success();
-    }
-
-    /**
-     * 删除本地评论缓存
-     *
-     * @param commentId
-     */
-    @Override
-    public void deleteCommentLocalCache(Long commentId) {
-        LOCAL_CACHE.invalidate(commentId);
     }
 
     private void ensureNoteAccessible(Long noteId) {
@@ -1064,25 +1001,6 @@ public class CommentServiceImpl implements CommentService {
         }
     }
 
-
-    /**
-     * 同步评论详情到本地缓存中
-     *
-     * @param commentRspVOS
-     */
-    private void syncCommentDetail2LocalCache(List<FindCommentItemRspVO> commentRspVOS) {
-        threadPoolTaskExecutor.execute(() -> {
-            Map<Long, String> localCacheData = Maps.newHashMap();
-            commentRspVOS.forEach(commentRspVO -> {
-                Long commentId = commentRspVO.getCommentId();
-                // 计数不参与本地缓存的新鲜度：命中路径总会从 Redis Count Hash 刷新（见 findCommentPageList），
-                // 这里不修改响应 VO（异步线程修改会与返回给调用方的对象产生并发写）
-                localCacheData.put(commentId, JsonUtils.toJsonString(commentRspVO));
-            });
-
-            LOCAL_CACHE.putAll(localCacheData);
-        });
-    }
 
     /**
      * 获取全部评论数据，并将评论详情同步到 Redis 中

@@ -41,11 +41,6 @@ public interface MqTopicConstants {
     String TOPIC_COMMENT_HEAT_UPDATE = "CommentHeatUpdateTopic";
 
     /**
-     * Topic: 删除评论详情本地缓存
-     */
-    String TOPIC_DELETE_COMMENT_LOCAL_CACHE = "DeleteCommentDetailLocalCacheTopic";
-
-    /**
      * 评论变更类型：发布
      */
     Integer COMMENT_CHANGE_TYPE_PUBLISH = 1;
