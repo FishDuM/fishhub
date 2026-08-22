@@ -60,6 +60,26 @@ public class UserClient {
     }
 
     /**
+     * 查询未禁用、未删除的用户。
+     */
+    public FindUserByIdRspDTO findActiveById(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        FindUserByIdReqDTO request = new FindUserByIdReqDTO();
+        request.setId(userId);
+
+        Response<FindUserByIdRspDTO> response = userFeignApi.findActiveById(request);
+        if (Objects.isNull(response) || !response.isSuccess()) {
+            throw new IllegalStateException("查询用户信息失败, userId=" + userId);
+        }
+        if (response.getData() == null) {
+            return null;
+        }
+        return response.getData();
+    }
+
+    /**
      * 批量查询用户信息
      */
     public List<FindUserByIdRspDTO> findByIds(List<Long> userIds) {

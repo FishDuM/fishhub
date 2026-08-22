@@ -74,8 +74,8 @@ public class RelationServiceImpl implements RelationService {
             throw new BizException(ResponseCodeEnum.CANT_FOLLOW_YOUR_SELF);
         }
 
-        // 校验关注的用户是否存在
-        FindUserByIdRspDTO findUserByIdRspDTO = userClient.findById(followUserId);
+        // 校验关注的用户是否存在（未禁用、未删除）
+        FindUserByIdRspDTO findUserByIdRspDTO = userClient.findActiveById(followUserId);
 
         if (Objects.isNull(findUserByIdRspDTO)) {
             throw new BizException(ResponseCodeEnum.FOLLOW_USER_NOT_EXISTED);
@@ -140,8 +140,8 @@ public class RelationServiceImpl implements RelationService {
         // 分区键
         String hashKey = String.valueOf(userId);
 
-        // 异步顺序发送关注 MQ（失败时同步重发一次）
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "关注用户");
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "关注用户",
+                () -> stringRedisTemplate.delete(followingRedisKey));
 
         return Response.success();
     }
@@ -163,18 +163,14 @@ public class RelationServiceImpl implements RelationService {
             throw new BizException(ResponseCodeEnum.CANT_UNFOLLOW_YOUR_SELF);
         }
 
-        // 校验关注的用户是否存在
-        FindUserByIdRspDTO findUserByIdRspDTO = userClient.findById(unfollowUserId);
-
-        if (Objects.isNull(findUserByIdRspDTO)) {
-            throw new BizException(ResponseCodeEnum.FOLLOW_USER_NOT_EXISTED);
-        }
-
         // 当前用户的关注列表 Redis Key
         String followingRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
 
+        LocalDateTime now = LocalDateTime.now();
+        long expireSeconds = CacheTtl.days(7, 1);
+
         Long result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
-                String.valueOf(unfollowUserId), String.valueOf(CacheTtl.days(7, 1)));
+                String.valueOf(unfollowUserId), String.valueOf(expireSeconds));
 
         // 校验 Lua 脚本执行结果
         // 取关的用户不在关注列表中
@@ -188,7 +184,6 @@ public class RelationServiceImpl implements RelationService {
 
             // 随机过期时间
             // 保底7天+随机秒数
-            long expireSeconds = CacheTtl.days(7, 1);
 
             // 若记录为空，则表示还未关注任何人，提示还未关注对方
             if (CollUtil.isEmpty(followingDOS)) {
@@ -215,7 +210,7 @@ public class RelationServiceImpl implements RelationService {
         UnfollowUserMqDTO unfollowUserMqDTO = UnfollowUserMqDTO.builder()
                 .userId(userId)
                 .unfollowUserId(unfollowUserId)
-                .createTime(LocalDateTime.now())
+                .createTime(now)
                 .build();
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(unfollowUserMqDTO))
@@ -228,8 +223,8 @@ public class RelationServiceImpl implements RelationService {
 
         String hashKey = String.valueOf(userId);
 
-        // 异步顺序发送取关 MQ（失败时同步重发一次）
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "取关用户");
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "取关用户",
+                () -> stringRedisTemplate.delete(followingRedisKey));
 
         return Response.success();
     }

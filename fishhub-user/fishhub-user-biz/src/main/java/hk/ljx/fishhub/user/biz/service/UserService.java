@@ -56,6 +56,11 @@ public interface UserService {
     Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO);
 
     /**
+     * 查询未禁用、未删除的用户。
+     */
+    Response<FindUserByIdRspDTO> findActiveById(FindUserByIdReqDTO findUserByIdReqDTO);
+
+    /**
      * 批量根据用户 ID 查询用户信息
      *
      * @param findUsersByIdsReqDTO

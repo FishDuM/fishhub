@@ -88,6 +88,12 @@ public class UserController {
         return userService.findById(findUserByIdReqDTO);
     }
 
+    @PostMapping("/findActiveById")
+    @ApiOperationLog(description = "查询可操作用户信息")
+    public Response<FindUserByIdRspDTO> findActiveById(@Validated @RequestBody FindUserByIdReqDTO findUserByIdReqDTO) {
+        return userService.findActiveById(findUserByIdReqDTO);
+    }
+
     @PostMapping("/findByIds")
     @ApiOperationLog(description = "批量查询用户信息")
     public Response<List<FindUserByIdRspDTO>> findByIds(@Validated @RequestBody FindUsersByIdsReqDTO findUsersByIdsReqDTO) {

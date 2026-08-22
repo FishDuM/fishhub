@@ -16,6 +16,9 @@ public class RedisKeyConstants {
     /** 用户角色权限快照 Key 前缀 */
     private static final String USER_ROLE_PERMISSION_KEY_PREFIX = "user:role-permission:";
 
+    /** 可操作用户缓存 Key 前缀 */
+    private static final String USER_ACTIVE_KEY_PREFIX = "user:active:";
+
     /**
      * 构建角色信息对应的 KEY
      * @param userId
@@ -37,6 +40,10 @@ public class RedisKeyConstants {
     /** 构建用户角色权限快照 KEY */
     public static String buildUserRolePermissionKey(Long userId) {
         return USER_ROLE_PERMISSION_KEY_PREFIX + userId;
+    }
+
+    public static String buildUserActiveKey(Long userId) {
+        return USER_ACTIVE_KEY_PREFIX + userId;
     }
 
     /**

@@ -131,9 +131,9 @@ public class CommentServiceImpl implements CommentService {
                 .creatorId(creatorId)
                 .build();
 
-        // 异步发送发布评论 MQ（失败时同步重发一次）
+        // 发布评论 MQ
         String publishMsg = JsonUtils.toJsonString(publishCommentMqDTO);
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_PUBLISH_COMMENT, publishMsg, "发布评论");
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_PUBLISH_COMMENT, publishMsg, "发布评论", null);
 
         return Response.success(Long.valueOf(commentId));
     }
@@ -477,11 +477,11 @@ public class CommentServiceImpl implements CommentService {
 
         String hashKey = String.valueOf(userId);
 
-        // 异步顺序发送点赞 MQ（失败时同步重发一次）
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论点赞");
-
-        // 实时更新点赞状态及计数
+        // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markLiked(userId, commentId);
+
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论点赞",
+                () -> commentLikeRealtimeService.evictLikeState(userId, commentId));
 
         return Response.success();
     }
@@ -517,11 +517,11 @@ public class CommentServiceImpl implements CommentService {
 
         String hashKey = String.valueOf(userId);
 
-        // 异步顺序发送取消点赞 MQ（失败时同步重发一次）
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论取消点赞");
-
-        // 实时更新点赞状态及计数
+        // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markUnliked(userId, commentId);
+
+        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论取消点赞",
+                () -> commentLikeRealtimeService.evictLikeState(userId, commentId));
 
         return Response.success();
     }
@@ -671,8 +671,8 @@ public class CommentServiceImpl implements CommentService {
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(commentDO))
                 .build();
 
-        // 异步发送删除评论 MQ（失败时同步重发一次）
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论");
+        // 删除评论 MQ
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论", null);
 
         return Response.success();
     }

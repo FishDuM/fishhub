@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -64,6 +65,20 @@ public class CommentLikeRealtimeService {
     public void markUnliked(Long userId, Long commentId) {
         ensureCountBaseline(commentId);
         executeToggle(userId, commentId, -1);
+    }
+
+    /**
+     * 清空点赞状态与计数缓存。
+     */
+    public void evictLikeState(Long userId, Long commentId) {
+        try {
+            stringRedisTemplate.delete(Arrays.asList(
+                    RedisKeyConstants.buildUserCommentLikeSetKey(userId),
+                    RedisKeyConstants.buildUserCommentLikeZSetKey(userId),
+                    CountKeyConstants.buildCountCommentKey(commentId)));
+        } catch (Exception e) {
+            log.warn("清空评论点赞缓存失败, userId={}, commentId={}", userId, commentId, e);
+        }
     }
 
     /**

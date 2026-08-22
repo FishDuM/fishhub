@@ -47,6 +47,11 @@ public interface UserDOMapper {
      */
     List<UserDO> selectByIds(@Param("ids") List<Long> ids);
 
+    /**
+     * 查询未禁用、未删除的用户。
+     */
+    UserDO selectActiveById(Long id);
+
     int updateByPrimaryKeySelective(UserDO record);
 
     int updateByPrimaryKey(UserDO record);

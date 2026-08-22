@@ -100,6 +100,17 @@ public class UserServiceImpl implements UserService {
             .expireAfterWrite(5, TimeUnit.MINUTES) // 设置缓存条目在写入后 5 分钟过期
             .build();
 
+    /** 可关注用户本地缓存：Caffeine.get 自带单飞，只做本节点合并，不做跨节点锁 */
+    private final Cache<Long, Optional<FindUserByIdRspDTO>> activeUserLocalCache = Caffeine.newBuilder()
+            .maximumSize(10000)
+            .expireAfterWrite(2, TimeUnit.SECONDS)
+            .build();
+
+    /** 可关注用户 Redis 缓存 TTL：禁用/删除操作的最长生效滞后窗口，必须远短于 user:info(1天) */
+    private static final long ACTIVE_CACHE_TTL_SECONDS = 15L;
+    /** 防穿透 null 哨兵 TTL：短于正常 TTL，避免不存在的用户长期占位 */
+    private static final long ACTIVE_CACHE_NULL_TTL_SECONDS = 3L;
+
     /**
      * 更新用户信息
      *
@@ -219,15 +230,17 @@ public class UserServiceImpl implements UserService {
     private void deleteUserRedisCache(Long userId) {
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
+        String userActiveRedisKey = RedisKeyConstants.buildUserActiveKey(userId);
 
         // 批量删除
-        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey, userActiveRedisKey));
     }
 
     @Override
     public void deleteUserLocalCache(Long userId) {
         LOCAL_CACHE.invalidate(userId);
         PROFILE_LOCAL_CACHE.invalidate(userId);
+        activeUserLocalCache.invalidate(userId);
     }
 
     /**
@@ -408,12 +421,7 @@ public class UserServiceImpl implements UserService {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        FindUserByIdRspDTO findUserByIdRspDTO = FindUserByIdRspDTO.builder()
-                .id(userDO.getId())
-                .nickName(userDO.getNickname())
-                .avatar(userDO.getAvatar())
-                .introduction(userDO.getIntroduction())
-                .build();
+        FindUserByIdRspDTO findUserByIdRspDTO = toFindUserByIdRspDTO(userDO);
 
         // 异步将用户信息存入 Redis 缓存，提升响应速度
         threadPoolTaskExecutor.submit(() -> {
@@ -428,6 +436,56 @@ public class UserServiceImpl implements UserService {
         });
 
         return Response.success(findUserByIdRspDTO);
+    }
+
+    @Override
+    public Response<FindUserByIdRspDTO> findActiveById(FindUserByIdReqDTO findUserByIdReqDTO) {
+        // 约定：data=null 表示用户不存在或已禁用/删除，由调用方决定业务语义（关注时转为 FOLLOW_USER_NOT_EXISTED）
+        Long userId = findUserByIdReqDTO == null ? null : findUserByIdReqDTO.getId();
+        if (userId == null) {
+            return Response.success(null);
+        }
+        return Response.success(activeUserLocalCache.get(userId, this::loadActiveUser).orElse(null));
+    }
+
+    private Optional<FindUserByIdRspDTO> loadActiveUser(Long userId) {
+        String key = RedisKeyConstants.buildUserActiveKey(userId);
+        try {
+            String cached = stringRedisTemplate.opsForValue().get(key);
+            if (cached != null) {
+                if ("null".equals(cached)) {
+                    return Optional.empty();
+                }
+                FindUserByIdRspDTO cachedUser = JsonUtils.parseObject(cached, FindUserByIdRspDTO.class);
+                if (cachedUser != null) {
+                    return Optional.of(cachedUser);
+                }
+            }
+            // 缓存未命中回源 DB（status=0 且未删除），写回缓存
+            UserDO userDO = userDOMapper.selectActiveById(userId);
+            if (userDO == null) {
+                stringRedisTemplate.opsForValue().set(key, "null", ACTIVE_CACHE_NULL_TTL_SECONDS, TimeUnit.SECONDS);
+                return Optional.empty();
+            }
+            FindUserByIdRspDTO dto = toFindUserByIdRspDTO(userDO);
+            stringRedisTemplate.opsForValue().set(key, JsonUtils.toJsonString(dto),
+                    ACTIVE_CACHE_TTL_SECONDS, TimeUnit.SECONDS);
+            return Optional.of(dto);
+        } catch (Exception e) {
+            // Redis 异常按缓存 miss 处理，直接返回 DB 结果，不阻断业务
+            log.warn("可关注用户缓存读写失败，回源 DB, userId={}", userId, e);
+            UserDO userDO = userDOMapper.selectActiveById(userId);
+            return userDO == null ? Optional.empty() : Optional.of(toFindUserByIdRspDTO(userDO));
+        }
+    }
+
+    private static FindUserByIdRspDTO toFindUserByIdRspDTO(UserDO userDO) {
+        return FindUserByIdRspDTO.builder()
+                .id(userDO.getId())
+                .nickName(userDO.getNickname())
+                .avatar(userDO.getAvatar())
+                .introduction(userDO.getIntroduction())
+                .build();
     }
 
     /**
@@ -492,12 +550,7 @@ public class UserServiceImpl implements UserService {
 
         if (CollUtil.isNotEmpty(userDOS)) {
             for (UserDO userDO : userDOS) {
-                FindUserByIdRspDTO dto = FindUserByIdRspDTO.builder()
-                        .id(userDO.getId())
-                        .nickName(userDO.getNickname())
-                        .avatar(userDO.getAvatar())
-                        .introduction(userDO.getIntroduction())
-                        .build();
+                FindUserByIdRspDTO dto = toFindUserByIdRspDTO(userDO);
                 dbFoundRspDTOs.add(dto);
                 dbFoundUserIds.add(userDO.getId());
                 foundUsersMap.put(userDO.getId(), dto);

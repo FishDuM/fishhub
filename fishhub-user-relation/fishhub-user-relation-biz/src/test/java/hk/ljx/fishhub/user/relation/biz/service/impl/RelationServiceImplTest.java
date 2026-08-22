@@ -1,26 +1,38 @@
 package hk.ljx.fishhub.user.relation.biz.service.impl;
 
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
+import hk.ljx.framework.common.exception.BizException;
+import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
+import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFansListReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFansUserRspVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingListReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingUserRspVO;
+import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.RelationCursorPageResponse;
+import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
 import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.client.UserClient;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.messaging.Message;
 
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,8 +47,19 @@ class RelationServiceImplTest {
     private UserClient userClient;
     @Mock
     private CountClient countClient;
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
+    @Mock
+    private FollowingDOMapper followingDOMapper;
+    @Mock
+    private RocketMQTemplate rocketMQTemplate;
     @InjectMocks
     private RelationServiceImpl relationService;
+
+    @AfterEach
+    void tearDown() {
+        LoginUserContextHolder.remove();
+    }
 
     @Test
     void shouldReturnFirstPageOfFollowingListWithNextCursor() {
@@ -109,6 +132,32 @@ class RelationServiceImplTest {
         assertTrue(resp.getData().isEmpty());
         assertNull(resp.getNextCursor());
         verify(userClient, never()).findByIds(anyList());
+    }
+
+    @Test
+    void followShouldRejectDisabledOrDeletedUser() {
+        LoginUserContextHolder.setUserId(1L);
+        when(userClient.findActiveById(2L)).thenReturn(null);
+
+        assertThrows(BizException.class, () -> relationService.follow(
+                FollowUserReqVO.builder().followUserId(2L).build()));
+
+        verify(stringRedisTemplate, never()).execute(
+                any(DefaultRedisScript.class), anyList(), any(Object[].class));
+    }
+
+    @Test
+    void unfollowShouldSucceedEvenWhenTargetUserIsDisabledOrDeleted() {
+        LoginUserContextHolder.setUserId(1L);
+        when(stringRedisTemplate.execute(
+                any(DefaultRedisScript.class), anyList(), any(Object[].class))).thenReturn(0L);
+
+        Response<?> response = relationService.unfollow(
+                UnfollowUserReqVO.builder().unfollowUserId(2L).build());
+
+        assertTrue(response.isSuccess());
+        verify(userClient, never()).findById(anyLong());
+        verify(userClient, never()).findActiveById(anyLong());
     }
 
     private List<FindUserByIdRspDTO> users(long from, long toExclusive) {

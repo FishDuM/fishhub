@@ -9,11 +9,13 @@ import hk.ljx.fishhub.comment.biz.model.vo.LikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.model.vo.UnLikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
+import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
@@ -31,6 +33,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -187,5 +191,21 @@ class CommentServiceImplTest {
         verify(commentDOMapper, never()).selectByPrimaryKey(anyLong());
         verify(noteRpcService, never()).isWritable(anyLong(), anyLong());
         verify(commentLikeRealtimeService).markUnliked(2L, 100L);
+    }
+
+    @Test
+    void likeCommentShouldUpdateRealtimeStateBeforeMqSend() {
+        LoginUserContextHolder.setUserId(2L);
+        when(commentDOMapper.selectByPrimaryKey(100L))
+                .thenReturn(hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO.builder().id(100L).noteId(50L).build());
+        when(noteRpcService.isWritable(50L, 2L)).thenReturn(true);
+        when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(false);
+
+        service.likeComment(LikeCommentReqVO.builder().commentId(100L).build());
+
+        InOrder inOrder = inOrder(commentLikeRealtimeService, rocketMQTemplate);
+        inOrder.verify(commentLikeRealtimeService).markLiked(2L, 100L);
+        inOrder.verify(rocketMQTemplate).asyncSendOrderly(
+                anyString(), any(Object.class), anyString(), any(SendCallback.class));
     }
 }

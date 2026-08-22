@@ -57,6 +57,12 @@ public interface UserFeignApi {
     Response<FindUserByIdRspDTO> findById(@RequestBody FindUserByIdReqDTO findUserByIdReqDTO);
 
     /**
+     * 查询未禁用、未删除的用户。
+     */
+    @PostMapping(value = PREFIX + "/findActiveById")
+    Response<FindUserByIdRspDTO> findActiveById(@RequestBody FindUserByIdReqDTO findUserByIdReqDTO);
+
+    /**
      * 批量查询用户信息
      *
      * @param findUsersByIdsReqDTO

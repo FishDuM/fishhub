@@ -9,6 +9,7 @@ import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.service.RolePermissionService;
+import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.ResolveLoginableUserReqDTO;
@@ -28,6 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,7 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -96,6 +100,42 @@ class UserServiceImplTest {
                 .map(FindUserByIdRspDTO::getId)
                 .toList());
         verify(userDOMapper).selectByIds(List.of(3L));
+    }
+
+    @Test
+    void findActiveByIdShouldReturnCachedUserWithoutQueryingDb() {
+        FindUserByIdRspDTO cachedUser = FindUserByIdRspDTO.builder()
+                .id(2L)
+                .nickName("fish2")
+                .build();
+        when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOperations);
+        when(stringValueOperations.get("user:active:2")).thenReturn(JsonUtils.toJsonString(cachedUser));
+
+        FindUserByIdReqDTO request = new FindUserByIdReqDTO();
+        request.setId(2L);
+
+        Response<FindUserByIdRspDTO> response = userService.findActiveById(request);
+
+        assertTrue(response.isSuccess());
+        assertNotNull(response.getData());
+        assertEquals(2L, response.getData().getId());
+        verify(userDOMapper, never()).selectActiveById(anyLong());
+    }
+
+    @Test
+    void findActiveByIdShouldQueryActiveUserOnCacheMiss() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOperations);
+        when(stringValueOperations.get("user:active:1")).thenReturn(null);
+        when(userDOMapper.selectActiveById(1L)).thenReturn(null);
+
+        FindUserByIdReqDTO request = new FindUserByIdReqDTO();
+        request.setId(1L);
+
+        Response<FindUserByIdRspDTO> response = userService.findActiveById(request);
+
+        assertTrue(response.isSuccess());
+        assertNull(response.getData());
+        verify(stringValueOperations).set("user:active:1", "null", 3L, TimeUnit.SECONDS);
     }
 
     @Test

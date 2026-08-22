@@ -38,6 +38,7 @@ import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
+import hk.ljx.framework.mq.support.RocketMqHelper;
 import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
@@ -48,8 +49,6 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import hk.ljx.framework.common.util.RedisScriptHelper;
-import org.apache.rocketmq.client.producer.SendCallback;
-import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
@@ -904,18 +903,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
-        // 异步发送；失败回调清缓存回源
-        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-            }
-
-            @Override
-            public void onException(Throwable e) {
-                noteInteractionCacheService.evictLikeCaches(userId);
-                log.warn("笔记点赞消息发送失败，noteId={}, userId={}", noteId, userId, e);
-            }
-        });
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记点赞",
+                () -> noteInteractionCacheService.evictLikeCaches(userId));
 
         return Response.success();
     }
@@ -947,18 +936,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
-        // 异步发送；失败回调清缓存回源
-        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-            }
-
-            @Override
-            public void onException(Throwable e) {
-                noteInteractionCacheService.evictLikeCaches(userId);
-                log.warn("笔记取消点赞消息发送失败，noteId={}, userId={}", noteId, userId, e);
-            }
-        });
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记取消点赞",
+                () -> noteInteractionCacheService.evictLikeCaches(userId));
 
         return Response.success();
     }
@@ -991,18 +970,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_COLLECT;
 
-        // 异步发送；失败回调清缓存回源
-        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-            }
-
-            @Override
-            public void onException(Throwable e) {
-                noteInteractionCacheService.evictCollectCaches(userId);
-                log.warn("笔记收藏消息发送失败，noteId={}, userId={}", noteId, userId, e);
-            }
-        });
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记收藏",
+                () -> noteInteractionCacheService.evictCollectCaches(userId));
 
         return Response.success();
     }
@@ -1034,18 +1003,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_UN_COLLECT;
 
-        // 异步发送；失败回调清缓存回源
-        rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
-            @Override
-            public void onSuccess(SendResult sendResult) {
-            }
-
-            @Override
-            public void onException(Throwable e) {
-                noteInteractionCacheService.evictCollectCaches(userId);
-                log.warn("笔记取消收藏消息发送失败，noteId={}, userId={}", noteId, userId, e);
-            }
-        });
+        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记取消收藏",
+                () -> noteInteractionCacheService.evictCollectCaches(userId));
 
         return Response.success();
     }
