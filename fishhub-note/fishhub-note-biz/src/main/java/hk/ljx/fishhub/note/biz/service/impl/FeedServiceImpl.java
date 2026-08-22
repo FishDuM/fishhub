@@ -24,7 +24,7 @@ import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.note.biz.service.FeedService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;

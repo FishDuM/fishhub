@@ -4,7 +4,7 @@ import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFansListReqVO;

@@ -1,8 +1,10 @@
 package hk.ljx.fishhub.user.relation.biz.cache;
 
 import cn.hutool.core.collection.CollUtil;
+import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
 import hk.ljx.framework.common.util.DateUtils;
+import hk.ljx.framework.common.util.RebuildLock;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.relation.biz.domain.dataobject.FollowingDO;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
@@ -33,6 +35,10 @@ public class RelationListCacheService {
     public static final int FANS_LIST_MAX = 5000;
 
     private static final long REBUILD_LOCK_SECONDS = 60L;
+
+    private static final int LIST_CACHE_REBUILD_RETRY_TIMES = 3;
+
+    private static final long LIST_CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 50L;
 
     private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_batch_add_and_expire.lua");
     private static final DefaultRedisScript<Long> FANS_ADD_SCRIPT = RedisScriptHelper.loadLongScript("/lua/fans_add.lua");
@@ -151,48 +157,54 @@ public class RelationListCacheService {
     private void ensureFollowingCache(Long userId) {
         String key = RedisKeyConstants.buildUserFollowingKey(userId);
         String lockKey = RedisKeyConstants.buildFollowingRebuildLockKey(userId);
-        if (!tryAcquireRebuildLock(lockKey)) {
-            waitForListKey(key);
+        CacheRebuildSupport.rebuildIfMissing(setNxRebuildLock(lockKey),
+                LIST_CACHE_REBUILD_RETRY_TIMES, LIST_CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
+                () -> rebuildFollowingCache(key, userId));
+    }
+
+    private void rebuildFollowingCache(String key, Long userId) {
+        List<FollowingDO> records = followingDOMapper.selectByUserId(userId);
+        if (CollUtil.isEmpty(records)) {
+            stringRedisTemplate.execute(EMPTY_ZSET_SCRIPT, Collections.singletonList(key), String.valueOf(ttlSeconds()));
             return;
         }
-        try {
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                return;
-            }
-            List<FollowingDO> records = followingDOMapper.selectByUserId(userId);
-            if (CollUtil.isEmpty(records)) {
-                stringRedisTemplate.execute(EMPTY_ZSET_SCRIPT, Collections.singletonList(key), String.valueOf(ttlSeconds()));
-                return;
-            }
-            List<FollowingDO> capped = records.size() > FOLLOWING_LIST_MAX ? records.subList(0, FOLLOWING_LIST_MAX) : records;
-            stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(key),
-                    (Object[]) buildMemberArgs(capped, FollowingDO::getFollowingUserId, ttlSeconds()));
-        } finally {
-            releaseRebuildLock(lockKey);
-        }
+        List<FollowingDO> capped = records.size() > FOLLOWING_LIST_MAX ? records.subList(0, FOLLOWING_LIST_MAX) : records;
+        stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(key),
+                (Object[]) buildMemberArgs(capped, FollowingDO::getFollowingUserId, ttlSeconds()));
     }
 
     private void ensureFansCache(Long userId) {
         String key = RedisKeyConstants.buildUserFansKey(userId);
         String lockKey = RedisKeyConstants.buildFansRebuildLockKey(userId);
-        if (!tryAcquireRebuildLock(lockKey)) {
-            waitForListKey(key);
+        CacheRebuildSupport.rebuildIfMissing(setNxRebuildLock(lockKey),
+                LIST_CACHE_REBUILD_RETRY_TIMES, LIST_CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
+                () -> rebuildFansCache(key, userId));
+    }
+
+    private void rebuildFansCache(String key, Long userId) {
+        List<FollowingDO> records = followingDOMapper.selectCursorPageByFollowingUserId(userId, null, FANS_LIST_MAX);
+        if (CollUtil.isEmpty(records)) {
+            stringRedisTemplate.execute(EMPTY_ZSET_SCRIPT, Collections.singletonList(key), String.valueOf(ttlSeconds()));
             return;
         }
-        try {
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                return;
+        stringRedisTemplate.execute(FANS_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(key),
+                (Object[]) buildMemberArgs(records, FollowingDO::getUserId, ttlSeconds()));
+    }
+
+    private RebuildLock setNxRebuildLock(String lockKey) {
+        return new RebuildLock() {
+            @Override
+            public boolean tryLock() {
+                return tryAcquireRebuildLock(lockKey);
             }
-            List<FollowingDO> records = followingDOMapper.selectCursorPageByFollowingUserId(userId, null, FANS_LIST_MAX);
-            if (CollUtil.isEmpty(records)) {
-                stringRedisTemplate.execute(EMPTY_ZSET_SCRIPT, Collections.singletonList(key), String.valueOf(ttlSeconds()));
-                return;
+
+            @Override
+            public void unlock() {
+                releaseRebuildLock(lockKey);
             }
-            stringRedisTemplate.execute(FANS_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(key),
-                    (Object[]) buildMemberArgs(records, FollowingDO::getUserId, ttlSeconds()));
-        } finally {
-            releaseRebuildLock(lockKey);
-        }
+        };
     }
 
     private List<String> range(String key, long offset, int count) {
@@ -248,22 +260,4 @@ public class RelationListCacheService {
         }
     }
 
-    private void waitForListKey(String key) {
-        for (int i = 0; i < 3; i++) {
-            try {
-                Thread.sleep(50L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            try {
-                if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                    return;
-                }
-            } catch (Exception e) {
-                log.warn("等待列表缓存重建失败, key={}", key, e);
-                return;
-            }
-        }
-    }
 }

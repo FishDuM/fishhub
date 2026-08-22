@@ -1,4 +1,4 @@
-package hk.ljx.fishhub.user.dto.resp;
+package hk.ljx.fishhub.user.dto.rsp;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -7,7 +7,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.api.UserFeignApi;
 import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import lombok.RequiredArgsConstructor;
 
 import java.util.HashMap;

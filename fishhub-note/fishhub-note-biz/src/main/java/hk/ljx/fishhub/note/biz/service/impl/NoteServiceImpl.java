@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.note.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
+import hk.ljx.framework.common.util.RebuildLock;
 
 import cn.hutool.core.collection.CollUtil;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -43,7 +45,7 @@ import hk.ljx.fishhub.note.biz.service.NoteService;
 import hk.ljx.fishhub.note.biz.service.NotePersistenceService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.UserNoteListService;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -193,10 +195,8 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<?> publishNote(PublishNoteReqVO publishNoteReqVO) {
-        // 笔记类型
         Integer type = publishNoteReqVO.getType();
 
-        // 获取对应类型的枚举
         NoteTypeEnum noteTypeEnum = NoteTypeEnum.valueOf(type);
 
         if (Objects.isNull(noteTypeEnum)) {
@@ -204,27 +204,22 @@ public class NoteServiceImpl implements NoteService {
         }
 
         String imgUris = null;
-        // 笔记内容是否为空，默认值为 true，即空
         Boolean isContentEmpty = true;
         String videoUri = null;
         switch (noteTypeEnum) {
             case IMAGE_TEXT: // 图文笔记
                 List<String> imgUriList = publishNoteReqVO.getImgUris();
-                // 校验图片是否为空
                 if (CollUtil.isEmpty(imgUriList)) {
                     throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
                 }
-                // 校验图片数量
                 if (imgUriList.size() > 8) {
                     throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
                 }
-                // 将图片链接拼接，以逗号分隔
                 imgUris = StringUtils.join(imgUriList, ",");
 
                 break;
             case VIDEO: // 视频笔记
                 videoUri = publishNoteReqVO.getVideoUri();
-                // 校验视频链接是否为空
                 if (StringUtils.isBlank(videoUri)) {
                     throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
                 }
@@ -233,28 +228,20 @@ public class NoteServiceImpl implements NoteService {
                 break;
         }
 
-        // RPC: 调用分布式 ID 生成服务，生成笔记 ID
         String snowflakeId = distributedIdGeneratorRpcService.getSnowflakeId();
         Long noteId = Long.valueOf(snowflakeId);
-        // 笔记内容 UUID
         String contentUuid = null;
 
-        // 笔记内容
         String content = publishNoteReqVO.getContent();
 
-        // 若用户填写了笔记内容
         if (StringUtils.isNotBlank(content)) {
-            // 内容是否为空，置为 false，即不为空
             isContentEmpty = false;
-            // 生成笔记内容 UUID
             contentUuid = UUID.randomUUID().toString();
         }
 
-        // 话题
         Long topicId = publishNoteReqVO.getTopicId();
         String topicName = null;
         if (Objects.nonNull(topicId)) {
-            // 获取话题名称
             topicName = topicDOMapper.selectNameByPrimaryKey(topicId);
             if (StringUtils.isBlank(topicName)) {
                 throw new BizException(ResponseCodeEnum.TOPIC_NOT_FOUND);
@@ -267,10 +254,8 @@ public class NoteServiceImpl implements NoteService {
             throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
         }
 
-        // 发布者用户 ID
         Long creatorId = LoginUserContextHolder.getUserId();
 
-        // 构建笔记 DO 对象
         NoteDO noteDO = NoteDO.builder()
                 .id(Long.valueOf(snowflakeId))
                 .isContentEmpty(isContentEmpty)
@@ -373,10 +358,8 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @SneakyThrows
     public Response<FindNoteDetailRspVO> findNoteDetail(FindNoteDetailReqVO findNoteDetailReqVO) {
-        // 查询的笔记 ID
         Long noteId = findNoteDetailReqVO.getId();
 
-        // 当前登录用户
         Long userId = LoginUserContextHolder.getUserId();
 
         // 缓存只保存详情快照；访问权限和版本以 MySQL 中的最小事实字段为准。
@@ -388,18 +371,15 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
             if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                // 实时回填最新计数
                 fillNoteCounts(findNoteDetailRspVO);
                 return Response.success(findNoteDetailRspVO);
             }
             LOCAL_CACHE.invalidate(noteId);
         }
 
-        // 从 Redis 缓存中获取
         String noteDetailRedisKey = RedisKeyConstants.buildNoteDetailKey(noteId);
         String noteDetailJson = stringRedisTemplate.opsForValue().get(noteDetailRedisKey);
 
-        // 若缓存中有该笔记的数据，则直接返回
         if (StringUtils.isNotBlank(noteDetailJson)) {
             if ("null".equals(noteDetailJson)) {
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
@@ -408,21 +388,16 @@ public class NoteServiceImpl implements NoteService {
             if (!isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
                 stringRedisTemplate.delete(noteDetailRedisKey);
             } else {
-                // 写入本地缓存
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
-                // 实时回填最新计数
                 fillNoteCounts(findNoteDetailRspVO);
                 return Response.success(findNoteDetailRspVO);
             }
         }
 
 
-        // 若 Redis 缓存中获取不到，则走数据库查询
-        // 查询笔记
         NoteDO noteDO = noteDOMapper.selectByPrimaryKey(noteId);
 
-        // 若该笔记不存在，则抛出业务异常
         if (Objects.isNull(noteDO)) {
             try {
                 // 防止缓存穿透，同步将空数据存入 Redis 缓存 (过期时间不宜设置过长)
@@ -434,15 +409,12 @@ public class NoteServiceImpl implements NoteService {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
 
-        // 可见性校验
         checkNoteVisible(noteDO.getVisible(), userId, noteDO.getCreatorId());
 
         // 并发查询优化
-        // RPC: 调用用户服务
         CompletableFuture<FindUserByIdRspDTO> userResultFuture = CompletableFuture
                 .supplyAsync(() -> userClient.findById(noteDO.getCreatorId()), threadPoolTaskExecutor);
 
-        // RPC: 调用 K-V 存储服务获取内容
         CompletableFuture<String> contentResultFuture = CompletableFuture.completedFuture(null);
         if (Objects.equals(noteDO.getIsContentEmpty(), Boolean.FALSE)) {
             contentResultFuture = CompletableFuture
@@ -453,17 +425,12 @@ public class NoteServiceImpl implements NoteService {
         CompletableFuture<FindNoteDetailRspVO> resultFuture = CompletableFuture
                 .allOf(userResultFuture, contentResultFuture)
                 .thenApply(s -> {
-                    // 获取 Future 返回的结果
                     FindUserByIdRspDTO findUserByIdRspDTO = userResultFuture.join();
                     String content = finalContentResultFuture.join();
 
-                    // 笔记类型
                     Integer noteType = noteDO.getType();
-                    // 图文笔记图片链接(字符串)
                     String imgUrisStr = noteDO.getImgUris();
-                    // 图文笔记图片链接(集合)
                     List<String> imgUris = null;
-                    // 如果查询的是图文笔记，需要将图片链接的逗号分隔开，转换成集合
                     if (Objects.equals(noteType, NoteTypeEnum.IMAGE_TEXT.getCode())
                             && StringUtils.isNotBlank(imgUrisStr)) {
                         imgUris = List.of(imgUrisStr.split(","));
@@ -488,13 +455,11 @@ public class NoteServiceImpl implements NoteService {
 
                 });
 
-        // 获取拼装后的 FindNoteDetailRspVO
         FindNoteDetailRspVO findNoteDetailRspVO = resultFuture.get();
 
         // 计数随详情 JSON 一起缓存，命中路径免 count Feign（TTL 缩至 30~90s 保新鲜）。
         fillNoteCounts(findNoteDetailRspVO);
 
-        // 异步线程中将笔记详情存入 Redis
         threadPoolTaskExecutor.submit(() -> {
             try {
                 // 如果笔记包含正文但正文尚未异步落库完毕（content == null），不写入详情缓存，避免产生长达一分钟的正文空白缓存污染
@@ -690,23 +655,19 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<?> deleteNote(DeleteNoteReqVO deleteNoteReqVO) {
-        // 笔记 ID
         Long noteId = deleteNoteReqVO.getId();
 
         NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
 
-        // 判断笔记是否存在
         if (Objects.isNull(selectNoteDO)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
 
-        // 判断权限：非笔记发布者不允许删除笔记
         Long currUserId = LoginUserContextHolder.getUserId();
         if (!Objects.equals(currUserId, selectNoteDO.getCreatorId())) {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
         }
 
-        // 逻辑删除
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
                 .status(NoteStatusEnum.DELETED.getCode())
@@ -786,18 +747,15 @@ public class NoteServiceImpl implements NoteService {
 
         NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
 
-        // 判断笔记是否存在
         if (Objects.isNull(selectNoteDO)) {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
 
-        // 判断权限：非笔记发布者不允许修改笔记权限
         Long currUserId = LoginUserContextHolder.getUserId();
         if (!Objects.equals(currUserId, selectNoteDO.getCreatorId())) {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
         }
 
-        // 构建更新 DO 实体类
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
                 .visible(visible)
@@ -833,9 +791,7 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Response<?> topNote(TopNoteReqVO topNoteReqVO) {
-        // 笔记 ID
         Long noteId = topNoteReqVO.getId();
-        // 是否置顶
         Boolean isTop = topNoteReqVO.getIsTop();
 
         Long currUserId = LoginUserContextHolder.getUserId();
@@ -843,7 +799,6 @@ public class NoteServiceImpl implements NoteService {
         // 置顶改变频道排序，需按频道 ID bump 版本。
         NoteDO selectNoteDO = noteDOMapper.selectByPrimaryKey(noteId);
 
-        // 构建置顶/取消置顶 DO 实体类
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
                 .isTop(isTop)
@@ -1049,19 +1004,14 @@ public class NoteServiceImpl implements NoteService {
         Long noteId = findNoteIsLikedAndCollectedReqVO.getNoteId();
         checkNoteIsExistAndGetCreatorId(noteId);
 
-        // 已登录的用户 ID
         Long currUserId = LoginUserContextHolder.getUserId();
 
-        // 默认未点赞、未收藏
         boolean isLiked = false;
         boolean isCollected = false;
 
-        // 若当前用户已登录
         if (Objects.nonNull((currUserId))) {
-            // 1. 校验是否点赞
             isLiked = checkNoteIsLiked(noteId, currUserId);
 
-            // 2. 校验是否收藏
             isCollected = checkNoteIsCollected(noteId, currUserId);
         }
 
@@ -1080,33 +1030,25 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public Response<FindPublishedNoteListRspVO> findPublishedNoteList(FindPublishedNoteListReqVO findPublishedNoteListReqVO) {
-        // 目标用户ID
         Long userId = findPublishedNoteListReqVO.getUserId();
-        // 游标
         Long cursor = findPublishedNoteListReqVO.getCursor();
         boolean includePrivate = Objects.equals(LoginUserContextHolder.getUserId(), userId);
 
-        // 返参 VO
         FindPublishedNoteListRspVO findPublishedNoteListRspVO = null;
 
-        // 优先查询缓存
         String publishedNoteListRedisKey = RedisKeyConstants.buildPublishedNoteListKey(userId);
-        // 若游标为空，表示查询的是第一页
         if (!includePrivate && Objects.isNull(cursor)) {
             String publishedNoteListJson = stringRedisTemplate.opsForValue().get(publishedNoteListRedisKey);
 
             if (StringUtils.isNotBlank(publishedNoteListJson)) {
                 try {
                     log.info("已发布笔记列表命中了 Redis 缓存...");
-                    // Json 字符串转 VO 集合
                     List<NoteItemRspVO> noteItemRspVOS = JsonUtils.parseList(publishedNoteListJson, NoteItemRspVO.class);
-                    // 按笔记 ID 降序，最新发布的笔记排最前面
                     List<NoteItemRspVO> sortedList = noteItemRspVOS.stream().sorted(Comparator.comparing(NoteItemRspVO::getNoteId).reversed()).toList();
 
                     // 实时回填当前用户点赞状态（计数复用快照内嵌基准值，零 Feign 零 Hash 往返）
                     batchGetAndSetNoteIsLiked(sortedList);
 
-                    // 过滤出最早发布的笔记 ID，充当下一页的游标
                     Optional<Long> earliestNoteId = sortedList.stream().map(NoteItemRspVO::getNoteId).min(Long::compareTo);
 
                     findPublishedNoteListRspVO = FindPublishedNoteListRspVO.builder()
@@ -1120,14 +1062,11 @@ public class NoteServiceImpl implements NoteService {
             }
         }
 
-        // 缓存无，则查询数据库
         List<NoteDO> noteDOS = noteDOMapper.selectPublishedNoteListByUserIdAndCursor(userId, cursor, includePrivate);
 
         if (CollUtil.isNotEmpty(noteDOS)) {
-            // DO 转 VO
             List<NoteItemRspVO> noteVOS = noteDOS.stream()
                     .map(noteDO -> {
-                        // 获取封面图片
                         String cover = StringUtils.isNotBlank(noteDO.getImgUris()) ?
                                 StringUtils.split(noteDO.getImgUris(), ",")[0] : null;
 
@@ -1143,14 +1082,12 @@ public class NoteServiceImpl implements NoteService {
                         return noteItemRspVO;
                     }).toList();
 
-            // Feign 调用用户服务，获取博主的用户头像、昵称
             CompletableFuture<FindUserByIdRspDTO> userFuture = CompletableFuture
                     .supplyAsync(() -> {
                         Optional<Long> creatorIdOptional = noteDOS.stream().map(NoteDO::getCreatorId).findAny();
                         return userClient.findById(creatorIdOptional.get());
                     }, threadPoolTaskExecutor);
 
-            // Feign 调用计数服务，批量获取笔记点赞数
             CompletableFuture<List<FindNoteCountsByIdRspDTO>> noteCountFuture = CompletableFuture
                     .supplyAsync(() -> {
                         List<Long> noteIds = noteDOS.stream().map(NoteDO::getId).toList();
@@ -1162,23 +1099,19 @@ public class NoteServiceImpl implements NoteService {
                 List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS = noteCountFuture.get();
 
                 if (Objects.nonNull(findUserByIdRspDTO)) {
-                    // 循环 VO 集合，分别设置头像、昵称
                     noteVOS.forEach(noteItemRspVO -> {
                         noteItemRspVO.setAvatar(findUserByIdRspDTO.getAvatar());
                         noteItemRspVO.setNickname(findUserByIdRspDTO.getNickName());
                     });
                 }
 
-                // 设置笔记的点赞量
                 setVOListLikeTotal(noteVOS, findNoteCountsByIdRspDTOS);
 
-                // 批量获取笔记的点赞状态
                 batchGetAndSetNoteIsLiked(noteVOS);
             } catch (Exception e) {
                 log.error("## 并发调用错误: ", e);
             }
 
-            // 过滤出最早发布的笔记 ID，充当下一页的游标
             Optional<Long> earliestNoteId = noteDOS.stream().map(NoteDO::getId).min(Long::compareTo);
 
             findPublishedNoteListRspVO = FindPublishedNoteListRspVO.builder()
@@ -1186,7 +1119,6 @@ public class NoteServiceImpl implements NoteService {
                     .nextCursor(earliestNoteId.orElse(null))
                     .build();
 
-            // 同步第一页已发布笔记到 Redis
             if (!includePrivate && Objects.isNull(cursor)) {
                 syncFirstPagePublishedNoteList2Redis(noteVOS, publishedNoteListRedisKey);
             }
@@ -1217,11 +1149,8 @@ public class NoteServiceImpl implements NoteService {
      * @param noteItemRspVOS
      */
     private void batchGetAndSetNoteIsLiked(List<NoteItemRspVO> noteItemRspVOS) {
-        // 当前登录用户的 ID
         Long loginUserId = LoginUserContextHolder.getUserId();
-        // 若用户已登录
         if (Objects.nonNull(loginUserId)) {
-            // 提取所有需要获取点赞状态的笔记 ID
             List<Long> noteIds = noteItemRspVOS.stream().map(NoteItemRspVO::getNoteId).toList();
             Set<Long> likedNoteIds = noteInteractionCacheService.findLikedNoteIds(loginUserId, noteIds);
             noteItemRspVOS.forEach(note -> note.setIsLiked(likedNoteIds.contains(note.getNoteId())));
@@ -1235,12 +1164,10 @@ public class NoteServiceImpl implements NoteService {
      */
     private void getAndSetLatestLikeTotalIfAuthor(Long userId, List<NoteItemRspVO> sortedList) {
         Long loginUserId = LoginUserContextHolder.getUserId();
-        // 用户已登录，并且查询的是自己
         if (Objects.nonNull(loginUserId) && Objects.equals(loginUserId, userId)) {
             List<Long> noteIds = sortedList.stream().map(NoteItemRspVO::getNoteId).toList();
             List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS = countClient.findByNoteIds(noteIds);
 
-            // 设置笔记的点赞量
             setVOListLikeTotal(sortedList, findNoteCountsByIdRspDTOS);
         }
     }
@@ -1252,11 +1179,9 @@ public class NoteServiceImpl implements NoteService {
      */
     private static void setVOListLikeTotal(List<NoteItemRspVO> noteItemRspVOS, List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS) {
         if (CollUtil.isNotEmpty(findNoteCountsByIdRspDTOS)) {
-            // DTO 集合转 Map
             Map<Long, FindNoteCountsByIdRspDTO> noteIdAndDTOMap = findNoteCountsByIdRspDTOS.stream()
                     .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, dto -> dto));
 
-            // 循环设置 VO 集合，设置每篇笔记的点赞量
             noteItemRspVOS.forEach(noteItemRspVO -> {
                 Long currNoteId = noteItemRspVO.getNoteId();
                 FindNoteCountsByIdRspDTO findNoteCountsByIdRspDTO = noteIdAndDTOMap.get(currNoteId);
@@ -1273,10 +1198,8 @@ public class NoteServiceImpl implements NoteService {
      */
     private void syncFirstPagePublishedNoteList2Redis(List<NoteItemRspVO> noteVOS, String publishedNoteListRedisKey) {
         if (CollUtil.isEmpty(noteVOS)) return;
-        // 异步同步缓存
         threadPoolTaskExecutor.submit(() -> {
             try {
-                // 过期时间，一小时以内（保底30分钟+随机秒数）
                 long expireSeconds = CacheTtl.minutes(30, 30);
                 stringRedisTemplate.opsForValue()
                         .set(publishedNoteListRedisKey, JsonUtils.toJsonString(noteVOS), expireSeconds, TimeUnit.SECONDS);
@@ -1409,38 +1332,36 @@ public class NoteServiceImpl implements NoteService {
         if (cachedSnapshot != null) {
             return cachedSnapshot;
         }
-
-        // 热点笔记被击穿时单飞重建：抢锁者回源写回，抢不到者轮询等待。
         String lockKey = RedisKeyConstants.buildNoteAccessRebuildLockKey(noteId);
-        RLock lock;
-        try {
-            lock = tryAcquireRebuildLock(lockKey, ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，笔记访问快照重建锁获取失败，回源 MySQL，noteId={}", noteId, e);
-            return loadAccessSnapshotFromMySql(noteId, key, false);
-        }
-        if (lock == null) {
-            try {
-                NoteAccessSnapshot rebuilt = waitForAccessSnapshot(key);
-                if (rebuilt != null) {
-                    return rebuilt;
+        // 热点笔记被击穿时单飞重建：抢锁者回源写回，抢不到者轮询等待。
+        return CacheRebuildSupport.getOrRebuild(
+                accessSnapshotRebuildLock(lockKey),
+                ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES, ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> readAccessSnapshot(key),
+                () -> loadAccessSnapshotFromMySql(noteId, key, true),
+                () -> loadAccessSnapshotFromMySql(noteId, key, false));
+    }
+
+    private RebuildLock accessSnapshotRebuildLock(String lockKey) {
+        return new RebuildLock() {
+            private RLock held;
+
+            @Override
+            public boolean tryLock() {
+                try {
+                    held = NoteServiceImpl.this.tryAcquireRebuildLock(lockKey, ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS);
+                } catch (Exception e) {
+                    log.warn("Redis 不可用，笔记访问快照重建锁获取失败，回源 MySQL，key={}", lockKey, e);
+                    throw e;
                 }
-            } catch (Exception e) {
-                log.warn("Redis 不可用，笔记访问快照轮询失败，回源 MySQL，noteId={}", noteId, e);
+                return held != null;
             }
-            // 轮询超时兜底：查库不写回，写回由锁持有者负责。
-            return loadAccessSnapshotFromMySql(noteId, key, false);
-        }
-        try {
-            // 二次检查：抢锁期间其他重建者可能已写入。
-            NoteAccessSnapshot reRead = readAccessSnapshot(key);
-            if (reRead != null) {
-                return reRead;
+
+            @Override
+            public void unlock() {
+                releaseRebuildLock(held, lockKey);
             }
-            return loadAccessSnapshotFromMySql(noteId, key, true);
-        } finally {
-            releaseRebuildLock(lock, lockKey);
-        }
+        };
     }
 
     /** 读取访问快照缓存；空白/"null"/解析失败统一走重建（解析失败先删脏值）。 */
@@ -1459,22 +1380,6 @@ public class NoteServiceImpl implements NoteService {
             deleteAccessSnapshotCache(key);
             return null;
         }
-    }
-
-    private NoteAccessSnapshot waitForAccessSnapshot(String key) {
-        for (int i = 0; i < ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES; i++) {
-            sleepBeforeAccessSnapshotRetry();
-            NoteAccessSnapshot snapshot = readAccessSnapshot(key);
-            if (snapshot != null) {
-                return snapshot;
-            }
-            // "null" 哨兵已折叠为 null；哨兵写入也视为重建完成。
-            String cached = getAccessSnapshotCacheValue(key);
-            if ("null".equals(cached)) {
-                return null;
-            }
-        }
-        return null;
     }
 
     private NoteAccessSnapshot loadAccessSnapshotFromMySql(Long noteId, String key, boolean cacheResult) {
@@ -1511,14 +1416,6 @@ public class NoteServiceImpl implements NoteService {
             }
         } catch (Exception e) {
             log.warn("Redis 不可用，笔记访问快照重建锁释放失败，key={}", lockKey, e);
-        }
-    }
-
-    private void sleepBeforeAccessSnapshotRetry() {
-        try {
-            Thread.sleep(ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
     }
 

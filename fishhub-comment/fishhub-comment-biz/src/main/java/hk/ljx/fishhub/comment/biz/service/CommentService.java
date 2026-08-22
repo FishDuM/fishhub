@@ -37,10 +37,10 @@ public interface CommentService {
 
     /**
      * 取消评论点赞
-     * @param unLikeCommentReqVO
+     * @param unlikeCommentReqVO
      * @return
      */
-    Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO);
+    Response<?> unlikeComment(UnlikeCommentReqVO unlikeCommentReqVO);
 
     Response<java.util.List<Long>> findLikedCommentIds(FindLikedCommentIdsReqVO reqVO);
 

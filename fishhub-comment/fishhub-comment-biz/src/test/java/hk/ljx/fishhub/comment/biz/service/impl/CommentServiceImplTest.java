@@ -6,7 +6,7 @@ import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.vo.FindCommentPageListReqVO;
 import hk.ljx.fishhub.comment.biz.model.vo.LikeCommentReqVO;
-import hk.ljx.fishhub.comment.biz.model.vo.UnLikeCommentReqVO;
+import hk.ljx.fishhub.comment.biz.model.vo.UnlikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -172,7 +172,7 @@ class CommentServiceImplTest {
         when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(false);
 
         assertThrows(BizException.class, () -> service.unlikeComment(
-                UnLikeCommentReqVO.builder().commentId(100L).build()));
+                UnlikeCommentReqVO.builder().commentId(100L).build()));
 
         verify(rocketMQTemplate, never()).syncSendOrderly(anyString(), any(Message.class), anyString());
         verify(commentLikeRealtimeService, never()).markUnliked(anyLong(), anyLong());
@@ -185,7 +185,7 @@ class CommentServiceImplTest {
         when(commentLikeRealtimeService.containsLiked(2L, 100L)).thenReturn(true);
 
         var response = service.unlikeComment(
-                UnLikeCommentReqVO.builder().commentId(100L).build());
+                UnlikeCommentReqVO.builder().commentId(100L).build());
 
         org.junit.jupiter.api.Assertions.assertTrue(response.isSuccess());
         verify(commentDOMapper, never()).selectByPrimaryKey(anyLong());

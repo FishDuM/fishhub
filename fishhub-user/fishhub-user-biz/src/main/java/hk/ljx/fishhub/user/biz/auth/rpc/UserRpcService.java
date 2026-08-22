@@ -8,9 +8,9 @@ import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.ResolveLoginableUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
-import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
-import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
-import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.ResolveLoginableUserRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

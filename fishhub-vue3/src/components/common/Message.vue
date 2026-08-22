@@ -37,7 +37,6 @@ const show = ({ content, type: nextType = 'info', duration = 2000 }) => {
   }, duration)
 }
 
-// 暴露方法给外部使用
 defineExpose({
   show
 })

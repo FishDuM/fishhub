@@ -5,9 +5,9 @@ import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.user.dto.req.*;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
-import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
-import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.ResolveLoginableUserRspDTO;
 
 import java.util.List;
 

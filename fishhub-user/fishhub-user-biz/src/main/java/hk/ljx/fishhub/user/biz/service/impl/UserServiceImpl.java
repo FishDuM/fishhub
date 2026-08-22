@@ -37,9 +37,9 @@ import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
-import hk.ljx.fishhub.user.dto.resp.FindUserByPhoneRspDTO;
-import hk.ljx.fishhub.user.dto.resp.ResolveLoginableUserRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.ResolveLoginableUserRspDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -123,12 +123,9 @@ public class UserServiceImpl implements UserService {
         Long userId = LoginUserContextHolder.getUserId();
 
         UserDO userDO = new UserDO();
-        // 设置当前需要更新的用户 ID
         userDO.setId(userId);
-        // 标识位：是否需要更新
         boolean needUpdate = false;
 
-        // 头像
         MultipartFile avatarFile = updateUserInfoReqVO.getAvatar();
 
         if (Objects.nonNull(avatarFile)) {
@@ -143,7 +140,6 @@ public class UserServiceImpl implements UserService {
             needUpdate = true;
         }
 
-        // 昵称
         String nickname = updateUserInfoReqVO.getNickname();
         if (StringUtils.isNotBlank(nickname)) {
             Preconditions.checkArgument(ParamUtils.checkNickname(nickname), ResponseCodeEnum.NICK_NAME_VALID_FAIL.getErrorMessage());
@@ -157,7 +153,6 @@ public class UserServiceImpl implements UserService {
             needUpdate = true;
         }
 
-        // 性别
         Integer sex = updateUserInfoReqVO.getSex();
         if (Objects.nonNull(sex)) {
             Preconditions.checkArgument(SexEnum.isValid(sex), ResponseCodeEnum.SEX_VALID_FAIL.getErrorMessage());
@@ -165,14 +160,12 @@ public class UserServiceImpl implements UserService {
             needUpdate = true;
         }
 
-        // 生日
         LocalDate birthday = updateUserInfoReqVO.getBirthday();
         if (Objects.nonNull(birthday)) {
             userDO.setBirthday(birthday);
             needUpdate = true;
         }
 
-        // 个人简介
         String introduction = updateUserInfoReqVO.getIntroduction();
         if (introduction != null) {
             Preconditions.checkArgument(introduction.length() <= 100,
@@ -181,7 +174,6 @@ public class UserServiceImpl implements UserService {
             needUpdate = true;
         }
 
-        // 背景图
         MultipartFile backgroundImgFile = updateUserInfoReqVO.getBackgroundImg();
         if (Objects.nonNull(backgroundImgFile)) {
             String backgroundImg = ossRpcService.uploadFile(backgroundImgFile);
@@ -196,7 +188,6 @@ public class UserServiceImpl implements UserService {
         }
 
         if (needUpdate) {
-            // 更新用户信息
             userDO.setUpdateTime(LocalDateTime.now());
             userDOMapper.updateByPrimaryKeySelective(userDO);
 
@@ -232,7 +223,6 @@ public class UserServiceImpl implements UserService {
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
         String userActiveRedisKey = RedisKeyConstants.buildUserActiveKey(userId);
 
-        // 批量删除
         stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey, userActiveRedisKey));
     }
 
@@ -327,10 +317,8 @@ public class UserServiceImpl implements UserService {
     public Response<FindUserByPhoneRspDTO> findByPhone(FindUserByPhoneReqDTO findUserByPhoneReqDTO) {
         String phone = findUserByPhoneReqDTO.getPhone();
 
-        // 根据手机号查询用户信息
         UserDO userDO = userDOMapper.selectActiveByPhone(phone);
 
-        // 判空
         if (Objects.isNull(userDO)) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
@@ -352,7 +340,6 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Response<Boolean> updatePassword(UpdateUserPasswordReqDTO updateUserPasswordReqDTO) {
-        // 获取当前请求对应的用户 ID
         Long userId = LoginUserContextHolder.getUserId();
 
         UserDO userDO = UserDO.builder()
@@ -378,39 +365,29 @@ public class UserServiceImpl implements UserService {
     public Response<FindUserByIdRspDTO> findById(FindUserByIdReqDTO findUserByIdReqDTO) {
         Long userId = findUserByIdReqDTO.getId();
 
-        // 先从本地缓存中查询
         FindUserByIdRspDTO findUserByIdRspDTOLocalCache = LOCAL_CACHE.getIfPresent(userId);
         if (Objects.nonNull(findUserByIdRspDTOLocalCache)) {
             log.info("==> 命中了本地缓存；{}", findUserByIdRspDTOLocalCache);
             return Response.success(findUserByIdRspDTOLocalCache);
         }
 
-        // 用户缓存 Redis Key
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
 
-        // 再从 Redis 缓存中查询
         String userInfoRedisValue = stringRedisTemplate.opsForValue().get(userInfoRedisKey);
 
-        // 若 Redis 缓存中存在该用户信息
         if (StringUtils.isNotBlank(userInfoRedisValue)) {
             if ("null".equals(userInfoRedisValue)) {
                 throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
             }
-            // 将存储的 Json 字符串转换成对象，并返回
             FindUserByIdRspDTO findUserByIdRspDTO = JsonUtils.parseObject(userInfoRedisValue, FindUserByIdRspDTO.class);
-            // 异步线程中将用户信息存入本地缓存
             threadPoolTaskExecutor.submit(() -> {
-                // 写入本地缓存
                 LOCAL_CACHE.put(userId, findUserByIdRspDTO);
             });
             return Response.success(findUserByIdRspDTO);
         }
 
-        // 否则, 从数据库中查询
-        // 根据用户 ID 查询用户信息
         UserDO userDO = userDOMapper.selectByPrimaryKey(userId);
 
-        // 判空
         if (Objects.isNull(userDO)) {
             threadPoolTaskExecutor.execute(() -> {
                 // 防止缓存穿透，将空数据存入 Redis 缓存 (过期时间不宜设置过长)
@@ -423,7 +400,6 @@ public class UserServiceImpl implements UserService {
 
         FindUserByIdRspDTO findUserByIdRspDTO = toFindUserByIdRspDTO(userDO);
 
-        // 异步将用户信息存入 Redis 缓存，提升响应速度
         threadPoolTaskExecutor.submit(() -> {
             try {
                 // 过期时间（保底1天 + 随机秒数，将缓存过期时间打散，防止同一时间大量缓存失效，导致数据库压力太大）
@@ -496,7 +472,6 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public Response<List<FindUserByIdRspDTO>> findByIds(FindUsersByIdsReqDTO findUsersByIdsReqDTO) {
-        // 需要查询的用户 ID 集合
         List<Long> userIds = findUsersByIdsReqDTO.getIds();
 
         if (CollUtil.isEmpty(userIds)) {
@@ -512,7 +487,6 @@ public class UserServiceImpl implements UserService {
                 .map(RedisKeyConstants::buildUserInfoKey)
                 .toList();
 
-        // 批量查询 Redis
         List<String> redisValues = stringRedisTemplate.opsForValue().multiGet(redisKeys);
 
         Map<Long, FindUserByIdRspDTO> foundUsersMap = new HashMap<>();
@@ -606,15 +580,12 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public Response<FindUserProfileRspVO> findUserProfile(FindUserProfileReqVO findUserProfileReqVO) {
-        // 要查询的用户 ID
         Long userId = findUserProfileReqVO.getUserId();
 
-        // 若入参中用户 ID 为空，则查询当前登录用户
         if (Objects.isNull(userId)) {
             userId = LoginUserContextHolder.getUserId();
         }
 
-        // 1. 优先查本地缓存
         if (!Objects.equals(userId, LoginUserContextHolder.getUserId())) { // 如果是用户本人查看自己的主页，则不走本地缓存（对本人保证实时性）
             FindUserProfileRspVO userProfileLocalCache = PROFILE_LOCAL_CACHE.getIfPresent(userId);
             if (Objects.nonNull(userProfileLocalCache)) {
@@ -623,14 +594,12 @@ public class UserServiceImpl implements UserService {
             }
         }
 
-        // 2. 再查询 Redis 缓存
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
         String userProfileJson = stringRedisTemplate.opsForValue().get(userProfileRedisKey);
 
         if (StringUtils.isNotBlank(userProfileJson)) {
             FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
-            // 异步同步到本地缓存
             syncUserProfile2LocalCache(userId, findUserProfileRspVO);
             // 如果是作者本人查看，保证计数的实时性
             authorGetActualCountData(userId, findUserProfileRspVO);
@@ -638,14 +607,12 @@ public class UserServiceImpl implements UserService {
             return Response.success(findUserProfileRspVO);
         }
 
-        // 3. 若 Redis 中无缓存，再查询数据库
         UserDO userDO = userDOMapper.selectByPrimaryKey(userId);
 
         if (Objects.isNull(userDO)) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        // 构建返参 VO
         FindUserProfileRspVO findUserProfileRspVO = FindUserProfileRspVO.builder()
                 .userId(userDO.getId())
                 .avatar(userDO.getAvatar())
@@ -656,7 +623,6 @@ public class UserServiceImpl implements UserService {
                 .introduction(userDO.getIntroduction())
                 .build();
 
-        // 计算年龄
         LocalDate birthday = userDO.getBirthday();
         findUserProfileRspVO.setAge(Objects.isNull(birthday) ? null : DateUtils.calculateAge(birthday));
 
@@ -664,9 +630,7 @@ public class UserServiceImpl implements UserService {
         // 关注数、粉丝数、收藏与点赞总数；获得的点赞数、收藏数
         rpcCountServiceAndSetData(userId, findUserProfileRspVO);
 
-        // 异步同步到 Redis 中
         syncUserProfile2Redis(userProfileRedisKey, findUserProfileRspVO);
-        // 异步同步到本地缓存
         syncUserProfile2LocalCache(userId, findUserProfileRspVO);
 
         return Response.success(findUserProfileRspVO);
@@ -731,10 +695,8 @@ public class UserServiceImpl implements UserService {
     private void syncUserProfile2Redis(String userProfileRedisKey, FindUserProfileRspVO findUserProfileRspVO) {
         threadPoolTaskExecutor.submit(() -> {
             try {
-                // 设置随机过期时间 (2小时以内)
                 long expireTime = CacheTtl.hours(1, 1);
 
-                // 将 VO 转为 Json 字符串写入到 Redis 中
                 stringRedisTemplate.opsForValue().set(userProfileRedisKey, JsonUtils.toJsonString(findUserProfileRspVO), expireTime, TimeUnit.SECONDS);
             } catch (Exception e) {
                 log.warn("Redis 不可用，用户主页缓存写入失败", e);

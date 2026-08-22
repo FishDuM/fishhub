@@ -48,8 +48,8 @@ public class CommentController {
 
     @PostMapping("/unlike")
     @ApiOperationLog(description = "评论取消点赞")
-    public Response<?> unlikeComment(@Validated @RequestBody UnLikeCommentReqVO unLikeCommentReqVO) {
-        return commentService.unlikeComment(unLikeCommentReqVO);
+    public Response<?> unlikeComment(@Validated @RequestBody UnlikeCommentReqVO unlikeCommentReqVO) {
+        return commentService.unlikeComment(unlikeCommentReqVO);
     }
 
     @PostMapping("/liked/ids")

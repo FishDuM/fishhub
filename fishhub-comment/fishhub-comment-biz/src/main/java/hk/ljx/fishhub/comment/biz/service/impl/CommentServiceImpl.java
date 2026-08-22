@@ -1,6 +1,8 @@
 package hk.ljx.fishhub.comment.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
+import hk.ljx.framework.common.util.RebuildLock;
 
 import cn.hutool.core.collection.CollUtil;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -35,7 +37,7 @@ import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
 import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
 import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -103,14 +105,12 @@ public class CommentServiceImpl implements CommentService {
         String content = publishCommentReqVO.getContent();
         String imageUrl = publishCommentReqVO.getImageUrl();
 
-        // 评论内容和图片不能同时为空
         Preconditions.checkArgument(StringUtils.isNotBlank(content) || StringUtils.isNotBlank(imageUrl),
                 "评论正文和图片不能同时为空");
 
         Long noteId = publishCommentReqVO.getNoteId();
         Long replyCommentId = publishCommentReqVO.getReplyCommentId();
 
-        // 发布者 ID
         Long creatorId = LoginUserContextHolder.getUserId();
 
         // 同步前置校验笔记可写性（防止静默丢弃与假成功）
@@ -118,10 +118,8 @@ public class CommentServiceImpl implements CommentService {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_WRITABLE);
         }
 
-        // RPC: 调用分布式 ID 生成服务，生成评论 ID
         String commentId = distributedIdGeneratorRpcService.generateCommentId();
 
-        // 发送 MQ
         PublishCommentMqDTO publishCommentMqDTO = PublishCommentMqDTO.builder()
                 .commentId(Long.valueOf(commentId))
                 .noteId(noteId)
@@ -132,7 +130,6 @@ public class CommentServiceImpl implements CommentService {
                 .creatorId(creatorId)
                 .build();
 
-        // 发布评论 MQ
         String publishMsg = JsonUtils.toJsonString(publishCommentMqDTO);
         // 同步发送：失败即抛，避免"发布成功"但评论永不落库
         RocketMqHelper.syncSend(rocketMQTemplate, MQConstants.TOPIC_PUBLISH_COMMENT, publishMsg, "发布评论");
@@ -148,32 +145,23 @@ public class CommentServiceImpl implements CommentService {
      */
     @Override
     public PageResponse<FindCommentItemRspVO> findCommentPageList(FindCommentPageListReqVO findCommentPageListReqVO) {
-        // 笔记 ID
         Long noteId = findCommentPageListReqVO.getNoteId();
         ensureNoteAccessible(noteId);
-        // 当前页码
         Integer pageNo = findCommentPageListReqVO.getPageNo();
-        // 每页展示一级评论数
         long pageSize = 10;
 
         // 一级评论数单独缓存；不能拿包含回复数的笔记评论总数替代。
         long count = getOneLevelCommentTotal(noteId);
 
-        // 若评论总数为 0，则直接响应
         if (count == 0) {
             return PageResponse.success(Collections.emptyList(), pageNo, 0, pageSize);
         }
 
-        // 分页返参
         List<FindCommentItemRspVO> commentRspVOS = Lists.newArrayList();
 
-        // 计算分页查询的偏移量 offset
         long offset = PageResponse.getOffset(pageNo, pageSize);
 
-        // 评论分页缓存使用 ZSET + STRING 实现
-        // 构建评论 ZSET Key
         String commentZSetKey = RedisKeyConstants.buildCommentListKey(noteId);
-        // 先判断 ZSET 是否存在
         boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(commentZSetKey));
 
         // 若不存在且查询前 50 页热点数据，单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
@@ -182,27 +170,19 @@ public class CommentServiceImpl implements CommentService {
             hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(commentZSetKey));
         }
 
-        // 若 ZSET 缓存存在, 并且查询的是前 50 页的评论
         if (hasKey && offset < 500) {
-            // 使用 ZRevRange 获取某篇笔记下，按热度降序排序的一级评论 ID
             Set<String> commentIds = stringRedisTemplate.<String>opsForZSet()
                     .reverseRangeByScore(commentZSetKey, -Double.MAX_VALUE, Double.MAX_VALUE, offset, pageSize);
 
-            // 若结果不为空
             if (CollUtil.isNotEmpty(commentIds)) {
-                // Set 转 List
                 List<String> commentIdList = Lists.newArrayList(commentIds);
 
-                // 先查询本地缓存
-                // 新建一个集合，用于存储本地缓存中不存在的评论 ID
                 List<Long> localCacheExpiredCommentIds = Lists.newArrayList();
 
-                // 构建查询本地缓存的 Key 集合
                 List<Long> localCacheKeys = commentIdList.stream()
                         .map(Long::valueOf)
                         .toList();
 
-                // 批量查询本地缓存已存在的条目
                 Map<Long, String> commentIdAndDetailJsonMap = LOCAL_CACHE.getAllPresent(localCacheKeys);
                 Set<Long> hitKeys = commentIdAndDetailJsonMap.keySet();
                 for (Long key : localCacheKeys) {
@@ -211,7 +191,6 @@ public class CommentServiceImpl implements CommentService {
                     }
                 }
 
-                // 若存在已命中的本地缓存数据，转换为实体类放入 Map
                 Map<Long, FindCommentItemRspVO> detailMap = new HashMap<>();
                 if (CollUtil.isNotEmpty(commentIdAndDetailJsonMap)) {
                     for (Map.Entry<Long, String> entry : commentIdAndDetailJsonMap.entrySet()) {
@@ -224,7 +203,6 @@ public class CommentServiceImpl implements CommentService {
                     }
                 }
 
-                // 若 localCacheExpiredCommentIds 大小等于 0，说明评论详情数据都在本地缓存中，直接按原始顺序返参
                 if (CollUtil.isEmpty(localCacheExpiredCommentIds)) {
                     for (Long commentId : localCacheKeys) {
                         FindCommentItemRspVO vo = detailMap.get(commentId);
@@ -240,38 +218,31 @@ public class CommentServiceImpl implements CommentService {
                     return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
                 }
 
-                // 构建 MGET 批量查询评论详情的 Key 集合
                 List<String> commentIdKeys = localCacheExpiredCommentIds.stream()
                         .map(RedisKeyConstants::buildCommentDetailKey)
                         .toList();
 
-                // MGET 批量获取评论数据
                 List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
 
-                // 可能存在部分评论不在缓存中，已经过期被删除，这些评论 ID 需要提取出来，等会查数据库
                 List<Long> expiredCommentIds = Lists.newArrayList();
 
                 for (int i = 0; i < commentsJsonList.size(); i++) {
                     String commentJson = commentsJsonList.get(i);
                     Long commentId = localCacheExpiredCommentIds.get(i);
                     if (Objects.nonNull(commentJson)) {
-                        // 缓存中存在的评论 Json，直接转换为 VO
                         FindCommentItemRspVO commentRspVO = JsonUtils.parseObject(commentJson, FindCommentItemRspVO.class);
                         if (commentRspVO != null) {
                             detailMap.put(commentId, commentRspVO);
                         }
                     } else {
-                        // 评论失效，添加到失效评论列表
                         expiredCommentIds.add(commentId);
                     }
                 }
 
-                // 对于缓存中存在的评论详情, 需要再次查询其计数数据
                 if (CollUtil.isNotEmpty(detailMap)) {
                     setCommentCountData(new ArrayList<>(detailMap.values()), expiredCommentIds);
                 }
 
-                // 对于不存在的一级评论，需要批量从数据库中查询，并添加到 detailMap 中
                 if (CollUtil.isNotEmpty(expiredCommentIds)) {
                     List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredCommentIds);
                     List<FindCommentItemRspVO> dbFetchedVOs = Lists.newArrayList();
@@ -283,7 +254,6 @@ public class CommentServiceImpl implements CommentService {
                     }
                 }
 
-                // 严格按照原始 ZSet 有序 ID 列表组装返回集合，保留原有热度顺序
                 for (Long commentId : localCacheKeys) {
                     FindCommentItemRspVO vo = detailMap.get(commentId);
                     if (vo != null) {
@@ -292,18 +262,14 @@ public class CommentServiceImpl implements CommentService {
                 }
             }
 
-            // 异步将评论详情，同步到本地缓存
             syncCommentDetail2LocalCache(commentRspVOS);
 
             return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
         }
 
-        // 缓存中没有，则查询数据库
-        // 查询一级评论
         List<CommentDO> oneLevelCommentDOS = commentDOMapper.selectPageList(noteId, offset, pageSize);
         getCommentDataAndSync2Redis(oneLevelCommentDOS, noteId, commentRspVOS);
 
-        // 异步将评论详情，同步到本地缓存
         syncCommentDetail2LocalCache(commentRspVOS);
 
         return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
@@ -317,32 +283,25 @@ public class CommentServiceImpl implements CommentService {
      */
     @Override
     public PageResponse<FindChildCommentItemRspVO> findChildCommentPageList(FindChildCommentPageListReqVO findChildCommentPageListReqVO) {
-        // 父评论 ID
         Long parentCommentId = findChildCommentPageListReqVO.getParentCommentId();
         CommentDO parentComment = commentDOMapper.selectByPrimaryKey(parentCommentId);
         if (parentComment == null) {
             throw new BizException(ResponseCodeEnum.PARENT_COMMENT_NOT_FOUND);
         }
         ensureNoteAccessible(parentComment.getNoteId());
-        // 当前页码
         Integer pageNo = findChildCommentPageListReqVO.getPageNo();
-        // 每页展示的二级评论数 (飞鱼社区 APP 中是一次查询 6 条)
         long pageSize = 6;
 
-        // 先从缓存中查
         String countCommentKey = CountKeyConstants.buildCountCommentKey(parentCommentId);
-        // 子评论总数
         String redisCount = stringRedisTemplate.<String, String>opsForHash()
                 .get(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
         long count = Objects.isNull(redisCount) ? 0L : Long.parseLong(redisCount);
 
-        // 若缓存不存在，走数据库查询
         if (Objects.isNull(redisCount)) {
             // 查询一级评论下子评论的总数 (直接查询 t_comment 表的 child_comment_total 字段，提升查询性能, 避免 count(*))
             List<CommentDO> countRecords = commentDOMapper.selectCommentCountByIds(List.of(parentCommentId));
             CommentDO countRecord = CollUtil.isEmpty(countRecords) ? null : countRecords.get(0);
 
-            // 若数据库中也不存在，则抛出业务异常
             if (Objects.isNull(countRecord)) {
                 throw new BizException(ResponseCodeEnum.PARENT_COMMENT_NOT_FOUND);
             }
@@ -352,21 +311,16 @@ public class CommentServiceImpl implements CommentService {
             threadPoolTaskExecutor.execute(() -> syncCommentCount2Redis(countCommentKey, countRecord));
         }
 
-        // 若子评论总数为 0，直接返参
         if (count == 0) {
             return PageResponse.success(Collections.emptyList(), pageNo, 0, pageSize);
         }
 
-        // 分页返参 VO
         List<FindChildCommentItemRspVO> childCommentRspVOS = Lists.newArrayList();
 
         // 计算分页查询的偏移量 offset (需要 +1，因为最早回复的二级评论已经被展示了)
         long offset = PageResponse.getOffset(pageNo, pageSize) + 1;
 
-        // 子评论分页缓存使用 ZSET + STRING 实现
-        // 构建子评论 ZSET Key
         String childCommentZSetKey = RedisKeyConstants.buildChildCommentListKey(parentCommentId);
-        // 先判断 ZSET 是否存在
         boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
 
         // 若不存在且查询的是热点页（前 10 页且落在缓存窗口内），单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
@@ -384,52 +338,41 @@ public class CommentServiceImpl implements CommentService {
             Long cachedSize = stringRedisTemplate.opsForZSet().zCard(childCommentZSetKey);
             long cacheStart = Math.max(0L, count - (cachedSize == null ? 0L : cachedSize));
             if (offset >= cacheStart) {
-                // 在缓存窗口内的相对偏移
                 long rank = offset - cacheStart;
                 Set<String> childCommentIds = stringRedisTemplate.<String>opsForZSet()
                         .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, rank, pageSize);
 
-                // 若结果不为空
                 if (CollUtil.isNotEmpty(childCommentIds)) {
-                // Set 转 List
                 List<String> childCommentIdList = Lists.newArrayList(childCommentIds);
 
-                // 构建 MGET 批量查询子评论详情的 Key 集合
                 List<String> commentIdKeys = childCommentIds.stream()
                         .map(RedisKeyConstants::buildCommentDetailKey)
                         .toList();
 
-                // MGET 批量获取评论数据
                 List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
 
-                // 可能存在部分评论不在缓存中，已经过期被删除，这些评论 ID 需要提取出来，等会查数据库
                 List<Long> expiredChildCommentIds = Lists.newArrayList();
 
                 for (int i = 0; i < commentsJsonList.size(); i++) {
                     String commentJson = commentsJsonList.get(i);
                     Long commentId = Long.valueOf(childCommentIdList.get(i));
                     if (Objects.nonNull(commentJson)) {
-                        // 缓存中存在的评论 Json，直接转换为 VO 添加到返参集合中
                         FindChildCommentItemRspVO childCommentRspVO = JsonUtils.parseObject(commentJson, FindChildCommentItemRspVO.class);
                         childCommentRspVOS.add(childCommentRspVO);
                     } else {
-                        // 评论失效，添加到失效评论列表
                         expiredChildCommentIds.add(commentId);
                     }
                 }
 
-                // 对于缓存中存在的子评论, 需要再次查询 Hash, 获取其计数数据
                 if (CollUtil.isNotEmpty(childCommentRspVOS)) {
                     setChildCommentCountData(childCommentRspVOS, expiredChildCommentIds);
                 }
 
-                // 对于不存在的子评论，需要批量从数据库中查询，并添加到 commentRspVOS 中
                 if (CollUtil.isNotEmpty(expiredChildCommentIds)) {
                     List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredChildCommentIds);
                     getChildCommentDataAndSync2Redis(commentDOS, childCommentRspVOS);
                 }
 
-                // 按评论 ID 升序排列（等同于按回复时间升序）
                 childCommentRspVOS = childCommentRspVOS.stream()
                         .sorted(Comparator.comparing(FindChildCommentItemRspVO::getCommentId))
                         .collect(Collectors.toList());
@@ -440,7 +383,6 @@ public class CommentServiceImpl implements CommentService {
 
         }
 
-        // 分页查询子评论
         List<CommentDO> childCommentDOS = commentDOMapper.selectChildPageList(parentCommentId, offset, pageSize);
 
         getChildCommentDataAndSync2Redis(childCommentDOS, childCommentRspVOS);
@@ -469,7 +411,6 @@ public class CommentServiceImpl implements CommentService {
             throw new BizException(ResponseCodeEnum.NOTE_NOT_WRITABLE);
         }
 
-        // 校验是否已点赞
         if (commentLikeRealtimeService.containsLiked(userId, commentId)) {
             throw new BizException(ResponseCodeEnum.COMMENT_ALREADY_LIKED);
         }
@@ -505,12 +446,12 @@ public class CommentServiceImpl implements CommentService {
     /**
      * 取消评论点赞
      *
-     * @param unLikeCommentReqVO
+     * @param unlikeCommentReqVO
      * @return
      */
     @Override
-    public Response<?> unlikeComment(UnLikeCommentReqVO unLikeCommentReqVO) {
-        Long commentId = unLikeCommentReqVO.getCommentId();
+    public Response<?> unlikeComment(UnlikeCommentReqVO unlikeCommentReqVO) {
+        Long commentId = unlikeCommentReqVO.getCommentId();
         Long userId = LoginUserContextHolder.getUserId();
 
         // 取消点赞仅校验当前用户点赞状态（纯 Redis 守卫，0 DB 读；即使评论/笔记已被删除，也必须允许用户取消点赞并清理足迹）
@@ -581,7 +522,6 @@ public class CommentServiceImpl implements CommentService {
             return PageResponse.success(Collections.emptyList(), pageNo, page.total());
         }
 
-        // 过滤不可访问笔记的评论
         List<Long> noteIds = comments.stream().map(CommentDO::getNoteId).distinct().toList();
         Set<Long> accessibleNoteIds = new HashSet<>(noteRpcService.findAccessibleNoteIds(noteIds));
         List<CommentDO> accessibleComments = comments.stream()
@@ -591,10 +531,8 @@ public class CommentServiceImpl implements CommentService {
             return PageResponse.success(Collections.emptyList(), pageNo, page.total());
         }
 
-        // 批量获取评论正文
         Map<String, String> contentByUuid = batchFindCommentContents(accessibleComments);
 
-        // 批量取作者信息
         List<Long> authorIds = accessibleComments.stream()
                 .map(CommentDO::getUserId)
                 .distinct()
@@ -670,10 +608,8 @@ public class CommentServiceImpl implements CommentService {
      */
     @Override
     public Response<?> deleteComment(DeleteCommentReqVO deleteCommentReqVO) {
-        // 被删除的评论 ID
         Long commentId = deleteCommentReqVO.getCommentId();
 
-        // 1. 校验评论是否存在
         CommentDO commentDO = commentDOMapper.selectByPrimaryKey(commentId);
 
         if (Objects.isNull(commentDO)) {
@@ -681,18 +617,15 @@ public class CommentServiceImpl implements CommentService {
         }
         ensureNoteAccessible(commentDO.getNoteId());
 
-        // 2. 校验是否有权限删除
         Long currUserId = LoginUserContextHolder.getUserId();
         if (!Objects.equals(currUserId, commentDO.getUserId())) {
             throw new BizException(ResponseCodeEnum.COMMENT_CANT_OPERATE);
         }
 
         // 整个删除树由消费端完整处理；Broker 未确认前不删除主评论。
-        // 构建消息对象，并将 DO 转成 Json 字符串设置到消息体中
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(commentDO))
                 .build();
 
-        // 删除评论 MQ
         // 同步发送：失败即抛，避免"删除成功"但评论永不删除
         RocketMqHelper.syncSend(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论");
 
@@ -735,19 +668,15 @@ public class CommentServiceImpl implements CommentService {
      */
     private void setChildCommentCountData(List<FindChildCommentItemRspVO> commentRspVOS,
                                           List<Long> expiredCommentIds) {
-        // 准备从评论 Hash 中查询计数 (被点赞数)
         List<Long> allChildCommentIds = Lists.newArrayList();
 
-        // 遍历从缓存中解析出的 VO 集合，提取二级评论 ID（统一查询 Redis Count Hash 权威源）
         commentRspVOS.forEach(commentRspVO -> {
             Long childCommentId = commentRspVO.getCommentId();
             allChildCommentIds.add(childCommentId);
         });
 
-        // 从 Redis 中查询评论计数 Hash 数据
         Map<Long, Map<String, String>> commentIdAndCountMap = getCommentCountDataAndSync2RedisHash(allChildCommentIds);
 
-        // 遍历 VO, 设置对应子评论的点赞数
         for (FindChildCommentItemRspVO commentRspVO : commentRspVOS) {
             Long commentId = commentRspVO.getCommentId();
 
@@ -767,46 +696,31 @@ public class CommentServiceImpl implements CommentService {
      * @return
      */
     private Map<Long, Map<String, String>> getCommentCountDataAndSync2RedisHash(List<Long> notExpiredCommentIds) {
-        // 已失效的 Hash 评论 ID
         List<Long> expiredCountCommentIds = Lists.newArrayList();
-        // 构建需要查询的 Hash Key 集合
         List<String> commentCountKeys = notExpiredCommentIds.stream()
                 .map(CountKeyConstants::buildCountCommentKey).toList();
 
-        // 使用 RedisTemplate 执行管道批量操作
         List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<>() {
             @Override
             public Object execute(RedisOperations operations) {
-                // 遍历需要查询的评论计数的 Hash 键集合
                 commentCountKeys.forEach(key ->
-                        // 在管道中执行 Redis 的 hash.entries 操作
-                        // 此操作会获取指定 Hash 键中所有的字段和值
                         operations.opsForHash().entries(key));
                 return null;
             }
         });
 
-        // 评论 ID - 计数数据字典
         Map<Long, Map<String, String>> commentIdAndCountMap = Maps.newHashMap();
-        // 遍历未过期的评论 ID 集合
         for (int i = 0; i < notExpiredCommentIds.size(); i++) {
-            // 当前评论 ID
             Long currCommentId = notExpiredCommentIds.get(i);
-            // 从缓存查询结果中，获取对应 Hash
             Map<String, String> hash = (Map<String, String>) results.get(i);
-            // 若 Hash 结果为空，说明缓存中不存在，添加到 expiredCountCommentIds 中，保存一下
             if (CollUtil.isEmpty(hash)) {
                 expiredCountCommentIds.add(currCommentId);
                 continue;
             }
-            // 若存在，则将数据添加到 commentIdAndCountMap 中，方便后续读取
             commentIdAndCountMap.put(currCommentId, hash);
         }
 
-        // 若已过期的计数评论 ID 集合大于 0，说明部分计数数据不在 Redis 缓存中
-        // 需要查询数据库，并将这部分的评论计数 Hash 同步到 Redis 中
         if (CollUtil.size(expiredCountCommentIds) > 0) {
-            // 查询数据库
             List<CommentDO> commentDOS = commentDOMapper.selectCommentCountByIds(expiredCountCommentIds);
 
             commentDOS.forEach(commentDO -> {
@@ -817,28 +731,21 @@ public class CommentServiceImpl implements CommentService {
                 if (Objects.equals(level, CommentLevelEnum.ONE.getCode())) {
                     map.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
                 }
-                // 统一添加到 commentIdAndCountMap 字典中，方便后续查询
                 commentIdAndCountMap.put(commentDO.getId(), map);
             });
 
-            // 异步同步到 Redis 中
             threadPoolTaskExecutor.execute(() -> {
                 stringRedisTemplate.executePipelined(new SessionCallback<>() {
                     @Override
                     public Object execute(RedisOperations operations) {
                         commentDOS.forEach(commentDO -> {
-                            // 构建 Hash Key
                             String key = CountKeyConstants.buildCountCommentKey(commentDO.getId());
-                            // 评论级别
                             Integer level = commentDO.getLevel();
-                            // 设置 Field 数据
                             Map<String, String> fieldsMap = Objects.equals(level, CommentLevelEnum.ONE.getCode()) ?
                                     Map.of(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()),
                                             CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal())) : Map.of(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
-                            // 添加 Hash 数据
                             operations.opsForHash().putAll(key, fieldsMap);
 
-                            // 设置随机过期时间 (1~5小时)
                             long expireTime = CacheTtl.hours(1, 4);
                             operations.expire(key, expireTime, TimeUnit.SECONDS);
                         });
@@ -856,18 +763,13 @@ public class CommentServiceImpl implements CommentService {
      * @param childCommentRspVOS
      */
     private void getChildCommentDataAndSync2Redis(List<CommentDO> childCommentDOS, List<FindChildCommentItemRspVO> childCommentRspVOS) {
-        // 调用 KV 服务需要的入参
         List<FindCommentContentReqDTO> findCommentContentReqDTOS = Lists.newArrayList();
-        // 调用用户服务的入参
         Set<Long> userIds = Sets.newHashSet();
 
-        // 归属的笔记 ID
         Long noteId = null;
 
-        // 循环提取 RPC 调用需要的入参数据
         for (CommentDO childCommentDO : childCommentDOS) {
             noteId = childCommentDO.getNoteId();
-            // 构建调用 KV 服务批量查询评论内容的入参
             boolean isContentEmpty = childCommentDO.getIsContentEmpty();
             if (!isContentEmpty) {
                 FindCommentContentReqDTO findCommentContentReqDTO = FindCommentContentReqDTO.builder()
@@ -877,7 +779,6 @@ public class CommentServiceImpl implements CommentService {
                 findCommentContentReqDTOS.add(findCommentContentReqDTO);
             }
 
-            // 构建调用用户服务批量查询用户信息的入参 (包含评论发布者、回复的目标用户)
             userIds.add(childCommentDO.getUserId());
 
             Long parentId = childCommentDO.getParentId();
@@ -887,21 +788,17 @@ public class CommentServiceImpl implements CommentService {
             }
         }
 
-        // RPC: 调用 KV 服务，批量获取评论内容
         List<FindCommentContentRspDTO> findCommentContentRspDTOS =
                 keyValueRpcService.batchFindCommentContent(noteId, findCommentContentReqDTOS);
 
-        // DTO 集合转 Map, 方便后续拼装数据
         Map<String, String> commentUuidAndContentMap = null;
         if (CollUtil.isNotEmpty(findCommentContentRspDTOS)) {
             commentUuidAndContentMap = findCommentContentRspDTOS.stream()
                     .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent, (a, b) -> a));
         }
 
-        // RPC: 调用用户服务，批量获取用户信息（头像、昵称等）
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds.stream().toList());
 
-        // DTO 集合转 Map, 方便后续拼装数据
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();
         if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
             userIdAndDTOMap = findUserByIdRspDTOS.stream()
@@ -909,9 +806,7 @@ public class CommentServiceImpl implements CommentService {
         }
 
 
-        // DO 转 VO
         for (CommentDO childCommentDO : childCommentDOS) {
-            // 构建 VO 实体类
             Long userId = childCommentDO.getUserId();
             FindChildCommentItemRspVO childCommentRspVO = FindChildCommentItemRspVO.builder()
                     .userId(userId)
@@ -921,16 +816,13 @@ public class CommentServiceImpl implements CommentService {
                     .likeTotal(childCommentDO.getLikeTotal())
                     .build();
 
-            // 填充用户信息(包括评论发布者、回复的用户)
             if (CollUtil.isNotEmpty(userIdAndDTOMap)) {
                 FindUserByIdRspDTO findUserByIdRspDTO = userIdAndDTOMap.get(userId);
-                // 评论发布者用户信息(头像、昵称)
                 if (Objects.nonNull(findUserByIdRspDTO)) {
                     childCommentRspVO.setAvatar(findUserByIdRspDTO.getAvatar());
                     childCommentRspVO.setNickname(findUserByIdRspDTO.getNickName());
                 }
 
-                // 评论回复的哪个
                 Long replyCommentId = childCommentDO.getReplyCommentId();
                 Long parentId = childCommentDO.getParentId();
 
@@ -945,7 +837,6 @@ public class CommentServiceImpl implements CommentService {
                 }
             }
 
-            // 评论内容
             if (CollUtil.isNotEmpty(commentUuidAndContentMap)) {
                 String contentUuid = childCommentDO.getContentUuid();
                 if (StringUtils.isNotBlank(contentUuid)) {
@@ -956,14 +847,10 @@ public class CommentServiceImpl implements CommentService {
             childCommentRspVOS.add(childCommentRspVO);
         }
 
-        // 异步将笔记详情，同步到 Redis 中
         threadPoolTaskExecutor.execute(() -> {
-            // 准备批量写入的数据
             Map<String, String> data = Maps.newHashMap();
             childCommentRspVOS.forEach(commentRspVO -> {
-                // 评论 ID
                 Long commentId = commentRspVO.getCommentId();
-                // 构建 Key
                 String key = RedisKeyConstants.buildCommentDetailKey(commentId);
                 data.put(key, JsonUtils.toJsonString(commentRspVO));
             });
@@ -982,7 +869,6 @@ public class CommentServiceImpl implements CommentService {
         List<CommentDO> childCommentDOS = commentDOMapper.selectLatestChildCommentsByParentIdAndLimit(
                 parentCommentId, (int) CommentChangedCacheInvalidateConsumer.CHILD_COMMENT_LIST_MAX_SIZE);
         if (CollUtil.isNotEmpty(childCommentDOS)) {
-            // 使用 Redis Pipeline 提升写入性能
             stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 ZSetOperations<String, String> zSetOps = stringRedisTemplate.opsForZSet();
 
@@ -991,12 +877,10 @@ public class CommentServiceImpl implements CommentService {
                 Collections.reverse(ascending);
                 for (CommentDO childCommentDO : ascending) {
                     Long commentId = childCommentDO.getId();
-                    // create_time 转时间戳
                     long commentTimestamp = DateUtils.localDateTime2Timestamp(childCommentDO.getCreateTime());
                     zSetOps.add(childCommentZSetKey, String.valueOf(commentId), commentTimestamp);
                 }
 
-                // 设置随机过期时间，（保底1小时 + 随机时间），单位：秒
                 long randomExpiryTime = CacheTtl.hours(1, 4); // 5小时以内
                 stringRedisTemplate.expire(childCommentZSetKey, randomExpiryTime, TimeUnit.SECONDS);
                 return null; // 无返回值
@@ -1013,14 +897,12 @@ public class CommentServiceImpl implements CommentService {
         stringRedisTemplate.executePipelined(new SessionCallback<>() {
             @Override
             public Object execute(RedisOperations operations) {
-                // 同步 hash 数据
                 operations.opsForHash()
                         .put(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
                                 String.valueOf(countRecord.getChildCommentTotal()));
                 operations.opsForHash()
                         .put(countCommentKey, CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(countRecord.getLikeTotal()));
 
-                // 随机过期时间 (保底1小时 + 随机时间)，单位：秒
                 long expireTime = CacheTtl.hours(1, 4);
                 operations.expire(countCommentKey, expireTime, TimeUnit.SECONDS);
                 return null;
@@ -1048,39 +930,38 @@ public class CommentServiceImpl implements CommentService {
         if (cached != null) {
             return cached;
         }
+        return CacheRebuildSupport.getOrRebuild(
+                redissonRebuildLock(lockKey, ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS),
+                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> readOneLevelCommentTotalFromCache(key),
+                () -> {
+                    long total = queryOneLevelCommentTotal(noteId);
+                    cacheOneLevelCommentTotal(key, total);
+                    return total;
+                },
+                () -> queryOneLevelCommentTotal(noteId));
+    }
 
-        RLock lock;
-        try {
-            lock = tryAcquireRebuildLock(lockKey, ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，一级评论总数重建锁获取失败，回源 MySQL，noteId={}", noteId, e);
-            return queryOneLevelCommentTotal(noteId);
-        }
-        if (lock == null) {
-            try {
-                cached = waitForOneLevelCommentTotal(key);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，一级评论总数缓存重试失败，回源 MySQL，noteId={}", noteId, e);
-                return queryOneLevelCommentTotal(noteId);
+    private RebuildLock redissonRebuildLock(String lockKey, long leaseSeconds) {
+        return new RebuildLock() {
+            private RLock held;
+
+            @Override
+            public boolean tryLock() {
+                try {
+                    held = CommentServiceImpl.this.tryAcquireRebuildLock(lockKey, leaseSeconds);
+                } catch (Exception e) {
+                    log.warn("Redis 不可用，缓存重建锁获取失败，回源 MySQL，key={}", lockKey, e);
+                    throw e;
+                }
+                return held != null;
             }
-            return cached == null ? queryOneLevelCommentTotal(noteId) : cached;
-        }
-        try {
-            try {
-                cached = readOneLevelCommentTotalFromCache(key);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，一级评论总数二次缓存读取失败，回源 MySQL，noteId={}", noteId, e);
-                return queryOneLevelCommentTotal(noteId);
+
+            @Override
+            public void unlock() {
+                releaseRebuildLock(held, lockKey);
             }
-            if (cached != null) {
-                return cached;
-            }
-            long total = queryOneLevelCommentTotal(noteId);
-            cacheOneLevelCommentTotal(key, total);
-            return total;
-        } finally {
-            releaseRebuildLock(lock, lockKey);
-        }
+        };
     }
 
     private String readOneLevelCommentTotalCacheVersion(Long noteId) {
@@ -1115,17 +996,6 @@ public class CommentServiceImpl implements CommentService {
         }
     }
 
-    private Long waitForOneLevelCommentTotal(String key) {
-        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
-            sleepBeforeCacheRetry();
-            Long cached = readOneLevelCommentTotalFromCache(key);
-            if (cached != null) {
-                return cached;
-            }
-        }
-        return null;
-    }
-
     private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
         RLock lock = redissonClient.getLock(lockKey);
         if (lock == null) {
@@ -1134,7 +1004,7 @@ public class CommentServiceImpl implements CommentService {
         try {
             return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
         } catch (Exception e) {
-            throw new IllegalStateException("Redis 不可用，一级评论总数重建锁获取失败, lockKey=" + lockKey, e);
+            throw new IllegalStateException("Redis 不可用，缓存重建锁获取失败, lockKey=" + lockKey, e);
         }
     }
 
@@ -1144,15 +1014,7 @@ public class CommentServiceImpl implements CommentService {
                 lock.unlock();
             }
         } catch (Exception e) {
-            log.warn("Redis 不可用，一级评论总数重建锁释放失败，key={}", lockKey, e);
-        }
-    }
-
-    private void sleepBeforeCacheRetry() {
-        try {
-            Thread.sleep(CACHE_REBUILD_RETRY_INTERVAL_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            log.warn("Redis 不可用，缓存重建锁释放失败，key={}", lockKey, e);
         }
     }
 
@@ -1165,10 +1027,8 @@ public class CommentServiceImpl implements CommentService {
      */
     private void setCommentCountData(List<FindCommentItemRspVO> commentRspVOS,
                                      List<Long> expiredCommentIds) {
-        // 准备从评论 Hash 中查询计数 (子评论总数、被点赞数)
         List<Long> allCommentIds = Lists.newArrayList();
 
-        // 遍历 VO 集合，提取一级、二级评论 ID（统一查询 Redis Count Hash 权威源）
         commentRspVOS.forEach(commentRspVO -> {
             Long oneLevelCommentId = commentRspVO.getCommentId();
             allCommentIds.add(oneLevelCommentId);
@@ -1178,15 +1038,11 @@ public class CommentServiceImpl implements CommentService {
             }
         });
 
-        // 已失效的 Hash 评论 ID
         Map<Long, Map<String, String>> commentIdAndCountMap = getCommentCountDataAndSync2RedisHash(allCommentIds);
 
-        // 遍历 VO, 设置对应评论的二级评论数、点赞数
         for (FindCommentItemRspVO commentRspVO : commentRspVOS) {
-            // 评论 ID
             Long commentId = commentRspVO.getCommentId();
 
-            // 设置一级评论的子评论总数、点赞数
             Map<String, String> hash = commentIdAndCountMap.get(commentId);
             if (CollUtil.isNotEmpty(hash)) {
                 String likeTotalObj = hash.get(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
@@ -1195,7 +1051,6 @@ public class CommentServiceImpl implements CommentService {
                 Long likeTotal = Objects.isNull(likeTotalFieldObj) ? 0 : Long.parseLong(likeTotalFieldObj);
                 commentRspVO.setChildCommentTotal(childCommentTotal);
                 commentRspVO.setLikeTotal(likeTotal);
-                // 最初回复的二级评论
                 FindCommentItemRspVO firstCommentVO = commentRspVO.getFirstReplyComment();
                 if (Objects.nonNull(firstCommentVO)) {
                     Long firstCommentId = firstCommentVO.getCommentId();
@@ -1216,9 +1071,7 @@ public class CommentServiceImpl implements CommentService {
      * @param commentRspVOS
      */
     private void syncCommentDetail2LocalCache(List<FindCommentItemRspVO> commentRspVOS) {
-        // 开启一个异步线程
         threadPoolTaskExecutor.execute(() -> {
-            // 构建缓存所需的键值
             Map<Long, String> localCacheData = Maps.newHashMap();
             commentRspVOS.forEach(commentRspVO -> {
                 Long commentId = commentRspVO.getCommentId();
@@ -1227,7 +1080,6 @@ public class CommentServiceImpl implements CommentService {
                 localCacheData.put(commentId, JsonUtils.toJsonString(commentRspVO));
             });
 
-            // 批量写入本地缓存
             LOCAL_CACHE.putAll(localCacheData);
         });
     }
@@ -1239,36 +1091,28 @@ public class CommentServiceImpl implements CommentService {
      * @param commentRspVOS
      */
     private void getCommentDataAndSync2Redis(List<CommentDO> oneLevelCommentDOS, Long noteId, List<FindCommentItemRspVO> commentRspVOS) {
-        // 过滤出所有最早回复的二级评论 ID
         List<Long> twoLevelCommentIds = oneLevelCommentDOS.stream()
                 .map(CommentDO::getFirstReplyCommentId)
                 .filter(firstReplyCommentId -> firstReplyCommentId != null && firstReplyCommentId != 0)
                 .toList();
 
-        // 查询二级评论
         Map<Long, CommentDO> commentIdAndDOMap = null;
         List<CommentDO> twoLevelCommonDOS = null;
         if (CollUtil.isNotEmpty(twoLevelCommentIds)) {
             twoLevelCommonDOS = commentDOMapper.selectTwoLevelCommentByIds(twoLevelCommentIds);
 
-            // 转 Map 集合，方便后续拼装数据
             commentIdAndDOMap = twoLevelCommonDOS.stream()
                     .collect(Collectors.toMap(CommentDO::getId, commentDO -> commentDO, (a, b) -> a));
         }
 
-        // 调用 KV 服务需要的入参
         List<FindCommentContentReqDTO> findCommentContentReqDTOS = Lists.newArrayList();
-        // 调用用户服务的入参
         List<Long> userIds = Lists.newArrayList();
 
-        // 将一级评论和二级评论合并到一起
         List<CommentDO> allCommentDOS = Lists.newArrayList();
         CollUtil.addAll(allCommentDOS, oneLevelCommentDOS);
         CollUtil.addAll(allCommentDOS, twoLevelCommonDOS);
 
-        // 循环提取 RPC 调用需要的入参数据
         allCommentDOS.forEach(commentDO -> {
-            // 构建调用 KV 服务批量查询评论内容的入参
             boolean isContentEmpty = commentDO.getIsContentEmpty();
             if (!isContentEmpty) {
                 FindCommentContentReqDTO findCommentContentReqDTO = FindCommentContentReqDTO.builder()
@@ -1278,26 +1122,21 @@ public class CommentServiceImpl implements CommentService {
                 findCommentContentReqDTOS.add(findCommentContentReqDTO);
             }
 
-            // 构建调用用户服务批量查询用户信息的入参
             userIds.add(commentDO.getUserId());
         });
 
-        // RPC: 调用 KV 服务，批量获取评论内容
         List<FindCommentContentRspDTO> findCommentContentRspDTOS =
                 keyValueRpcService.batchFindCommentContent(noteId, findCommentContentReqDTOS);
 
-        // DTO 集合转 Map, 方便后续拼装数据
         Map<String, String> commentUuidAndContentMap = null;
         if (CollUtil.isNotEmpty(findCommentContentRspDTOS)) {
             commentUuidAndContentMap = findCommentContentRspDTOS.stream()
                     .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent, (a, b) -> a));
         }
 
-        // RPC: 调用用户服务，批量获取用户信息（头像、昵称等）
         List<Long> distinctUserIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(distinctUserIds);
 
-        // DTO 集合转 Map, 方便后续拼装数据
         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();
         if (CollUtil.isNotEmpty(findUserByIdRspDTOS)) {
             userIdAndDTOMap = findUserByIdRspDTOS.stream()
@@ -1305,9 +1144,7 @@ public class CommentServiceImpl implements CommentService {
         }
 
 
-        // DO 转 VO, 组合拼装一二级评论数据
         for (CommentDO commentDO : oneLevelCommentDOS) {
-            // 一级评论
             Long userId = commentDO.getUserId();
             FindCommentItemRspVO oneLevelCommentRspVO = FindCommentItemRspVO.builder()
                     .userId(userId)
@@ -1319,13 +1156,10 @@ public class CommentServiceImpl implements CommentService {
                     .heat(commentDO.getHeat())
                     .build();
 
-            // 用户信息
             setUserInfo(userIdAndDTOMap, userId, oneLevelCommentRspVO);
-            // 笔记内容
             setCommentContent(commentUuidAndContentMap, commentDO, oneLevelCommentRspVO);
 
 
-            // 二级评论
             Long firstReplyCommentId = commentDO.getFirstReplyCommentId();
             if (CollUtil.isNotEmpty(commentIdAndDOMap)) {
                 CommentDO firstReplyCommentDO = commentIdAndDOMap.get(firstReplyCommentId);
@@ -1342,28 +1176,21 @@ public class CommentServiceImpl implements CommentService {
 
                     setUserInfo(userIdAndDTOMap, firstReplyCommentUserId, firstReplyCommentRspVO);
 
-                    // 用户信息
                     oneLevelCommentRspVO.setFirstReplyComment(firstReplyCommentRspVO);
-                    // 笔记内容
                     setCommentContent(commentUuidAndContentMap, firstReplyCommentDO, firstReplyCommentRspVO);
                 }
             }
             commentRspVOS.add(oneLevelCommentRspVO);
         }
 
-        // 异步将笔记详情，同步到 Redis 中
         threadPoolTaskExecutor.execute(() -> {
-            // 准备批量写入的数据
             Map<String, String> data = Maps.newHashMap();
             commentRspVOS.forEach(commentRspVO -> {
-                // 评论 ID
                 Long commentId = commentRspVO.getCommentId();
-                // 构建 Key
                 String key = RedisKeyConstants.buildCommentDetailKey(commentId);
                 data.put(key, JsonUtils.toJsonString(commentRspVO));
             });
 
-            // 使用 Redis Pipeline 提升写入性能
             commentDetailCache.putAll(data);
         });
     }
@@ -1371,68 +1198,21 @@ public class CommentServiceImpl implements CommentService {
     /** 评论列表 ZSET 单飞重建：抢锁者二次检查后重建，未抢锁者轮询等待，锁在任务内释放 */
     private void rebuildCommentListZSetWithLock(String key, Long noteId) {
         String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(noteId);
-        RLock lock;
-        try {
-            lock = tryAcquireRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，评论列表 ZSET 重建锁获取失败，跳过重建，noteId={}", noteId, e);
-            return;
-        }
-        if (lock == null) {
-            try {
-                waitForCommentListZSet(key);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，评论列表 ZSET 重建等待失败，noteId={}", noteId, e);
-            }
-            return;
-        }
-        try {
-            // 二次检查：抢锁期间其他节点可能已完成重建
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                return;
-            }
-            syncHeatComments2Redis(key, noteId);
-        } finally {
-            releaseRebuildLock(lock, lockKey);
-        }
-    }
-
-    private void waitForCommentListZSet(String key) {
-        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
-            sleepBeforeCacheRetry();
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                return;
-            }
-        }
+        CacheRebuildSupport.rebuildIfMissing(
+                redissonRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS),
+                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
+                () -> syncHeatComments2Redis(key, noteId));
     }
 
     /** 子评论列表 ZSET 单飞重建：抢锁者二次检查后重建，未抢锁者轮询等待，锁在任务内释放 */
     private void rebuildChildCommentListZSetWithLock(Long parentCommentId, String key) {
         String lockKey = RedisKeyConstants.buildChildCommentListRebuildLockKey(parentCommentId);
-        RLock lock;
-        try {
-            lock = tryAcquireRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，子评论列表 ZSET 重建锁获取失败，跳过重建，parentCommentId={}", parentCommentId, e);
-            return;
-        }
-        if (lock == null) {
-            try {
-                waitForCommentListZSet(key);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，子评论列表 ZSET 重建等待失败，parentCommentId={}", parentCommentId, e);
-            }
-            return;
-        }
-        try {
-            // 二次检查：抢锁期间其他节点可能已完成重建
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                return;
-            }
-            syncChildComments2Redis(parentCommentId, key);
-        } finally {
-            releaseRebuildLock(lock, lockKey);
-        }
+        CacheRebuildSupport.rebuildIfMissing(
+                redissonRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS),
+                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
+                () -> syncChildComments2Redis(parentCommentId, key));
     }
 
     /**
@@ -1443,18 +1223,15 @@ public class CommentServiceImpl implements CommentService {
     private void syncHeatComments2Redis(String key, Long noteId) {
         List<CommentDO> commentDOS = commentDOMapper.selectHeatComments(noteId);
         if (CollUtil.isNotEmpty(commentDOS)) {
-            // 使用 Redis Pipeline 提升写入性能
             stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 ZSetOperations<String, String> zSetOps = stringRedisTemplate.opsForZSet();
 
-                // 遍历评论数据并批量写入 ZSet
                 for (CommentDO commentDO : commentDOS) {
                     Long commentId = commentDO.getId();
                     Double commentHeat = commentDO.getHeat();
                     zSetOps.add(key, String.valueOf(commentId), commentHeat);
                 }
 
-                // 设置随机过期时间，单位：秒
                 long randomExpiryTime = CacheTtl.hours(1, 4); // 1~5小时
                 stringRedisTemplate.expire(key, randomExpiryTime, TimeUnit.SECONDS);
                 return null; // 无返回值

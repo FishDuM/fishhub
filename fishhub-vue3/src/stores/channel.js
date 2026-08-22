@@ -3,10 +3,8 @@ import { ref } from 'vue'
 import { getAllChannel } from '@/api/channel'
 
 export const useChannelStore = defineStore('channel', () => {
-  // 存储所有频道数据
   const channels = ref([])
   
-  // 加载所有频道数据
   const loadChannels = async () => {
     try {
       const res = await getAllChannel()
@@ -18,7 +16,6 @@ export const useChannelStore = defineStore('channel', () => {
     }
   }
   
-  // 根据ID获取频道名称
   const getChannelNameById = (id) => {
     const channel = channels.value.find(item => item.id === id)
     return channel ? channel.name : ''

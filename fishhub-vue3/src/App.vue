@@ -22,7 +22,6 @@ const channelStore = useChannelStore()
 
 onMounted(() => {
   initializeTheme()
-  // 加载频道数据
   channelStore.loadChannels()
 })
 </script>

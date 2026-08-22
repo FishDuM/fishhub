@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class UnLikeCommentReqVO {
+public class UnlikeCommentReqVO {
 
     @NotNull(message = "评论 ID 不能为空")
     private Long commentId;

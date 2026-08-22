@@ -9,7 +9,7 @@ import hk.ljx.fishhub.user.biz.domain.mapper.PermissionDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.RolePermissionDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
-import hk.ljx.fishhub.user.dto.resp.UserRolePermissionRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

@@ -13,7 +13,7 @@ import hk.ljx.fishhub.note.biz.model.vo.FindDiscoverNoteListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindTopicListReqVO;
 import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.client.UserClient;
-import hk.ljx.fishhub.user.dto.resp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

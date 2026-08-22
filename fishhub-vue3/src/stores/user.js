@@ -3,9 +3,7 @@ import { ref } from 'vue'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref('')
-  // 主页用户信息
   const profile = ref({})
-  // 全局登录弹窗显隐控制
   const showLoginModal = ref(false)
 
   const setProfile = (newProfile) => {
@@ -24,10 +22,8 @@ export const useUserStore = defineStore('user', () => {
     showLoginModal.value = false
   }
 
-  // 退出登录
   const logout = () => {
     token.value = ''
-    // 删除用户信息
     profile.value = {}
   }
 

@@ -25,6 +25,6 @@ public interface MQConstants extends MqTopicConstants {
     /**
      * Tag 标签：取消点赞（comment 模块内部 CommentLikeUnlikeTopic 使用）
      */
-    String TAG_UNLIKE = "UnLike";
+    String TAG_UNLIKE = "Unlike";
 
 }
