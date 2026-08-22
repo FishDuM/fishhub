@@ -1,6 +1,6 @@
 package hk.ljx.fishhub.search.biz.job;
 
-import hk.ljx.fishhub.search.biz.canal.service.EsIndexSyncAggregator;
+import hk.ljx.fishhub.search.biz.service.EsIndexSyncAggregator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;

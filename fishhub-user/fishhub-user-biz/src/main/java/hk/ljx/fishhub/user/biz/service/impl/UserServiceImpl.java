@@ -178,6 +178,10 @@ public class UserServiceImpl implements UserService {
 
             // 延时双删
             sendDelayDeleteUserRedisCacheMQ(userId);
+
+            // 通知搜索服务同步用户与笔记索引（尽力而为，失败下次更新补偿）
+            RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_USER_CHANGED,
+                    String.valueOf(userId), "用户资料变更同步 ES");
         }
         return Response.success();
     }

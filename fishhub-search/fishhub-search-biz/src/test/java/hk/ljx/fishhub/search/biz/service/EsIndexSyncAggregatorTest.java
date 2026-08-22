@@ -1,4 +1,4 @@
-package hk.ljx.fishhub.search.biz.canal.service;
+package hk.ljx.fishhub.search.biz.service;
 
 import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;

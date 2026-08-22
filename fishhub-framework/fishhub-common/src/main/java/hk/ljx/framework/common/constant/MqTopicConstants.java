@@ -11,6 +11,11 @@ public interface MqTopicConstants {
     String TOPIC_NOTE_CHANGED = "NoteChangedTopic";
 
     /**
+     * Topic: 用户变更事件（资料更新等）
+     */
+    String TOPIC_USER_CHANGED = "UserChangedTopic";
+
+    /**
      * Topic: 笔记点赞数计数
      */
     String TOPIC_COUNT_NOTE_LIKE = "CountNoteLikeTopic";

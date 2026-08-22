@@ -1,4 +1,4 @@
-package hk.ljx.fishhub.search.biz.canal.service;
+package hk.ljx.fishhub.search.biz.service;
 
 import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
@@ -82,6 +82,23 @@ public class EsIndexSyncAggregator {
         }
         if (fire) {
             flushUsers();
+        }
+    }
+
+    /**
+     * 批量提交笔记同步（用户资料变更导致该用户全部笔记文档需要重建）。
+     */
+    public void submitNoteIds(java.util.Collection<Long> noteIds) {
+        if (noteIds == null || noteIds.isEmpty()) {
+            return;
+        }
+        boolean fire;
+        synchronized (pendingNoteIds) {
+            pendingNoteIds.addAll(noteIds);
+            fire = pendingNoteIds.size() >= FLUSH_CAP;
+        }
+        if (fire) {
+            flushNotes();
         }
     }
 
