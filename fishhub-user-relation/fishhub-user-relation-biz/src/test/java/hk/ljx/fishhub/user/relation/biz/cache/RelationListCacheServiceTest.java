@@ -7,14 +7,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -31,6 +33,10 @@ class RelationListCacheServiceTest {
     private ValueOperations<String, String> valueOperations;
     @Mock
     private FollowingDOMapper followingDOMapper;
+    @Mock
+    private RedissonClient redissonClient;
+    @Mock
+    private RLock lock;
     @InjectMocks
     private RelationListCacheService cacheService;
 
@@ -48,11 +54,12 @@ class RelationListCacheServiceTest {
     }
 
     @Test
-    void shouldRebuildFollowingCacheAndReadWhenKeyMissing() {
+    void shouldRebuildFollowingCacheAndReadWhenKeyMissing() throws Exception {
         when(stringRedisTemplate.hasKey("following:1")).thenReturn(false, false, true);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(zSetOperations.reverseRange("following:1", 0L, 10L))
                 .thenReturn(new LinkedHashSet<>(Arrays.asList("2", "7")));
         when(followingDOMapper.selectByUserId(1L)).thenReturn(Arrays.asList(
@@ -63,14 +70,15 @@ class RelationListCacheServiceTest {
 
         assertEquals(Arrays.asList("2", "7"), members);
         // 重建走了单飞锁：获取后必须释放
-        verify(stringRedisTemplate).delete("lock:relation:list:rebuild:following:1");
+        verify(lock).unlock();
     }
 
     @Test
-    void shouldCreateEmptyZSetAndFallbackToDbWhenEmptyRecords() {
+    void shouldCreateEmptyZSetAndFallbackToDbWhenEmptyRecords() throws Exception {
         when(stringRedisTemplate.hasKey("following:1")).thenReturn(false, false, false);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(followingDOMapper.selectByUserId(1L)).thenReturn(Collections.emptyList());
         when(followingDOMapper.selectCursorPageByUserId(eq(1L), isNull(), eq(11L))).thenReturn(Collections.emptyList());
 
@@ -78,15 +86,15 @@ class RelationListCacheServiceTest {
 
         assertTrue(members.isEmpty());
         // 空列表也占位（锁获取并释放），DB 兜底查询过一次
-        verify(stringRedisTemplate).delete("lock:relation:list:rebuild:following:1");
+        verify(lock).unlock();
         verify(followingDOMapper).selectCursorPageByUserId(eq(1L), isNull(), eq(11L));
     }
 
     @Test
-    void shouldFallbackToDbWhenRebuildLockIsBusy() {
+    void shouldFallbackToDbWhenRebuildLockIsBusy() throws Exception {
         when(stringRedisTemplate.hasKey("following:1")).thenReturn(false);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(false);
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
         when(followingDOMapper.selectCursorPageByUserId(eq(1L), isNull(), eq(11L))).thenReturn(Arrays.asList(
                 FollowingDO.builder().userId(1L).followingUserId(5L).createTime(LocalDateTime.now()).build()));
 
@@ -96,15 +104,16 @@ class RelationListCacheServiceTest {
         // 锁被占用时不重建，也不重复打全量 DB
         verify(followingDOMapper, never()).selectByUserId(anyLong());
         // 未抢到锁则不会释放锁
-        verify(stringRedisTemplate, never()).delete("lock:relation:list:rebuild:following:1");
+        verify(lock, never()).unlock();
     }
 
     @Test
-    void shouldRebuildFansCacheFromDbWhenKeyMissing() {
+    void shouldRebuildFansCacheFromDbWhenKeyMissing() throws Exception {
         when(stringRedisTemplate.hasKey("fans:9")).thenReturn(false, false, true);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(redissonClient.getLock(anyString())).thenReturn(lock);
+        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(zSetOperations.reverseRange("fans:9", 0L, 10L))
                 .thenReturn(new LinkedHashSet<>(Arrays.asList("6", "5")));
         when(followingDOMapper.selectCursorPageByFollowingUserId(eq(9L), isNull(), eq(5000L))).thenReturn(Arrays.asList(
@@ -116,7 +125,7 @@ class RelationListCacheServiceTest {
         assertEquals(Arrays.asList("6", "5"), members);
         // 粉丝列表从 DB 全量重建（最多 5000 条）
         verify(followingDOMapper).selectCursorPageByFollowingUserId(eq(9L), isNull(), eq(5000L));
-        verify(stringRedisTemplate).delete("lock:relation:list:rebuild:fans:9");
+        verify(lock).unlock();
     }
 
     @Test

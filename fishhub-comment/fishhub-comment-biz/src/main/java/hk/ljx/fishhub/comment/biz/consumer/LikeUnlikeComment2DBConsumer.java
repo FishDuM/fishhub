@@ -2,7 +2,6 @@ package hk.ljx.fishhub.comment.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
 import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
@@ -54,9 +53,6 @@ public class LikeUnlikeComment2DBConsumer {
     private final RocketMQTemplate rocketMQTemplate;
     private final BatchPushConsumer batchPushConsumer;
 
-    // 每秒创建 5000 个令牌
-    private final RateLimiter rateLimiter = RateLimiter.create(5000);
-
     public LikeUnlikeComment2DBConsumer(CommentLikePersistenceService persistenceService,
                                         CommentDOMapper commentDOMapper,
                                         NoteRpcService noteRpcService,
@@ -81,9 +77,6 @@ public class LikeUnlikeComment2DBConsumer {
     private boolean consumeBatch(List<MessageExt> msgs) {
         log.info("==> 【评论点赞、取消点赞】本批次消息大小: {}", msgs.size());
         try {
-            // 令牌桶流控, 以控制数据库能够承受的 QPS
-            rateLimiter.acquire();
-
             // 将批次 Json 消息体转换 DTO 集合
             List<LikeUnlikeCommentMqDTO> likeUnlikeCommentMqDTOS = Lists.newArrayList();
 

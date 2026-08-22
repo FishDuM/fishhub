@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.comment.biz.consumer;
 
-import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
@@ -12,6 +11,7 @@ import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
+import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -39,12 +39,10 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     private final TransactionalMqSender transactionalMqSender;
     private final TxJournalStore txJournalStore;
     private final MqIdempotentExecutor mqIdempotentExecutor;
-
-    private final RateLimiter rateLimiter = RateLimiter.create(1000);
+    private final CommentChangedLocalHandler commentChangedLocalHandler;
 
     @Override
     public void onMessage(String body) {
-        rateLimiter.acquire();
         CommentDO payload = JsonUtils.parseObject(body, CommentDO.class);
         if (payload == null || payload.getId() == null) {
             throw new IllegalArgumentException("评论删除消息格式错误");
@@ -72,10 +70,11 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                         .createTime(target.getCreateTime())
                         .build())
                 .toList();
-        String eventBody = JsonUtils.toJsonString(CommentChangedEventMqDTO.builder()
+        CommentChangedEventMqDTO changeEvent = CommentChangedEventMqDTO.builder()
                 .changeType(MQConstants.COMMENT_CHANGE_TYPE_DELETE)
                 .items(eventItems)
-                .build());
+                .build();
+        String eventBody = JsonUtils.toJsonString(changeEvent);
 
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COMMENT_CHANGED, eventBody, txId -> {
             boolean deleted = mqIdempotentExecutor.execute(
@@ -97,6 +96,13 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
             log.info("评论删除事务完成, rootId={}, applied={}", root.getId(), deleted);
             return deleted;
         });
+
+        // 事务提交后本节点同步维护列表缓存/热度（原两个广播消费者合并）
+        try {
+            commentChangedLocalHandler.handleDelete(changeEvent);
+        } catch (Exception e) {
+            log.warn("评论删除本地动作执行失败（缓存/热度），等待 TTL/重建自愈", e);
+        }
     }
 
     private List<CommentDO> collectDeleteTargets(CommentDO root) {

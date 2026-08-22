@@ -54,6 +54,12 @@
             <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
         </dependency>
 
+        <!-- Redisson 缓存重建锁 -->
+        <dependency>
+            <groupId>hk.ljx</groupId>
+            <artifactId>fishhub-spring-boot-starter-biz-redisson</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

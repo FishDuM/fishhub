@@ -11,15 +11,17 @@ import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -48,6 +50,7 @@ public class RelationListCacheService {
 
     private final StringRedisTemplate stringRedisTemplate;
     private final FollowingDOMapper followingDOMapper;
+    private final RedissonClient redissonClient;
 
     /** 关注列表一页（offset 从 0 开始，最多 count 条）。缓存未命中先单飞重建，兜底 DB。 */
     public List<String> fetchFollowingMembers(Long userId, long offset, int count) {
@@ -157,7 +160,7 @@ public class RelationListCacheService {
     private void ensureFollowingCache(Long userId) {
         String key = RedisKeyConstants.buildUserFollowingKey(userId);
         String lockKey = RedisKeyConstants.buildFollowingRebuildLockKey(userId);
-        CacheRebuildSupport.rebuildIfMissing(setNxRebuildLock(lockKey),
+        CacheRebuildSupport.rebuildIfMissing(redissonRebuildLock(lockKey),
                 LIST_CACHE_REBUILD_RETRY_TIMES, LIST_CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
                 () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
                 () -> rebuildFollowingCache(key, userId));
@@ -177,7 +180,7 @@ public class RelationListCacheService {
     private void ensureFansCache(Long userId) {
         String key = RedisKeyConstants.buildUserFansKey(userId);
         String lockKey = RedisKeyConstants.buildFansRebuildLockKey(userId);
-        CacheRebuildSupport.rebuildIfMissing(setNxRebuildLock(lockKey),
+        CacheRebuildSupport.rebuildIfMissing(redissonRebuildLock(lockKey),
                 LIST_CACHE_REBUILD_RETRY_TIMES, LIST_CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
                 () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
                 () -> rebuildFansCache(key, userId));
@@ -193,16 +196,36 @@ public class RelationListCacheService {
                 (Object[]) buildMemberArgs(records, FollowingDO::getUserId, ttlSeconds()));
     }
 
-    private RebuildLock setNxRebuildLock(String lockKey) {
+    private RebuildLock redissonRebuildLock(String lockKey) {
         return new RebuildLock() {
+            private RLock held;
+
             @Override
             public boolean tryLock() {
-                return tryAcquireRebuildLock(lockKey);
+                RLock lock = redissonClient.getLock(lockKey);
+                if (lock == null) {
+                    return false;
+                }
+                try {
+                    held = lock.tryLock(0, REBUILD_LOCK_SECONDS, TimeUnit.SECONDS) ? lock : null;
+                } catch (Exception e) {
+                    log.warn("获取列表重建锁失败, lockKey={}", lockKey, e);
+                    return false;
+                }
+                return held != null;
             }
 
             @Override
             public void unlock() {
-                releaseRebuildLock(lockKey);
+                if (held != null) {
+                    try {
+                        if (held.isHeldByCurrentThread()) {
+                            held.unlock();
+                        }
+                    } catch (Exception e) {
+                        log.warn("释放列表重建锁失败, lockKey={}", lockKey, e);
+                    }
+                }
             }
         };
     }
@@ -241,23 +264,6 @@ public class RelationListCacheService {
             result.add(String.valueOf(mapper.apply(rows.get(i))));
         }
         return result;
-    }
-
-    private boolean tryAcquireRebuildLock(String lockKey) {
-        try {
-            return Boolean.TRUE.equals(stringRedisTemplate.opsForValue().setIfAbsent(lockKey, "1", Duration.ofSeconds(REBUILD_LOCK_SECONDS)));
-        } catch (Exception e) {
-            log.warn("获取列表重建锁失败, lockKey={}", lockKey, e);
-            return false;
-        }
-    }
-
-    private void releaseRebuildLock(String lockKey) {
-        try {
-            stringRedisTemplate.delete(lockKey);
-        } catch (Exception e) {
-            log.warn("释放列表重建锁失败, lockKey={}", lockKey, e);
-        }
     }
 
 }

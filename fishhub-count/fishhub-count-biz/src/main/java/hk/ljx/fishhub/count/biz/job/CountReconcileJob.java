@@ -1,13 +1,13 @@
 package hk.ljx.fishhub.count.biz.job;
 
-import com.xxl.job.core.handler.annotation.XxlJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * 计数数据对账任务（由 XXL-JOB 触发，每日定时校准数据）
+ * 计数数据对账任务（每日定时校准数据）
  */
 @Component
 @Slf4j
@@ -16,7 +16,7 @@ public class CountReconcileJob {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @XxlJob("countDataReconcile")
+    @Scheduled(cron = "0 30 3 * * ?")
     public void reconcile() {
         long start = System.currentTimeMillis();
         int noteRows = reconcileNoteCounts();

@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.note.biz.consumer;
 
-import com.google.common.util.concurrent.RateLimiter;
 import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
@@ -44,9 +43,6 @@ public class LikeUnlikeNoteConsumer {
     private final NoteInteractionCacheService noteInteractionCacheService;
     private final BatchPushConsumer batchPushConsumer;
 
-    // 每秒 5000 令牌，批级限速兜底
-    private final RateLimiter rateLimiter = RateLimiter.create(5000);
-
     public LikeUnlikeNoteConsumer(TransactionalMqSender transactionalMqSender,
                                   NoteInteractionPersistenceService persistenceService,
                                   NoteDOMapper noteDOMapper,
@@ -69,7 +65,6 @@ public class LikeUnlikeNoteConsumer {
 
     private boolean consumeBatch(List<MessageExt> msgs) {
         try {
-            rateLimiter.acquire();
             List<String> bodys = msgs.stream()
                     .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
                     .toList();

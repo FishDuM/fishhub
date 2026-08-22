@@ -6,6 +6,7 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
+import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
@@ -51,6 +52,8 @@ class Comment2DBConsumerTest {
     private TransactionalMqSender transactionalMqSender;
     @Mock
     private TxJournalStore txJournalStore;
+    @Mock
+    private CommentChangedLocalHandler commentChangedLocalHandler;
     @InjectMocks
     private Comment2DBConsumer consumer;
 

@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.distributed.id.generator.client;
 
-import cn.hutool.core.util.IdUtil;
 import hk.ljx.fishhub.distributed.id.generator.api.DistributedIdGeneratorFeignApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +35,8 @@ public class DistributedIdGeneratorClient {
                 }
             }
         }
-        log.warn("==> 分布式雪花 ID 生成服务重试 {} 次后仍不可用，高可用降级为本地雪花算法, bizTag: {}", MAX_RETRY_ATTEMPTS, bizTag);
-        return IdUtil.getSnowflakeNextIdStr();
+        // 不降级本地雪花：本地固定 workerId 在多实例下会生成重复 ID，宁可请求失败可重试
+        throw new IllegalStateException("分布式雪花 ID 生成服务不可用, bizTag=" + bizTag);
     }
 
     /**
@@ -57,8 +56,8 @@ public class DistributedIdGeneratorClient {
                 }
             }
         }
-        log.warn("==> 分布式号段 ID 生成服务重试 {} 次后仍不可用，高可用降级为本地雪花算法, bizTag: {}", MAX_RETRY_ATTEMPTS, bizTag);
-        return IdUtil.getSnowflakeNextIdStr();
+        // 不降级本地雪花：本地固定 workerId 在多实例下会生成重复 ID，宁可请求失败可重试
+        throw new IllegalStateException("分布式号段 ID 生成服务不可用, bizTag=" + bizTag);
     }
 
     private void sleepBeforeRetry(int attempt) {

@@ -1,19 +1,21 @@
-package hk.ljx.fishhub.comment.biz.consumer;
+package hk.ljx.fishhub.comment.biz.service;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.RandomUtil;
+import com.google.common.collect.Sets;
 import hk.ljx.framework.common.util.DateUtils;
-import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.count.constant.CountKeyConstants;
+import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
+import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
+import hk.ljx.fishhub.comment.biz.model.bo.CommentFirstReplyBO;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
-import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
@@ -22,36 +24,53 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * 评论变更缓存更新消费者
+ * 评论变更的模块内本地动作：列表缓存维护、热度聚合、首条回复回填。
+ * 由发布/删除落库消费者在事务提交后同步执行，替代原先三个订阅 COMMENT_CHANGED 的广播消费者。
  */
 @Component
 @Slf4j
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_CHANGED + "_cache",
-        topic = MQConstants.TOPIC_COMMENT_CHANGED)
 @RequiredArgsConstructor
-public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<String> {
+public class CommentChangedLocalHandler {
 
     private static final long COMMENT_LIST_MAX_SIZE = 500;
-    /** 子评论缓存上限：重建与增量 trim 同向保留最新 N 条（与 ZSET 读侧 offset 上限解耦） */
+    /** 子评论缓存上限：重建与增量 trim 同向保留最新 N 条 */
     public static final long CHILD_COMMENT_LIST_MAX_SIZE = 5000;
     private static final long COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
     private static final long CHILD_COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
 
     private final StringRedisTemplate stringRedisTemplate;
     private final CommentDetailCache commentDetailCache;
+    private final CommentDOMapper commentDOMapper;
+    private final CommentHeatAggregator commentHeatAggregator;
 
-    @Override
-    public void onMessage(String body) {
-        CommentChangedEventMqDTO event = JsonUtils.parseObject(body, CommentChangedEventMqDTO.class);
+    /**
+     * 评论发布落库后调用。
+     */
+    public void handlePublish(CommentChangedEventMqDTO event) {
+        handleCacheInvalidation(event, false);
+        submitHeat(event);
+        handleFirstReply(event);
+    }
+
+    /**
+     * 评论删除落库后调用。
+     */
+    public void handleDelete(CommentChangedEventMqDTO event) {
+        handleCacheInvalidation(event, true);
+        submitHeat(event);
+    }
+
+    // —— 列表/详情缓存维护（原 CommentChangedCacheInvalidateConsumer）——
+
+    private void handleCacheInvalidation(CommentChangedEventMqDTO event, boolean isDelete) {
         if (event == null || event.getChangeType() == null || CollUtil.isEmpty(event.getItems())) {
             throw new IllegalArgumentException("评论缓存失效消息缺少必要字段");
         }
-
-        boolean isDelete = Objects.equals(event.getChangeType(), MQConstants.COMMENT_CHANGE_TYPE_DELETE);
 
         // 一级评论：维护笔记评论列表 ZSET + 一级评论计数版本
         Map<Long, List<Long>> oneLevelByNote = event.getItems().stream()
@@ -167,6 +186,101 @@ public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<S
                     RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
             stringRedisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId,
                     String.valueOf(version - 1)));
+        }
+    }
+
+    // —— 热度聚合（原 CommentChangedHeatConsumer）——
+
+    private void submitHeat(CommentChangedEventMqDTO event) {
+        // 二级评论的变动会影响其父评论的热度
+        Set<Long> commentIds = Sets.newHashSet();
+        event.getItems().stream()
+                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
+                .map(CommentItemMqDTO::getParentId)
+                .filter(Objects::nonNull)
+                .forEach(commentIds::add);
+        commentHeatAggregator.submit(commentIds);
+    }
+
+    // —— 首条回复回填（原 CommentChangedFirstReplyUpdateConsumer）——
+
+    private void handleFirstReply(CommentChangedEventMqDTO event) {
+        List<Long> parentIds = event.getItems().stream()
+                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
+                .map(CommentItemMqDTO::getParentId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (CollUtil.isEmpty(parentIds)) {
+            return;
+        }
+
+        // 过滤 Redis 中已标记拥有首条回复的一级评论
+        List<String> keys = parentIds.stream()
+                .map(RedisKeyConstants::buildHaveFirstReplyCommentKey)
+                .toList();
+        List<String> values = stringRedisTemplate.opsForValue().multiGet(keys);
+        List<Long> missingCommentIds = new ArrayList<>();
+        for (int i = 0; i < values.size(); i++) {
+            if (Objects.isNull(values.get(i))) {
+                missingCommentIds.add(parentIds.get(i));
+            }
+        }
+        if (CollUtil.isEmpty(missingCommentIds)) {
+            return;
+        }
+
+        List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(missingCommentIds);
+
+        // 既有首回复的一级评论直接同步 Redis 标记
+        List<Long> alreadyHasReplyIds = commentDOS.stream()
+                .filter(commentDO -> commentDO.getFirstReplyCommentId() != 0)
+                .map(CommentDO::getId)
+                .toList();
+        if (CollUtil.isNotEmpty(alreadyHasReplyIds)) {
+            sync2Redis(alreadyHasReplyIds);
+        }
+
+        // 尚未回填的一级评论：一次批量查各自最早回复，再一次批量回填
+        List<Long> needUpdateCommentIds = commentDOS.stream()
+                .filter(commentDO -> commentDO.getFirstReplyCommentId() == 0)
+                .map(CommentDO::getId)
+                .toList();
+        if (CollUtil.isEmpty(needUpdateCommentIds)) {
+            return;
+        }
+
+        List<CommentDO> earliestReplies = commentDOMapper.selectEarliestFirstReplyByParentIds(needUpdateCommentIds);
+        if (CollUtil.isEmpty(earliestReplies)) {
+            return;
+        }
+
+        List<CommentFirstReplyBO> replyBOS = earliestReplies.stream()
+                .map(reply -> CommentFirstReplyBO.builder()
+                        .id(reply.getParentId())
+                        .firstReplyCommentId(reply.getId())
+                        .build())
+                .toList();
+        commentDOMapper.batchUpdateFirstReplyCommentIds(replyBOS);
+
+        sync2Redis(replyBOS.stream().map(CommentFirstReplyBO::getId).toList());
+    }
+
+    /**
+     * 同步 haveFirstReply 标记并失效该评论的详情缓存。
+     */
+    private void sync2Redis(List<Long> needSyncCommentIds) {
+        try {
+            needSyncCommentIds.forEach(commentId -> {
+                stringRedisTemplate.opsForValue().set(
+                        RedisKeyConstants.buildHaveFirstReplyCommentKey(commentId),
+                        "1",
+                        RandomUtil.randomInt(1, 5 * 60 * 60),
+                        TimeUnit.SECONDS);
+                stringRedisTemplate.delete(RedisKeyConstants.buildCommentDetailKey(commentId));
+            });
+        } catch (Exception e) {
+            log.warn("Redis 不可用，评论首回复缓存同步失败", e);
         }
     }
 }

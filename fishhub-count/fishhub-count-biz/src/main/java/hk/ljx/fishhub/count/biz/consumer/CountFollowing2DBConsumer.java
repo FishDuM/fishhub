@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.count.biz.consumer;
 
-import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
@@ -36,14 +35,8 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
     private final MqIdempotentExecutor mqIdempotentExecutor;
     private final UserCountCacheVersionService userCountCacheVersionService;
 
-    // 每秒创建 5000 个令牌
-    private final RateLimiter rateLimiter = RateLimiter.create(5000);
-
     @Override
     public void onMessage(String body) {
-        // 流量削峰：通过获取令牌，如果没有令牌可用，将阻塞，直到获得
-        rateLimiter.acquire();
-
         if (StringUtils.isBlank(body)) {
             throw new IllegalArgumentException("关注计数消息为空");
         }

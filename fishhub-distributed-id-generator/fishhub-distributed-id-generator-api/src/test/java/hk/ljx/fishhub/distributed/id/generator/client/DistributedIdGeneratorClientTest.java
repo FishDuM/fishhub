@@ -8,8 +8,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,13 +42,12 @@ class DistributedIdGeneratorClientTest {
     }
 
     @Test
-    void shouldFallbackToLocalSnowflakeWhenAllRetriesFail() {
+    void shouldFailFastWhenAllRetriesFail() {
         when(distributedIdGeneratorFeignApi.getSnowflakeId("leaf-snowflake-test"))
                 .thenThrow(new RuntimeException("always fails"));
 
-        String id = client.getSnowflakeId("leaf-snowflake-test");
-        assertNotNull(id);
-        assertTrue(id.length() >= 18);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> client.getSnowflakeId("leaf-snowflake-test"));
         verify(distributedIdGeneratorFeignApi, times(2)).getSnowflakeId("leaf-snowflake-test");
     }
 
@@ -64,13 +61,12 @@ class DistributedIdGeneratorClientTest {
     }
 
     @Test
-    void shouldFallbackToLocalSnowflakeWhenSegmentAllRetriesFail() {
+    void shouldFailFastWhenSegmentAllRetriesFail() {
         when(distributedIdGeneratorFeignApi.getSegmentId("leaf-segment-test"))
                 .thenThrow(new RuntimeException("segment fails"));
 
-        String id = client.getSegmentId("leaf-segment-test");
-        assertNotNull(id);
-        assertTrue(id.length() >= 18);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> client.getSegmentId("leaf-segment-test"));
         verify(distributedIdGeneratorFeignApi, times(2)).getSegmentId("leaf-segment-test");
     }
 }

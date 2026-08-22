@@ -17,7 +17,6 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
-import hk.ljx.fishhub.comment.biz.consumer.CommentChangedCacheInvalidateConsumer;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
@@ -30,6 +29,7 @@ import hk.ljx.fishhub.comment.biz.model.vo.*;
 import hk.ljx.fishhub.comment.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
+import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
@@ -273,7 +273,7 @@ public class CommentServiceImpl implements CommentService {
         // 若不存在且查询的是热点页（前 10 页且落在缓存窗口内），单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
         // 缓存窗口 = 最新 CHILD_COMMENT_LIST_MAX_SIZE 条；爆款评论翻到窗口之前的页不需要重建缓存（直接走 DB）
         if (!hasKey && offset < 6 * 10
-                && offset >= Math.max(0L, count - CommentChangedCacheInvalidateConsumer.CHILD_COMMENT_LIST_MAX_SIZE)) {
+                && offset >= Math.max(0L, count - CommentChangedLocalHandler.CHILD_COMMENT_LIST_MAX_SIZE)) {
             rebuildChildCommentListZSetWithLock(parentCommentId, childCommentZSetKey);
             hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
         }
@@ -804,7 +804,7 @@ public class CommentServiceImpl implements CommentService {
     private void syncChildComments2Redis(Long parentCommentId, String childCommentZSetKey) {
         // 重建与增量 trim 同向：都保留最新 CHILD_COMMENT_LIST_MAX 条（取最新 5000 后倒序写入，ZSET 内保持时间升序）
         List<CommentDO> childCommentDOS = commentDOMapper.selectLatestChildCommentsByParentIdAndLimit(
-                parentCommentId, (int) CommentChangedCacheInvalidateConsumer.CHILD_COMMENT_LIST_MAX_SIZE);
+                parentCommentId, (int) CommentChangedLocalHandler.CHILD_COMMENT_LIST_MAX_SIZE);
         if (CollUtil.isNotEmpty(childCommentDOS)) {
             stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 ZSetOperations<String, String> zSetOps = stringRedisTemplate.opsForZSet();

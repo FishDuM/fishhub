@@ -2,7 +2,6 @@ package hk.ljx.fishhub.comment.biz.consumer;
 
 import cn.hutool.core.collection.CollUtil;
 import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
@@ -13,6 +12,7 @@ import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
+import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
@@ -44,22 +44,22 @@ public class Comment2DBConsumer {
     private final TransactionalMqSender transactionalMqSender;
     private final TxJournalStore txJournalStore;
     private final NoteRpcService noteRpcService;
+    private final CommentChangedLocalHandler commentChangedLocalHandler;
     private final BatchPushConsumer batchPushConsumer;
-
-    // 每秒创建 1000 个令牌
-    private final RateLimiter rateLimiter = RateLimiter.create(1000);
 
     public Comment2DBConsumer(CommentDOMapper commentDOMapper,
                               TransactionTemplate transactionTemplate,
                               TransactionalMqSender transactionalMqSender,
                               TxJournalStore txJournalStore,
                               NoteRpcService noteRpcService,
+                              CommentChangedLocalHandler commentChangedLocalHandler,
                               BatchConsumerFactory batchConsumerFactory) throws MQClientException {
         this.commentDOMapper = commentDOMapper;
         this.transactionTemplate = transactionTemplate;
         this.transactionalMqSender = transactionalMqSender;
         this.txJournalStore = txJournalStore;
         this.noteRpcService = noteRpcService;
+        this.commentChangedLocalHandler = commentChangedLocalHandler;
         this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
                 "fishhub_group_" + MQConstants.TOPIC_PUBLISH_COMMENT,
                 MQConstants.TOPIC_PUBLISH_COMMENT,
@@ -73,9 +73,6 @@ public class Comment2DBConsumer {
     boolean consume(List<MessageExt> msgs) {
         log.info("==> 本批次消息大小: {}", msgs.size());
         try {
-            // 令牌桶流控
-            rateLimiter.acquire();
-
             // 消息体 Json 字符串转 DTO
             List<PublishCommentMqDTO> rawReceivedComments = Lists.newArrayList();
             msgs.forEach(msg -> {
@@ -239,10 +236,11 @@ public class Comment2DBConsumer {
 
             // 发送发布变更事务消息
             List<CommentItemMqDTO> eventItems = commentBOS.stream().map(this::toEventItem).toList();
-            String eventBody = JsonUtils.toJsonString(CommentChangedEventMqDTO.builder()
+            CommentChangedEventMqDTO changeEvent = CommentChangedEventMqDTO.builder()
                     .changeType(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH)
                     .items(eventItems)
-                    .build());
+                    .build();
+            String eventBody = JsonUtils.toJsonString(changeEvent);
 
             List<CommentBO> finalCommentBOS = commentBOS;
             transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COMMENT_CHANGED, eventBody, txId -> {
@@ -276,6 +274,13 @@ public class Comment2DBConsumer {
                 log.info("评论批量入库完成，count={}", inserted);
                 return true;
             });
+
+            // 事务提交后本节点同步维护列表缓存/热度/首条回复（原三个广播消费者合并）
+            try {
+                commentChangedLocalHandler.handlePublish(changeEvent);
+            } catch (Exception e) {
+                log.warn("评论发布本地动作执行失败（缓存/热度/首回复），等待 TTL/重建自愈", e);
+            }
 
             return true;
         } catch (Exception e) {
