@@ -91,13 +91,16 @@ public abstract class AbstractNoteCountAggregationConsumer {
         }
 
         // 事件级幂等：以 sha256(eventId) 为键，只对本次新增事件累加，批次重组/重投不重复计数
+        // 注意：executeBatch 内部会再对传入的“消息身份”做一次 sha256，因此这里必须传原始 eventId，
+        // 用 sha256(eventId) -> event 的反向映射承接 freshKeys。
         Map<String, CountNoteMqDTO> eventByKey = new HashMap<>();
+        List<String> eventIds = new ArrayList<>();
         for (CountNoteMqDTO event : events) {
+            eventIds.add(event.getEventId());
             eventByKey.put(DigestUtil.sha256Hex(event.getEventId()), event);
         }
-        List<String> eventKeys = new ArrayList<>(eventByKey.keySet());
 
-        boolean applied = mqIdempotentExecutor.executeBatch(idempotentGroup(), eventKeys, freshKeys -> {
+        boolean applied = mqIdempotentExecutor.executeBatch(idempotentGroup(), eventIds, freshKeys -> {
             List<CountNoteMqDTO> freshEvents = freshKeys.stream()
                     .map(eventByKey::get)
                     .filter(Objects::nonNull)

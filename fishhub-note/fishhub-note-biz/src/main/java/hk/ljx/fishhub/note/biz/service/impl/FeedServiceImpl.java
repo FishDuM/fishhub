@@ -48,8 +48,10 @@ public class FeedServiceImpl implements FeedService {
 
     private static final long PAGE_SIZE = 10L;
 
-    private static final int CACHE_REBUILD_RETRY_TIMES = 3;
-    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
+    // 冷缓存并发风暴防护：单飞锁持有者重建期间，等待者最长等 1s（20×50ms）拿热缓存，
+    // 避免 60ms 等不到就全部回源 MySQL 造成 Feign 扇出风暴（实测 200 并发冷缓存最差 5.2s）。
+    private static final int CACHE_REBUILD_RETRY_TIMES = 20;
+    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 50L;
     private static final long DISCOVER_PAGE_REBUILD_LOCK_SECONDS = 5L;
 
     private static final Cache<String, List<FindTopicRspVO>> TOPIC_LOCAL_CACHE = Caffeine.newBuilder()

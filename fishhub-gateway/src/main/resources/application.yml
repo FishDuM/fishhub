@@ -1,4 +1,4 @@
-﻿server:
+server:
   port: 8000 # 指定端口
   forward-headers-strategy: framework
 spring:
@@ -52,11 +52,11 @@ spring:
             - StripPrefix=1
     sentinel:
       transport:
-        dashboard: 127.0.0.1:8858 # Sentinel Dashboard 地址
+        dashboard: ${SENTINEL_DASHBOARD:127.0.0.1:8858} # Sentinel Dashboard 地址
         port: 8719 # 客户端上报端口
       datasource:
         nacos:
-          server-addr: 127.0.0.1:8848
+          server-addr: ${NACOS_ADDR:127.0.0.1:8848}
           group-id: DEFAULT_GROUP
           rule-data-id: fishhub-gateway-flow-rules
   data:

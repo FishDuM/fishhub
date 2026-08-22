@@ -64,3 +64,52 @@ FishHub 网关（`fishhub-gateway`）已集成 Sentinel 网关限流并支持通
 为确保短信验证码限流、用户操作日志以及 Sentinel 针对客户端真实 IP 限流生效：
 1. **Nginx 层**：向网关透传 `X-Real-IP`、`X-Forwarded-For` 及 `X-Forwarded-Proto`。
 2. **Gateway 层**：已配置 `server.forward-headers-strategy: framework`，自动将反向代理头部还原为客户端原始连接地址；同时在全局过滤器中清洗并向下游微服务注入安全的 `X-Real-IP` 请求头。
+
+---
+
+## 四、生产环境变量参考（application-prod.yml）
+
+所有服务以 `SPRING_PROFILES_ACTIVE=prod` 启动时加载各模块 `application-prod.yml`（已补齐，原来为空），关键连接信息通过环境变量注入，均带本地开发默认值：
+
+| 环境变量 | 说明 | 默认值 |
+|---|---|---|
+| NACOS_ADDR | Nacos 注册/配置中心地址（所有 bootstrap.yml 已参数化） | 127.0.0.1:8848 |
+| SENTINEL_DASHBOARD | Sentinel 控制台地址（业务服务 8060 / 网关 8858） | 127.0.0.1:8060 或 :8858 |
+| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（各服务库名固定：fishhub_user/note/comment/relation/count，search 用 fishhub） | localhost / 3306 / root / 3057433102 |
+| REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE | Redis | localhost / 6379 / 3057433102 / 0 |
+| ROCKETMQ_NAMESRV | RocketMQ NameServer | localhost:9876 |
+| ELASTICSEARCH_ADDRESS | ES 地址（search） | localhost:9200 |
+| CASSANDRA_HOST / CASSANDRA_PORT / CASSANDRA_KEYSPACE / CASSANDRA_DC | Cassandra（kv） | 127.0.0.1 / 9042 / fishhub / datacenter1 |
+| MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY | MinIO（oss） | http://localhost:9000 / fishhub / fish1234 |
+| ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET | 短信（user） | 开发值 |
+| ALIYUN_OSS_* | 阿里云 OSS 备用存储（oss） | 开发值 |
+
+启动示例（Linux 容器）：
+
+```bash
+SPRING_PROFILES_ACTIVE=prod NACOS_ADDR=10.0.0.5:8848 MYSQL_HOST=10.0.0.6 REDIS_HOST=10.0.0.7 \
+  ROCKETMQ_NAMESRV=10.0.0.8:9876 java -jar fishhub-user-biz.jar
+```
+
+---
+
+## 五、Leaf Snowflake 的 ZK 命名空间（leaf.name 修复后）
+
+- 修复后 workerId 分配路径为 `/snowflake/fishhub`；旧的 `/snowflake/null`（BOM bug 时期）与 `/snowflake/com.sankuai.leaf.opensource.test`（官方样例）已清理。
+- workerId 本地缓存：`${java.io.tmpdir}/fishhub/leafconf/{port}/workerID.properties`。容器部署务必保证每实例独立 tmp（勿打进镜像），否则 ZK 不可用时两个实例可能复用同一 workerId。
+- ZK forever 节点按 ip:port 累积：IP 每次变化都会新增节点，workerId=节点序号，超过 1023 启动失败。生产建议固定实例 IP，或改用 Redis 分配 workerId。
+- 滚动升级：旧/新命名空间实例同跑时 workerId 可能撞号，先停旧再起新。
+
+---
+
+## 六、网关路径约定（双重前缀是设计，不是 bug）
+
+前端经网关调用使用「外层路由 + 服务内前缀」的双重前缀：
+
+- `/note/note/like`、`/note/note/publish`（note 服务）
+- `/note/discover/note/list`、`/note/channel/...`、`/note/topic/...`（发现页/频道/话题都在 /note 路由下）
+- `/comment/comment/publish`、`/relation/relation/follow`、`/user/user/...`、`/oss/file/...`、`/search/search/...`
+- `/auth/login`（auth 控制器在根路径，单前缀）
+
+网关 `StripPrefix=1` 与此约定一致，**无需修改**；直连服务内部调试时才用服务自身路径（如 `:8086/note/like`）。
+

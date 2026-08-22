@@ -17,9 +17,6 @@
 
     <properties>
        <common-io.version>2.4</common-io.version>
-       <perf4j.version>0.9.16</perf4j.version>
-       <druid.version>1.0.18</druid.version>
-       <mybatis.version>3.3.0</mybatis.version>
        <curator-recipes.version>2.6.0</curator-recipes.version>
        <zookeeper.version>3.6.0</zookeeper.version>
     </properties>
@@ -58,26 +55,6 @@
             <version>${common-io.version}</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.perf4j</groupId>
-            <artifactId>perf4j</artifactId>
-            <version>${perf4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>druid</artifactId>
-            <version>${druid.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.mybatis</groupId>
-            <artifactId>mybatis</artifactId>
-            <version>${mybatis.version}</version>
-        </dependency>
 
         <!-- zk -->
         <dependency>

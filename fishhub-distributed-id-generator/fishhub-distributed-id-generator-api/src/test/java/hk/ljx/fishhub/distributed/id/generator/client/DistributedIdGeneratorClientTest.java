@@ -51,22 +51,4 @@ class DistributedIdGeneratorClientTest {
         verify(distributedIdGeneratorFeignApi, times(2)).getSnowflakeId("leaf-snowflake-test");
     }
 
-    @Test
-    void shouldGetSegmentIdSuccessfully() {
-        when(distributedIdGeneratorFeignApi.getSegmentId("leaf-segment-test"))
-                .thenReturn("1001");
-
-        String id = client.getSegmentId("leaf-segment-test");
-        assertEquals("1001", id);
-    }
-
-    @Test
-    void shouldFailFastWhenSegmentAllRetriesFail() {
-        when(distributedIdGeneratorFeignApi.getSegmentId("leaf-segment-test"))
-                .thenThrow(new RuntimeException("segment fails"));
-
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
-                () -> client.getSegmentId("leaf-segment-test"));
-        verify(distributedIdGeneratorFeignApi, times(2)).getSegmentId("leaf-segment-test");
-    }
 }

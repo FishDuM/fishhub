@@ -11,9 +11,6 @@ public interface DistributedIdGeneratorFeignApi {
 
     String PREFIX = "/id";
 
-    @GetMapping(value = PREFIX + "/segment/get/{key}")
-    String getSegmentId(@PathVariable("key") String key);
-
     @GetMapping(value = PREFIX + "/snowflake/get/{key}")
     String getSnowflakeId(@PathVariable("key") String key);
 

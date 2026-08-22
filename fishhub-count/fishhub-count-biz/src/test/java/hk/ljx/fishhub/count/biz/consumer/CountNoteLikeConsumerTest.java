@@ -5,6 +5,7 @@ import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.consumer.aggregation.AbstractNoteCountAggregationConsumer;
 import hk.ljx.fishhub.count.biz.model.dto.CountNoteMqDTO;
+import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,9 @@ class CountNoteLikeConsumerTest {
             @SuppressWarnings("unchecked")
             Function<List<String>, Boolean> action = inv.getArgument(2);
             @SuppressWarnings("unchecked")
-            List<String> freshKeys = inv.getArgument(1);
+            List<String> identities = inv.getArgument(1);
+            // 模拟真实执行器：对每条原始身份 sha256 后再回调业务动作
+            List<String> freshKeys = identities.stream().map(DigestUtil::sha256Hex).toList();
             return action.apply(freshKeys);
         });
 

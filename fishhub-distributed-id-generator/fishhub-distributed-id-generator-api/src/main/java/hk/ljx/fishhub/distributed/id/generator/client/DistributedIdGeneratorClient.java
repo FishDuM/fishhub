@@ -39,27 +39,6 @@ public class DistributedIdGeneratorClient {
         throw new IllegalStateException("分布式雪花 ID 生成服务不可用, bizTag=" + bizTag);
     }
 
-    /**
-     * 获取号段模式 ID（带 2 次指数退避重试与本地雪花降级）
-     *
-     * @param bizTag 业务标识
-     * @return 分布式 ID 字符串
-     */
-    public String getSegmentId(String bizTag) {
-        for (int attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
-            try {
-                return distributedIdGeneratorFeignApi.getSegmentId(bizTag);
-            } catch (Exception e) {
-                log.warn("==> 分布式号段 ID 生成服务调用失败，第 {} 次重试, bizTag: {}", attempt, bizTag, e);
-                if (attempt < MAX_RETRY_ATTEMPTS) {
-                    sleepBeforeRetry(attempt);
-                }
-            }
-        }
-        // 不降级本地雪花：本地固定 workerId 在多实例下会生成重复 ID，宁可请求失败可重试
-        throw new IllegalStateException("分布式号段 ID 生成服务不可用, bizTag=" + bizTag);
-    }
-
     private void sleepBeforeRetry(int attempt) {
         try {
             Thread.sleep(RETRY_BACKOFF_MILLIS * attempt);
