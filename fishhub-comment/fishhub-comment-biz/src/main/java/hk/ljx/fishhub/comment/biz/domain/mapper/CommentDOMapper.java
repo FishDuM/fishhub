@@ -72,6 +72,15 @@ public interface CommentDOMapper {
                                                           @Param("limit") int limit);
 
     /**
+     * 查询子评论（最新优先，用于缓存重建；与增量 trim 同向保留最新 N 条）
+     * @param parentId
+     * @param limit
+     * @return
+     */
+    List<CommentDO> selectLatestChildCommentsByParentIdAndLimit(@Param("parentId") Long parentId,
+                                                                @Param("limit") int limit);
+
+    /**
      * 批量查询二级评论
      * @param commentIds
      * @return

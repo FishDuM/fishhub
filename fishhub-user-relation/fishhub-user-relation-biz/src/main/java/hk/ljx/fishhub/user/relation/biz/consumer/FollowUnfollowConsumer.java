@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.user.relation.biz.consumer;
 
-import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
@@ -39,16 +38,12 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
 
     private final FollowingDOMapper followingDOMapper;
     private final TransactionTemplate transactionTemplate;
-    private final RateLimiter rateLimiter;
     private final RelationListCacheService relationListCacheService;
     private final TransactionalMqSender transactionalMqSender;
     private final TxJournalStore txJournalStore;
 
     @Override
     public void onMessage(Message message) {
-        // 流量削峰：通过获取令牌，如果没有令牌可用，将阻塞，直到获得
-        rateLimiter.acquire();
-
         // 消息体
         String bodyJsonStr = new String(message.getBody(), java.nio.charset.StandardCharsets.UTF_8);
         // 标签

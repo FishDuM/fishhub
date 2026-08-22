@@ -59,8 +59,9 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
     }
 
     private void applyPublishCounts(CommentChangedEventMqDTO event, String body) {
-        // 按笔记聚合评论总数
+        // 按笔记聚合一级评论总数（comment_total 领域语义 = 一级评论数，二级评论数由 child_comment_total 承载）
         Map<Long, List<CommentItemMqDTO>> groupByNoteId = event.getItems().stream()
+                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.ONE.getCode()))
                 .collect(Collectors.groupingBy(CommentItemMqDTO::getNoteId));
 
         mqIdempotentExecutor.execute("count-note-comment", body, () ->
@@ -74,7 +75,9 @@ public class CountCommentChangedConsumer implements RocketMQListener<String> {
      * 子评论总数（child_comment_total）与首条回复由评论模块在自己的删除事务内维护。
      */
     private void applyDeleteCounts(CommentChangedEventMqDTO event, String body) {
+        // 删除事件含级联子评论，只按一级评论数扣减，与发布侧口径一致
         Map<Long, List<CommentItemMqDTO>> groupByNoteId = event.getItems().stream()
+                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.ONE.getCode()))
                 .collect(Collectors.groupingBy(CommentItemMqDTO::getNoteId));
 
         mqIdempotentExecutor.execute("count-note-comment-delete", body, () ->

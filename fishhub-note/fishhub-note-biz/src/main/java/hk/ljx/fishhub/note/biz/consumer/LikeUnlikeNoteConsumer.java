@@ -62,7 +62,8 @@ public class LikeUnlikeNoteConsumer {
                 MQConstants.TAG_LIKE + "||" + MQConstants.TAG_UNLIKE,
                 CONSUME_BATCH_MAX_SIZE,
                 0,
-                BatchConsumerFactory.Mode.CONCURRENTLY,
+                // 同用户点赞/取消必须有序落库（发送端已按 userId 路由），乱序会破坏最终状态
+                BatchConsumerFactory.Mode.ORDERLY,
                 this::consumeBatch);
     }
 

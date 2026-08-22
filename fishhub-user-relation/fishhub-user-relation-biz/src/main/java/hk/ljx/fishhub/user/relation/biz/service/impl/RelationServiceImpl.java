@@ -140,8 +140,13 @@ public class RelationServiceImpl implements RelationService {
         // 分区键
         String hashKey = String.valueOf(userId);
 
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "关注用户",
-                () -> stringRedisTemplate.delete(followingRedisKey));
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "关注用户");
+        } catch (Exception e) {
+            // 发送失败：回滚 Redis 关注状态后向上抛出，避免假成功
+            stringRedisTemplate.delete(followingRedisKey);
+            throw e;
+        }
 
         return Response.success();
     }
@@ -223,8 +228,13 @@ public class RelationServiceImpl implements RelationService {
 
         String hashKey = String.valueOf(userId);
 
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "取关用户",
-                () -> stringRedisTemplate.delete(followingRedisKey));
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "取关用户");
+        } catch (Exception e) {
+            // 发送失败：回滚 Redis 关注状态后向上抛出，避免假成功
+            stringRedisTemplate.delete(followingRedisKey);
+            throw e;
+        }
 
         return Response.success();
     }

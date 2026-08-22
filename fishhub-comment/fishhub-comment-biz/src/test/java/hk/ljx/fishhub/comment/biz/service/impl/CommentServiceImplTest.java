@@ -205,7 +205,7 @@ class CommentServiceImplTest {
 
         InOrder inOrder = inOrder(commentLikeRealtimeService, rocketMQTemplate);
         inOrder.verify(commentLikeRealtimeService).markLiked(2L, 100L);
-        inOrder.verify(rocketMQTemplate).asyncSendOrderly(
-                anyString(), any(Object.class), anyString(), any(SendCallback.class));
+        inOrder.verify(rocketMQTemplate).syncSendOrderly(
+                anyString(), any(Object.class), anyString());
     }
 }

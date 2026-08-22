@@ -36,7 +36,8 @@ import java.util.stream.Collectors;
 public class CommentChangedCacheInvalidateConsumer implements RocketMQListener<String> {
 
     private static final long COMMENT_LIST_MAX_SIZE = 500;
-    private static final long CHILD_COMMENT_LIST_MAX_SIZE = 60;
+    /** 子评论缓存上限：重建与增量 trim 同向保留最新 N 条（与 ZSET 读侧 offset 上限解耦） */
+    public static final long CHILD_COMMENT_LIST_MAX_SIZE = 5000;
     private static final long COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
     private static final long CHILD_COMMENT_LIST_EXPIRE_SECONDS = 5 * 3600L;
 

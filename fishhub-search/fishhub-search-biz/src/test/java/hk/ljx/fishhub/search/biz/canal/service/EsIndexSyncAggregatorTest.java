@@ -3,7 +3,6 @@ package hk.ljx.fishhub.search.biz.canal.service;
 import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
-import org.apache.lucene.search.TotalHits;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
@@ -13,14 +12,19 @@ import org.elasticsearch.client.RestHighLevelClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -29,15 +33,23 @@ import static org.mockito.Mockito.when;
 
 class EsIndexSyncAggregatorTest {
 
+    private static final String ES_RETRY_NOTE_KEY = "es:retry:note";
+
     private RestHighLevelClient client;
     private SelectMapper selectMapper;
+    private StringRedisTemplate stringRedisTemplate;
+    private ZSetOperations<String, String> zSetOps;
     private EsIndexSyncAggregator aggregator;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() throws Exception {
         client = mock(RestHighLevelClient.class);
         selectMapper = mock(SelectMapper.class);
-        aggregator = new EsIndexSyncAggregator(client, selectMapper);
+        stringRedisTemplate = mock(StringRedisTemplate.class);
+        zSetOps = mock(ZSetOperations.class);
+        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOps);
+        aggregator = new EsIndexSyncAggregator(client, selectMapper, stringRedisTemplate);
         BulkResponse response = mock(BulkResponse.class);
         when(response.hasFailures()).thenReturn(false);
         when(client.bulk(any(BulkRequest.class), any(RequestOptions.class))).thenReturn(response);
@@ -106,40 +118,69 @@ class EsIndexSyncAggregatorTest {
     }
 
     @Test
-    void shouldRequeuePendingNotesWhenBulkSyncFails() throws Exception {
-        when(selectMapper.selectEsNoteIndexDataByIds(anyList())).thenReturn(List.of(row("1")));
-        when(client.bulk(any(BulkRequest.class), any(RequestOptions.class)))
-                .thenThrow(new RuntimeException("ES timeout"))
-                .thenReturn(mock(BulkResponse.class));
-
-        aggregator.submitNote(1L);
-        // 第一次 flush 失败，应重新入队
-        aggregator.flush();
-
-        // 第二次 flush 应重试该 ID
-        aggregator.flush();
-        verify(client, times(2)).bulk(any(BulkRequest.class), any(RequestOptions.class));
-    }
-
-    @Test
-    void shouldAbandonNotesAfterMaxRetries() throws Exception {
+    void shouldEnqueueFailedIdsToRedisRetryZset() throws Exception {
         when(selectMapper.selectEsNoteIndexDataByIds(anyList())).thenReturn(List.of(row("1")));
         when(client.bulk(any(BulkRequest.class), any(RequestOptions.class)))
                 .thenThrow(new RuntimeException("ES timeout"));
 
         aggregator.submitNote(1L);
-        // 第 1 次执行与失败 (retries 变为 1, re-queued)
-        aggregator.flush();
-        // 第 2 次执行与失败 (retries 变为 2, re-queued)
-        aggregator.flush();
-        // 第 3 次执行与失败 (retries 变为 3, re-queued)
-        aggregator.flush();
-        // 第 4 次执行与失败 (retries 变为 4 > 3, 丢弃不再 re-queue)
         aggregator.flush();
 
-        // 第 5 次 flush：集合已空，不再触发 bulk
-        aggregator.flush();
-        verify(client, times(4)).bulk(any(BulkRequest.class), any(RequestOptions.class));
+        // 失败后写入 Redis 重试队列（无限重试，不再放回内存 pending）
+        verify(zSetOps).add(eq(ES_RETRY_NOTE_KEY), eq("1"), anyDouble());
+    }
+
+    @Test
+    void shouldRetryPendingNotesAndRemoveOnSuccess() throws Exception {
+        when(selectMapper.selectEsNoteIndexDataByIds(anyList())).thenReturn(List.of(row("1")));
+        when(zSetOps.rangeByScore(eq(ES_RETRY_NOTE_KEY), eq(0d), anyDouble()))
+                .thenReturn(Set.of("1"));
+
+        aggregator.retryPendingNotes();
+
+        verify(client, times(1)).bulk(any(BulkRequest.class), any(RequestOptions.class));
+        verify(zSetOps).remove(eq(ES_RETRY_NOTE_KEY), eq("1"));
+    }
+
+    @Test
+    void shouldKeepRetryEntryOnFailureForInfiniteRetry() throws Exception {
+        when(selectMapper.selectEsNoteIndexDataByIds(anyList())).thenReturn(List.of(row("1")));
+        when(zSetOps.rangeByScore(eq(ES_RETRY_NOTE_KEY), eq(0d), anyDouble()))
+                .thenReturn(Set.of("1"));
+        when(client.bulk(any(BulkRequest.class), any(RequestOptions.class)))
+                .thenThrow(new RuntimeException("ES timeout"));
+
+        aggregator.retryPendingNotes();
+        aggregator.retryPendingNotes();
+
+        // 两次都重试且失败后不移除（无限重试）
+        verify(client, times(2)).bulk(any(BulkRequest.class), any(RequestOptions.class));
+        verify(zSetOps, never()).remove(any(String.class), any(Object[].class));
+    }
+
+    @Test
+    void shouldSkipAndRemoveDirtyMembersWithoutBlockingRetry() throws Exception {
+        when(selectMapper.selectEsNoteIndexDataByIds(anyList())).thenReturn(List.of(row("1")));
+        when(zSetOps.rangeByScore(eq(ES_RETRY_NOTE_KEY), eq(0d), anyDouble()))
+                .thenReturn(Set.of("1", "dirty"));
+
+        aggregator.retryPendingNotes();
+
+        // 脏 member 被清理移除，正常 id 继续重试，队列不被卡死
+        verify(zSetOps, times(2)).remove(any(String.class), any(Object[].class));
+        verify(client, times(1)).bulk(any(BulkRequest.class), any(RequestOptions.class));
+    }
+
+    @Test
+    void shouldNotCallBulkWhenOnlyDirtyMembersExist() throws Exception {
+        when(zSetOps.rangeByScore(eq(ES_RETRY_NOTE_KEY), eq(0d), anyDouble()))
+                .thenReturn(Set.of("dirty", "abc"));
+
+        aggregator.retryPendingNotes();
+
+        // 全部为脏数据：只清理，不触发 ES bulk
+        verify(zSetOps).remove(any(String.class), any(Object[].class));
+        verify(client, never()).bulk(any(BulkRequest.class), any(RequestOptions.class));
     }
 
     private static Map<String, Object> row(String id) {

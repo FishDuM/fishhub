@@ -8,6 +8,11 @@ import java.util.List;
 public interface NoteLikeDOMapper {
     int deleteByPrimaryKey(Long id);
 
+    /**
+     * 删除笔记下全部点赞行（笔记删除时清理互动残留，幂等）
+     */
+    int deleteByNoteId(@Param("noteId") Long noteId);
+
     int insert(NoteLikeDO record);
 
     int insertSelective(NoteLikeDO record);

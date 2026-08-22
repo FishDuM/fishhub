@@ -12,8 +12,7 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.index.VersionType;
-import org.elasticsearch.rest.RestStatus;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -38,15 +37,17 @@ public class EsIndexSyncAggregator {
     /** 单次 Bulk 提交的文档条数上限 */
     private static final int BULK_BATCH_SIZE = 500;
 
-    private static final int MAX_RETRY_TIMES = 3;
+    /** 同步失败重试队列（Redis ZSet，score=下次重试时间戳，无限重试直到成功） */
+    private static final String ES_RETRY_NOTE_KEY = "es:retry:note";
+    private static final String ES_RETRY_USER_KEY = "es:retry:user";
+    private static final long RETRY_DELAY_MS = 30_000L;
 
     private final RestHighLevelClient restHighLevelClient;
     private final SelectMapper selectMapper;
+    private final StringRedisTemplate stringRedisTemplate;
 
     private final Set<Long> pendingNoteIds = new HashSet<>();
     private final Set<Long> pendingUserIds = new HashSet<>();
-    private final Map<Long, Integer> noteRetryCounts = new HashMap<>();
-    private final Map<Long, Integer> userRetryCounts = new HashMap<>();
     private final Object noteFlushLock = new Object();
     private final Object userFlushLock = new Object();
 
@@ -101,25 +102,10 @@ public class EsIndexSyncAggregator {
             }
             try {
                 bulkSyncNotes(ids);
-                ids.forEach(noteRetryCounts::remove);
             } catch (Exception e) {
                 log.error("ES 笔记索引批量同步失败, idsSize={}", ids.size(), e);
-                List<Long> retryIds = new ArrayList<>();
-                for (Long id : ids) {
-                    int retries = noteRetryCounts.getOrDefault(id, 0) + 1;
-                    if (retries <= MAX_RETRY_TIMES) {
-                        noteRetryCounts.put(id, retries);
-                        retryIds.add(id);
-                    } else {
-                        noteRetryCounts.remove(id);
-                        log.error("ES 笔记索引同步重试已达上限({}次)，放弃重试, 依靠对账兜底: noteId={}", MAX_RETRY_TIMES, id);
-                    }
-                }
-                if (!retryIds.isEmpty()) {
-                    synchronized (pendingNoteIds) {
-                        pendingNoteIds.addAll(retryIds);
-                    }
-                }
+                // 失败 ID 写入 Redis ZSet，由定时任务无限重试，ES 恢复后自动追平
+                enqueueRetry(ES_RETRY_NOTE_KEY, ids);
             }
         }
     }
@@ -132,27 +118,71 @@ public class EsIndexSyncAggregator {
             }
             try {
                 bulkSyncUsers(ids);
-                ids.forEach(userRetryCounts::remove);
             } catch (Exception e) {
                 log.error("ES 用户索引批量同步失败, idsSize={}", ids.size(), e);
-                List<Long> retryIds = new ArrayList<>();
-                for (Long id : ids) {
-                    int retries = userRetryCounts.getOrDefault(id, 0) + 1;
-                    if (retries <= MAX_RETRY_TIMES) {
-                        userRetryCounts.put(id, retries);
-                        retryIds.add(id);
-                    } else {
-                        userRetryCounts.remove(id);
-                        log.error("ES 用户索引同步重试已达上限({}次)，放弃重试, 依靠对账兜底: userId={}", MAX_RETRY_TIMES, id);
-                    }
-                }
-                if (!retryIds.isEmpty()) {
-                    synchronized (pendingUserIds) {
-                        pendingUserIds.addAll(retryIds);
-                    }
-                }
+                enqueueRetry(ES_RETRY_USER_KEY, ids);
             }
         }
+    }
+
+    /**
+     * 重试到期的失败同步（由 EsSyncRetryJob 定时触发）。
+     */
+    public void retryPendingNotes() {
+        retryPending(ES_RETRY_NOTE_KEY, this::bulkSyncNotes);
+    }
+
+    public void retryPendingUsers() {
+        retryPending(ES_RETRY_USER_KEY, this::bulkSyncUsers);
+    }
+
+    private void retryPending(String retryKey, EsBulkSync sync) {
+        Set<String> dueIds = stringRedisTemplate.opsForZSet()
+                .rangeByScore(retryKey, 0, System.currentTimeMillis());
+        if (dueIds == null || dueIds.isEmpty()) {
+            return;
+        }
+        // 过滤脏数据：非数字 member 无法重试，直接移除，避免单个脏数据卡死整个重试队列
+        List<Long> ids = new ArrayList<>();
+        List<String> dirtyMembers = new ArrayList<>();
+        for (String member : dueIds) {
+            try {
+                ids.add(Long.valueOf(member));
+            } catch (NumberFormatException e) {
+                dirtyMembers.add(member);
+            }
+        }
+        if (!dirtyMembers.isEmpty()) {
+            stringRedisTemplate.opsForZSet().remove(retryKey, dirtyMembers.toArray());
+            log.warn("ES 重试队列存在脏数据，已移除, key={}, count={}", retryKey, dirtyMembers.size());
+        }
+        if (ids.isEmpty()) {
+            return;
+        }
+        try {
+            sync.sync(ids);
+            // 成功后移除，避免重复重试
+            stringRedisTemplate.opsForZSet().remove(retryKey, dueIds.toArray());
+        } catch (Exception e) {
+            log.warn("ES 重试队列同步仍失败, key={}, idsSize={}", retryKey, ids.size(), e);
+            // 保持 ZSet 中的 score 不变，下次调度继续重试（无限次）
+        }
+    }
+
+    private void enqueueRetry(String retryKey, List<Long> ids) {
+        try {
+            long next = System.currentTimeMillis() + RETRY_DELAY_MS;
+            for (Long id : ids) {
+                stringRedisTemplate.opsForZSet().add(retryKey, String.valueOf(id), next);
+            }
+        } catch (Exception redisEx) {
+            log.error("ES 重试队列写入 Redis 失败, key={}", retryKey, redisEx);
+        }
+    }
+
+    @FunctionalInterface
+    private interface EsBulkSync {
+        void sync(List<Long> ids) throws Exception;
     }
 
     private static List<Long> drain(Set<Long> pending) {
@@ -176,14 +206,9 @@ public class EsIndexSyncAggregator {
                 // 笔记已不可检索（删除/下架/私密），从索引移除
                 bulk.add(new DeleteRequest(NoteIndex.NAME, String.valueOf(noteId)));
             } else {
+                // 每次同步全量重查 DB 最新值，last-write-wins 天然收敛（不用主表 update_time 做外部版本：
+                // 计数变更不碰主表，版本恒等会导致 CONFLICT 被跳过、计数永不更新）
                 IndexRequest request = new IndexRequest(NoteIndex.NAME).id(String.valueOf(noteId)).source(row);
-                Object versionObj = row.get("update_time_millis");
-                if (versionObj != null) {
-                    long version = Long.parseLong(String.valueOf(versionObj));
-                    if (version > 0) {
-                        request.version(version).versionType(VersionType.EXTERNAL);
-                    }
-                }
                 bulk.add(request);
             }
         }
@@ -199,13 +224,6 @@ public class EsIndexSyncAggregator {
                 bulk.add(new DeleteRequest(UserIndex.NAME, String.valueOf(userId)));
             } else {
                 IndexRequest request = new IndexRequest(UserIndex.NAME).id(String.valueOf(userId)).source(row);
-                Object versionObj = row.get("update_time_millis");
-                if (versionObj != null) {
-                    long version = Long.parseLong(String.valueOf(versionObj));
-                    if (version > 0) {
-                        request.version(version).versionType(VersionType.EXTERNAL);
-                    }
-                }
                 bulk.add(request);
             }
         }
@@ -254,11 +272,6 @@ public class EsIndexSyncAggregator {
             StringBuilder errorMsg = new StringBuilder();
             for (BulkItemResponse item : response.getItems()) {
                 if (item.isFailed()) {
-                    // 外部版本冲突说明当前 ES 已有更新的数据版本，跳过不报错
-                    if (item.getFailure().getStatus() == RestStatus.CONFLICT) {
-                        log.debug("ES 同步外部版本冲突（已有更新版本），跳过: {}", item.getFailureMessage());
-                        continue;
-                    }
                     hasRealFailure = true;
                     errorMsg.append(item.getFailureMessage()).append("; ");
                 }

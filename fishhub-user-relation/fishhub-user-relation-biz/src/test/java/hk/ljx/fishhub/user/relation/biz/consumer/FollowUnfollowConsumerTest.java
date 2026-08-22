@@ -1,6 +1,5 @@
 package hk.ljx.fishhub.user.relation.biz.consumer;
 
-import com.google.common.util.concurrent.RateLimiter;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
@@ -37,8 +36,6 @@ class FollowUnfollowConsumerTest {
     private FollowingDOMapper followingDOMapper;
     @Mock
     private TransactionTemplate transactionTemplate;
-    @Mock
-    private RateLimiter rateLimiter;
     @Mock
     private RelationListCacheService relationListCacheService;
     @Mock

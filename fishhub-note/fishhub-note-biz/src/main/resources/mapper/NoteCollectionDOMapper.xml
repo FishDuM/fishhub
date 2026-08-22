@@ -40,6 +40,11 @@
     delete from t_note_collection
     where id = #{id,jdbcType=BIGINT}
   </delete>
+
+  <delete id="deleteByNoteId" parameterType="long">
+    delete from t_note_collection
+    where note_id = #{noteId}
+  </delete>
   <insert id="insert" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteCollectionDO">
     insert into t_note_collection (id, user_id, note_id, 
       create_time, `status`)

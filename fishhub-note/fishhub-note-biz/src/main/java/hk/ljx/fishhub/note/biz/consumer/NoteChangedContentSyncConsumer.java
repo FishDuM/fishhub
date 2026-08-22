@@ -3,8 +3,11 @@ package hk.ljx.fishhub.note.biz.consumer;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
+import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
+import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.fishhub.note.biz.enums.NoteContentTaskTypeEnum;
+import hk.ljx.fishhub.note.biz.enums.NoteOperateEnum;
 import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.kv.client.KeyValueClient;
@@ -34,6 +37,8 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
 
     private final KeyValueClient keyValueClient;
     private final NoteDOMapper noteDOMapper;
+    private final NoteLikeDOMapper noteLikeDOMapper;
+    private final NoteCollectionDOMapper noteCollectionDOMapper;
 
     @Override
     public void onMessage(String body) {
@@ -41,6 +46,14 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
         if (event == null || event.getNoteId() == null) {
             throw new IllegalArgumentException("笔记变更消息缺少必要字段");
         }
+
+        // 删除事件：清理互动残留行（幂等；若事件丢失，计数由对账 SQL 过滤 n.status=1 收敛）
+        if (Objects.equals(event.getChangeType(), NoteOperateEnum.DELETE.getCode())) {
+            noteLikeDOMapper.deleteByNoteId(event.getNoteId());
+            noteCollectionDOMapper.deleteByNoteId(event.getNoteId());
+            log.info("笔记删除，已清理点赞/收藏行, noteId={}", event.getNoteId());
+        }
+
         if (CollUtil.isEmpty(event.getContentTasks())) {
             log.info("笔记变更消息无正文同步任务，跳过同步, noteId={}", event.getNoteId());
             return;

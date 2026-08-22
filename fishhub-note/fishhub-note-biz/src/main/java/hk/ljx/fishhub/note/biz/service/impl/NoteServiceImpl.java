@@ -903,8 +903,16 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记点赞",
-                () -> noteInteractionCacheService.evictLikeCaches(userId));
+        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
+        String hashKey = String.valueOf(userId);
+
+        try {
+            // 同步顺序发送（hashKey=userId 保持同用户操作有序），失败回滚缓存后抛出，避免假成功
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记点赞");
+        } catch (Exception e) {
+            noteInteractionCacheService.evictLikeCaches(userId);
+            throw e;
+        }
 
         return Response.success();
     }
@@ -936,8 +944,15 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记取消点赞",
-                () -> noteInteractionCacheService.evictLikeCaches(userId));
+        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
+        String hashKey = String.valueOf(userId);
+
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记取消点赞");
+        } catch (Exception e) {
+            noteInteractionCacheService.evictLikeCaches(userId);
+            throw e;
+        }
 
         return Response.success();
     }
@@ -970,8 +985,15 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_COLLECT;
 
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记收藏",
-                () -> noteInteractionCacheService.evictCollectCaches(userId));
+        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
+        String hashKey = String.valueOf(userId);
+
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记收藏");
+        } catch (Exception e) {
+            noteInteractionCacheService.evictCollectCaches(userId);
+            throw e;
+        }
 
         return Response.success();
     }
@@ -1003,8 +1025,15 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_UN_COLLECT;
 
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, destination, message, "笔记取消收藏",
-                () -> noteInteractionCacheService.evictCollectCaches(userId));
+        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
+        String hashKey = String.valueOf(userId);
+
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记取消收藏");
+        } catch (Exception e) {
+            noteInteractionCacheService.evictCollectCaches(userId);
+            throw e;
+        }
 
         return Response.success();
     }

@@ -17,6 +17,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.cache.CommentDetailCache;
+import hk.ljx.fishhub.comment.biz.consumer.CommentChangedCacheInvalidateConsumer;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
@@ -133,7 +134,8 @@ public class CommentServiceImpl implements CommentService {
 
         // 发布评论 MQ
         String publishMsg = JsonUtils.toJsonString(publishCommentMqDTO);
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_PUBLISH_COMMENT, publishMsg, "发布评论", null);
+        // 同步发送：失败即抛，避免"发布成功"但评论永不落库
+        RocketMqHelper.syncSend(rocketMQTemplate, MQConstants.TOPIC_PUBLISH_COMMENT, publishMsg, "发布评论");
 
         return Response.success(Long.valueOf(commentId));
     }
@@ -230,9 +232,9 @@ public class CommentServiceImpl implements CommentService {
                             commentRspVOS.add(vo);
                         }
                     }
-                    boolean missingCount = commentRspVOS.stream().anyMatch(vo -> vo.getLikeTotal() == null);
-                    if (missingCount && CollUtil.isNotEmpty(commentRspVOS)) {
-                        setCommentCountData(commentRspVOS, localCacheExpiredCommentIds);
+                    // 本地缓存只存静态详情，计数统一从 Redis Count Hash 刷新（一次 MGET），保证实时
+                    if (CollUtil.isNotEmpty(commentRspVOS)) {
+                        setCommentCountData(commentRspVOS, Collections.emptyList());
                     }
 
                     return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
@@ -367,20 +369,28 @@ public class CommentServiceImpl implements CommentService {
         // 先判断 ZSET 是否存在
         boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
 
-        // 若不存在且查询前 10 页热点数据，单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
-        if (!hasKey && offset < 6 * 10) {
+        // 若不存在且查询的是热点页（前 10 页且落在缓存窗口内），单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
+        // 缓存窗口 = 最新 CHILD_COMMENT_LIST_MAX_SIZE 条；爆款评论翻到窗口之前的页不需要重建缓存（直接走 DB）
+        if (!hasKey && offset < 6 * 10
+                && offset >= Math.max(0L, count - CommentChangedCacheInvalidateConsumer.CHILD_COMMENT_LIST_MAX_SIZE)) {
             rebuildChildCommentListZSetWithLock(parentCommentId, childCommentZSetKey);
             hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
         }
 
-        // 若子评论 ZSET 缓存存在, 并且查询的是前 10 页的子评论
-        if (hasKey && offset < 6*10) {
-            // 使用 ZRevRange 获取某个一级评论下的子评论，按回复时间升序排列
-            Set<String> childCommentIds = stringRedisTemplate.<String>opsForZSet()
-                    .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, offset, pageSize);
+        // 缓存为"最新 N 条"滑动窗口，覆盖 [count - cachedSize, count) 的升序区间：
+        // 仅当请求页落在该区间内才可命中 ZSET；否则（爆款评论翻到窗口之前的页）回源 DB 全量分页，
+        // 保证任意 offset 可达且与 DB 全量口径一致。
+        if (hasKey && offset < count) {
+            Long cachedSize = stringRedisTemplate.opsForZSet().zCard(childCommentZSetKey);
+            long cacheStart = Math.max(0L, count - (cachedSize == null ? 0L : cachedSize));
+            if (offset >= cacheStart) {
+                // 在缓存窗口内的相对偏移
+                long rank = offset - cacheStart;
+                Set<String> childCommentIds = stringRedisTemplate.<String>opsForZSet()
+                        .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, rank, pageSize);
 
-            // 若结果不为空
-            if (CollUtil.isNotEmpty(childCommentIds)) {
+                // 若结果不为空
+                if (CollUtil.isNotEmpty(childCommentIds)) {
                 // Set 转 List
                 List<String> childCommentIdList = Lists.newArrayList(childCommentIds);
 
@@ -425,6 +435,7 @@ public class CommentServiceImpl implements CommentService {
                         .collect(Collectors.toList());
 
                 return PageResponse.success(childCommentRspVOS, pageNo, count, pageSize);
+            }
             }
 
         }
@@ -480,8 +491,13 @@ public class CommentServiceImpl implements CommentService {
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markLiked(userId, commentId);
 
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论点赞",
-                () -> commentLikeRealtimeService.evictLikeState(userId, commentId));
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "评论点赞");
+        } catch (Exception e) {
+            // 发送失败：清空实时点赞缓存后向上抛出，避免假成功
+            commentLikeRealtimeService.evictLikeState(userId, commentId);
+            throw e;
+        }
 
         return Response.success();
     }
@@ -520,8 +536,13 @@ public class CommentServiceImpl implements CommentService {
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markUnliked(userId, commentId);
 
-        RocketMqHelper.asyncSendOrderlyWithRetry(rocketMQTemplate, destination, message, hashKey, "评论取消点赞",
-                () -> commentLikeRealtimeService.evictLikeState(userId, commentId));
+        try {
+            RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "评论取消点赞");
+        } catch (Exception e) {
+            // 发送失败：清空实时点赞缓存后向上抛出，避免假成功
+            commentLikeRealtimeService.evictLikeState(userId, commentId);
+            throw e;
+        }
 
         return Response.success();
     }
@@ -672,7 +693,8 @@ public class CommentServiceImpl implements CommentService {
                 .build();
 
         // 删除评论 MQ
-        RocketMqHelper.asyncSendWithRetry(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论", null);
+        // 同步发送：失败即抛，避免"删除成功"但评论永不删除
+        RocketMqHelper.syncSend(rocketMQTemplate, MQConstants.TOPIC_DELETE_COMMENT, message, "删除评论");
 
         return Response.success();
     }
@@ -956,14 +978,18 @@ public class CommentServiceImpl implements CommentService {
      * @param childCommentZSetKey
      */
     private void syncChildComments2Redis(Long parentCommentId, String childCommentZSetKey) {
-        List<CommentDO> childCommentDOS = commentDOMapper.selectChildCommentsByParentIdAndLimit(parentCommentId, 6*10);
+        // 重建与增量 trim 同向：都保留最新 CHILD_COMMENT_LIST_MAX 条（取最新 5000 后倒序写入，ZSET 内保持时间升序）
+        List<CommentDO> childCommentDOS = commentDOMapper.selectLatestChildCommentsByParentIdAndLimit(
+                parentCommentId, (int) CommentChangedCacheInvalidateConsumer.CHILD_COMMENT_LIST_MAX_SIZE);
         if (CollUtil.isNotEmpty(childCommentDOS)) {
             // 使用 Redis Pipeline 提升写入性能
             stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 ZSetOperations<String, String> zSetOps = stringRedisTemplate.opsForZSet();
 
-                // 遍历子评论数据并批量写入 ZSet
-                for (CommentDO childCommentDO : childCommentDOS) {
+                // 遍历子评论数据并批量写入 ZSet（最新优先取回，倒序后按时间升序写入）
+                List<CommentDO> ascending = new ArrayList<>(childCommentDOS);
+                Collections.reverse(ascending);
+                for (CommentDO childCommentDO : ascending) {
                     Long commentId = childCommentDO.getId();
                     // create_time 转时间戳
                     long commentTimestamp = DateUtils.localDateTime2Timestamp(childCommentDO.getCreateTime());
@@ -1196,6 +1222,8 @@ public class CommentServiceImpl implements CommentService {
             Map<Long, String> localCacheData = Maps.newHashMap();
             commentRspVOS.forEach(commentRspVO -> {
                 Long commentId = commentRspVO.getCommentId();
+                // 计数不参与本地缓存的新鲜度：命中路径总会从 Redis Count Hash 刷新（见 findCommentPageList），
+                // 这里不修改响应 VO（异步线程修改会与返回给调用方的对象产生并发写）
                 localCacheData.put(commentId, JsonUtils.toJsonString(commentRspVO));
             });
 

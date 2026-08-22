@@ -36,7 +36,8 @@ public class CountReconcileJob {
                 FROM fishhub_note.t_note n
                 LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_note.t_note_like WHERE status = 1 GROUP BY note_id) l ON l.note_id = n.id
                 LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_note.t_note_collection WHERE status = 1 GROUP BY note_id) c ON c.note_id = n.id
-                LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_comment.t_comment GROUP BY note_id) cm ON cm.note_id = n.id
+                LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_comment.t_comment WHERE level = 1 GROUP BY note_id) cm ON cm.note_id = n.id
+                WHERE n.status = 1
                 ON DUPLICATE KEY UPDATE
                     like_total = VALUES(like_total),
                     collect_total = VALUES(collect_total),
@@ -58,8 +59,8 @@ public class CountReconcileJob {
                 LEFT JOIN (SELECT following_user_id AS uid, COUNT(*) AS cnt FROM fishhub_relation.t_following GROUP BY following_user_id) fans ON fans.uid = u.id
                 LEFT JOIN (SELECT user_id AS uid, COUNT(*) AS cnt FROM fishhub_relation.t_following GROUP BY user_id) fl ON fl.uid = u.id
                 LEFT JOIN (SELECT creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note WHERE status = 1 GROUP BY creator_id) nt ON nt.uid = u.id
-                LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_like l JOIN fishhub_note.t_note n ON l.note_id = n.id WHERE l.status = 1 GROUP BY n.creator_id) lk ON lk.uid = u.id
-                LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_collection c JOIN fishhub_note.t_note n ON c.note_id = n.id WHERE c.status = 1 GROUP BY n.creator_id) cl ON cl.uid = u.id
+                LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_like l JOIN fishhub_note.t_note n ON l.note_id = n.id WHERE l.status = 1 AND n.status = 1 GROUP BY n.creator_id) lk ON lk.uid = u.id
+                LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_collection c JOIN fishhub_note.t_note n ON c.note_id = n.id WHERE c.status = 1 AND n.status = 1 GROUP BY n.creator_id) cl ON cl.uid = u.id
                 WHERE u.is_deleted = 0
                 ON DUPLICATE KEY UPDATE
                     fans_total = VALUES(fans_total),
