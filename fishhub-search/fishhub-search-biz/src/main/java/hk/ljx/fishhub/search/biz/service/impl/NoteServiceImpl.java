@@ -38,6 +38,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -180,8 +181,7 @@ public class NoteServiceImpl implements NoteService {
     private static SearchNoteRspVO buildSearchNoteRspVO(SearchHit hit) {
         Map<String, Object> map = hit.getSourceAsMap();
         String updateTimeStr = (String) map.get(NoteIndex.FIELD_NOTE_UPDATE_TIME);
-        LocalDateTime updateTime = StringUtils.isNotBlank(updateTimeStr)
-                ? LocalDateTime.parse(updateTimeStr, DateConstants.DATE_FORMAT_Y_M_D_H_M_S) : LocalDateTime.now();
+        LocalDateTime updateTime = parseUpdateTime(updateTimeStr);
 
         String highlightedTitle = null;
         if (CollUtil.isNotEmpty(hit.getHighlightFields()) && hit.getHighlightFields().containsKey(NoteIndex.FIELD_NOTE_TITLE)) {
@@ -210,6 +210,25 @@ public class NoteServiceImpl implements NoteService {
                 .commentTotal(NumberUtils.formatNumberString(commentTotal))
                 .collectTotal(NumberUtils.formatNumberString(collectTotal))
                 .build();
+    }
+
+    private static LocalDateTime parseUpdateTime(String updateTimeStr) {
+        if (StringUtils.isBlank(updateTimeStr)) {
+            return LocalDateTime.now();
+        }
+        try {
+            return LocalDateTime.parse(updateTimeStr, DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
+        } catch (Exception ignored) {
+        }
+        try {
+            return LocalDateTime.parse(updateTimeStr, DateTimeFormatter.ISO_DATE_TIME);
+        } catch (Exception ignored) {
+        }
+        try {
+            return LocalDateTime.parse(updateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (Exception ignored) {
+        }
+        return LocalDateTime.now();
     }
 
 }

@@ -15,6 +15,12 @@ else
     end
 end
 redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
-redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
-redis.call('EXPIRE', KEYS[3], tonumber(ARGV[3]))
+if ARGV[5] then
+    local fpTtl = tonumber(ARGV[5])
+    redis.call('EXPIRE', KEYS[2], fpTtl)
+    redis.call('EXPIRE', KEYS[3], fpTtl)
+else
+    redis.call('EXPIRE', KEYS[2], tonumber(ARGV[3]))
+    redis.call('EXPIRE', KEYS[3], tonumber(ARGV[3]))
+end
 return 0

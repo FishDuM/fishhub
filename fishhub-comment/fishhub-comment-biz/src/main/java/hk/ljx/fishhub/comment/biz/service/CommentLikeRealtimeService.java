@@ -217,7 +217,8 @@ public class CommentLikeRealtimeService {
                     String.valueOf(commentId),
                     String.valueOf(incr),
                     String.valueOf(CacheTtl.hours(1, 4)),
-                    String.valueOf(System.currentTimeMillis()));
+                    String.valueOf(System.currentTimeMillis()),
+                    String.valueOf(FOOTPRINT_TTL_SECONDS));
         } catch (Exception e) {
             // 实时层尽力而为：Redis 故障时回退到 MySQL 异步落盘，读侧在缓存 miss 时回源数据库
             log.warn("点赞实时更新失败（Redis 不可用？），将依赖 MySQL 落盘兜底, userId={}, commentId={}, incr={}",
