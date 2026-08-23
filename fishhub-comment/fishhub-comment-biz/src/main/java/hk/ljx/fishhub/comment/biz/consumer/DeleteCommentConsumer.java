@@ -20,10 +20,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -118,11 +120,19 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
                 .filter(comment -> comment.getReplyCommentId() != null)
                 .collect(Collectors.groupingBy(CommentDO::getReplyCommentId));
         Queue<Long> queue = new ArrayDeque<>();
+        Set<Long> visitedCommentIds = new HashSet<>();
+
         queue.add(root.getId());
+        visitedCommentIds.add(root.getId());
+
         while (!queue.isEmpty()) {
-            for (CommentDO child : repliesByTarget.getOrDefault(queue.remove(), List.of())) {
-                targets.add(child);
-                queue.add(child.getId());
+            Long currentId = queue.remove();
+            for (CommentDO child : repliesByTarget.getOrDefault(currentId, List.of())) {
+                if (child != null && child.getId() != null && !visitedCommentIds.contains(child.getId())) {
+                    visitedCommentIds.add(child.getId());
+                    targets.add(child);
+                    queue.add(child.getId());
+                }
             }
         }
         return targets;

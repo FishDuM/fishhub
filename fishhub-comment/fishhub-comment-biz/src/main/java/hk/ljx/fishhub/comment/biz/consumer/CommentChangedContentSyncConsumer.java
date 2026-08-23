@@ -72,7 +72,7 @@ public class CommentChangedContentSyncConsumer implements RocketMQListener<Strin
 
         List<Long> ids = syncItems.stream().map(CommentItemMqDTO::getId).distinct().toList();
         Map<Long, CommentDO> currentById = commentDOMapper.selectByCommentIds(ids).stream()
-                .collect(Collectors.toMap(CommentDO::getId, Function.identity()));
+                .collect(Collectors.toMap(CommentDO::getId, Function.identity(), (left, right) -> left));
 
         List<CommentBO> toSave = Lists.newArrayList();
         for (CommentItemMqDTO item : syncItems) {
@@ -101,8 +101,8 @@ public class CommentChangedContentSyncConsumer implements RocketMQListener<Strin
 
         // 删除可能发生在写前校验之后；若任务已过期，清理刚写入的旧正文。
         Map<Long, CommentDO> afterById = commentDOMapper.selectByCommentIds(
-                toSave.stream().map(CommentBO::getId).toList()).stream()
-                .collect(Collectors.toMap(CommentDO::getId, Function.identity()));
+                toSave.stream().map(CommentBO::getId).distinct().toList()).stream()
+                .collect(Collectors.toMap(CommentDO::getId, Function.identity(), (left, right) -> left));
         toSave.stream()
                 .filter(bo -> {
                     CommentDO after = afterById.get(bo.getId());

@@ -168,7 +168,7 @@ public class NoteServiceImpl implements NoteService {
                         .distinct()
                         .toList())
                 .stream()
-                .collect(Collectors.toMap(NoteDO::getId, Function.identity()));
+                .collect(Collectors.toMap(NoteDO::getId, Function.identity(), (left, right) -> left));
         List<NoteWriteAccessCheckReqDTO> writableRequests = normalizedRequests.stream()
                 .filter(request -> {
                     NoteDO note = notes.get(request.getNoteId());
@@ -1465,7 +1465,7 @@ public class NoteServiceImpl implements NoteService {
     private Map<Long, NoteAccessSnapshot> loadAccessSnapshotsFromMySql(List<Long> noteIds) {
         List<NoteDO> notes = noteDOMapper.selectAccessInfosByNoteIds(noteIds);
         Map<Long, NoteAccessSnapshot> databaseSnapshots = notes.stream()
-                .collect(Collectors.toMap(NoteDO::getId, this::toAccessSnapshot));
+                .collect(Collectors.toMap(NoteDO::getId, this::toAccessSnapshot, (left, right) -> left));
         Map<Long, NoteAccessSnapshot> snapshots = new HashMap<>(databaseSnapshots.size());
         for (Long noteId : noteIds) {
             String key = RedisKeyConstants.buildNoteAccessKey(noteId);

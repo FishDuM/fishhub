@@ -93,6 +93,7 @@ public class AuthServiceImpl implements AuthService {
                 break;
             case PASSWORD: // 密码登录
                 String password = userLoginReqVO.getPassword();
+                Preconditions.checkArgument(StringUtils.isNotBlank(password), "密码不能为空");
 
                 FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
 

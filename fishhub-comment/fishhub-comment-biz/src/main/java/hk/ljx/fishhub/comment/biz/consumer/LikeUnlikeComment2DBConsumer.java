@@ -130,7 +130,7 @@ public class LikeUnlikeComment2DBConsumer {
                                     .distinct()
                                     .toList())
                     .stream()
-                    .collect(Collectors.toMap(CommentDO::getId, Function.identity()));
+                    .collect(Collectors.toMap(CommentDO::getId, Function.identity(), (left, right) -> left));
             List<NoteWriteAccessCheckReqDTO> writeChecks = finalLikeUnlikeCommentMqDTOS.stream()
                     .filter(operation -> Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode()))
                     .map(operation -> {

@@ -232,20 +232,21 @@ public class CommentChangedLocalHandler {
 
         List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(missingCommentIds);
 
-        // 既有首回复的一级评论直接同步 Redis 标记
-        List<Long> alreadyHasReplyIds = commentDOS.stream()
-                .filter(commentDO -> commentDO.getFirstReplyCommentId() != 0)
-                .map(CommentDO::getId)
-                .toList();
+        List<Long> alreadyHasReplyIds = new ArrayList<>();
+        List<Long> needUpdateCommentIds = new ArrayList<>();
+        for (CommentDO commentDO : commentDOS) {
+            Long replyId = commentDO.getFirstReplyCommentId();
+            if (replyId != null && replyId > 0) {
+                alreadyHasReplyIds.add(commentDO.getId());
+            } else {
+                needUpdateCommentIds.add(commentDO.getId());
+            }
+        }
+
         if (CollUtil.isNotEmpty(alreadyHasReplyIds)) {
             sync2Redis(alreadyHasReplyIds);
         }
 
-        // 尚未回填的一级评论：一次批量查各自最早回复，再一次批量回填
-        List<Long> needUpdateCommentIds = commentDOS.stream()
-                .filter(commentDO -> commentDO.getFirstReplyCommentId() == 0)
-                .map(CommentDO::getId)
-                .toList();
         if (CollUtil.isEmpty(needUpdateCommentIds)) {
             return;
         }

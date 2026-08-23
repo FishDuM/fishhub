@@ -62,6 +62,11 @@ public class FileServiceImpl implements FileService {
         String fileName = request.getFileName();
         validateAndGetExtension(fileName);
 
+        String contentType = request.getContentType();
+        if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
+            throw new IllegalArgumentException("仅支持图片和常见视频格式");
+        }
+
         PresignedUrlRspVO rsp = fileStrategy.getPresignedUploadUrl(
                 fileName, request.getContentType(), BUCKET_NAME, requireCurrentUserId());
         return Response.success(rsp);

@@ -107,7 +107,7 @@ public class UserNoteListService {
             return;
         }
         Map<Long, FindNoteCountsByIdRspDTO> countByNoteId = counts.stream()
-                .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, count -> count));
+                .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, count -> count, (left, right) -> left));
         notes.forEach(note -> {
             FindNoteCountsByIdRspDTO count = countByNoteId.get(note.getNoteId());
             note.setLikeTotal(count != null && count.getLikeTotal() != null
