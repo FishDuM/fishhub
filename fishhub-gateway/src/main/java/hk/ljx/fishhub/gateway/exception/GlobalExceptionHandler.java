@@ -19,6 +19,8 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
+
 
 @Component
 @Slf4j
@@ -65,11 +67,10 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
         return response.writeWith(Mono.fromSupplier(() -> { // 使用 Mono.fromSupplier 创建响应体
             DataBufferFactory bufferFactory = response.bufferFactory();
             try {
-                // 使用 ObjectMapper 将 result 对象转换为 JSON 字节数组
                 return bufferFactory.wrap(objectMapper.writeValueAsBytes(result));
             } catch (Exception e) {
-                // 如果转换过程中出现异常，则返回空字节数组
-                return bufferFactory.wrap(new byte[0]);
+                log.error("网关异常响应 JSON 序列化失败: ", e);
+                return bufferFactory.wrap("{\"success\":false,\"errorCode\":\"500\",\"message\":\"系统异常\"}".getBytes(StandardCharsets.UTF_8));
             }
         }));
     }

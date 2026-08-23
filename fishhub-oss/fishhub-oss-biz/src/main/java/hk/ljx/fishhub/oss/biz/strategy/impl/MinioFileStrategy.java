@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
@@ -25,6 +27,8 @@ import java.util.regex.Pattern;
 
 @Slf4j
 @RequiredArgsConstructor
+@Service
+@ConditionalOnProperty(name = "storage.type", havingValue = "minio", matchIfMissing = true)
 public class MinioFileStrategy implements FileStrategy  {
 
     private static final Pattern OWNED_OBJECT_NAME = Pattern.compile("user/\\d+/[a-f0-9]{32}\\.[a-z0-9]+");

@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
@@ -147,7 +148,7 @@ class RelationListCacheServiceTest {
     @Test
     void shouldFindFollowedUserIdsFromZSetWhenKeyExists() {
         when(stringRedisTemplate.hasKey("following:1")).thenReturn(true);
-        when(stringRedisTemplate.executePipelined(any(org.springframework.data.redis.core.RedisCallback.class)))
+        when(stringRedisTemplate.executePipelined(any(SessionCallback.class)))
                 .thenReturn(Arrays.asList(100.0, 200.0, null));
 
         Set<Long> followed = cacheService.findFollowedUserIds(1L, Arrays.asList(2L, 9L, 7L));

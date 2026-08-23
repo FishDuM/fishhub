@@ -9,6 +9,10 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.multipart.MultipartFile;
+
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.function.Function;
@@ -83,13 +87,13 @@ public class ApiOperationLogAspect {
             if (arg == null) {
                 return "null";
             }
-            if (arg instanceof org.springframework.web.multipart.MultipartFile) {
+            if (arg instanceof MultipartFile) {
                 return "MultipartFile";
             }
-            if (arg instanceof jakarta.servlet.http.HttpServletRequest) {
+            if (arg instanceof HttpServletRequest) {
                 return "HttpServletRequest";
             }
-            if (arg instanceof jakarta.servlet.http.HttpServletResponse) {
+            if (arg instanceof HttpServletResponse) {
                 return "HttpServletResponse";
             }
             try {

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -71,7 +72,7 @@ public class ExtDictServiceImpl implements ExtDictService {
                     .headers(headers)
                     .lastModified(lastModifiedTime) // 请求头中设置 Last-Modified
                     .body(fileContent);
-        } catch (java.nio.file.NoSuchFileException e) {
+        } catch (NoSuchFileException e) {
             log.warn("==> 热更新词典不存在: {}", hotUpdateExtDict);
             return ResponseEntity.notFound().build();
         } catch (Exception e) {

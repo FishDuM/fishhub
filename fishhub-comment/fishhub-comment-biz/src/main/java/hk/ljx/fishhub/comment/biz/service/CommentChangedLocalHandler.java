@@ -21,6 +21,7 @@ import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -73,7 +74,7 @@ public class CommentChangedLocalHandler {
         }
 
         // 一级评论：维护笔记评论列表 ZSET + 一级评论计数版本
-        Map<Long, List<Long>> oneLevelByNote = new java.util.HashMap<>();
+        Map<Long, List<Long>> oneLevelByNote = new HashMap<>();
         for (CommentItemMqDTO item : event.getItems()) {
             if (Objects.equals(item.getLevel(), CommentLevelEnum.ONE.getCode())
                     && item.getNoteId() != null && item.getId() != null) {

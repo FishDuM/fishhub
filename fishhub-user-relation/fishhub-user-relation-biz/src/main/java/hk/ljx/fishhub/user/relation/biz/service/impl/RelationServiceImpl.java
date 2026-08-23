@@ -46,8 +46,6 @@ import java.util.stream.Collectors;
 public class RelationServiceImpl implements RelationService {
 
     private static final DefaultRedisScript<Long> FOLLOW_CHECK_AND_ADD_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_check_and_add.lua");
-    private static final DefaultRedisScript<Long> FOLLOW_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_add_and_expire.lua");
-    private static final DefaultRedisScript<Long> FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/follow_batch_add_and_expire.lua");
     private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/unfollow_check_and_delete.lua");
 
     private final StringRedisTemplate stringRedisTemplate;
@@ -89,22 +87,10 @@ public class RelationServiceImpl implements RelationService {
         checkLuaScriptResult(result);
 
         if (Objects.equals(result, LuaResultEnum.ZSET_NOT_EXIST.getCode())) {
-            List<FollowingDO> followingDOS = followingDOMapper.selectByUserId(userId);
-
-            if (CollUtil.isEmpty(followingDOS)) {
-                stringRedisTemplate.execute(FOLLOW_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey),
-                        String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
-            } else {
-                List<FollowingDO> capped = followingDOS.size() > RelationListCacheService.FOLLOWING_LIST_MAX
-                        ? followingDOS.subList(0, RelationListCacheService.FOLLOWING_LIST_MAX) : followingDOS;
-                String[] luaArgs = buildLuaArgs(capped, expireSeconds);
-
-                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), (Object[]) luaArgs);
-
-                result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey),
-                        String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
-                checkLuaScriptResult(result);
-            }
+            relationListCacheService.ensureFollowingCache(userId);
+            result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey),
+                    String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
+            checkLuaScriptResult(result);
         }
 
         FollowUserMqDTO followUserMqDTO = FollowUserMqDTO.builder()
@@ -149,22 +135,11 @@ public class RelationServiceImpl implements RelationService {
         }
 
         if (Objects.equals(result, LuaResultEnum.ZSET_NOT_EXIST.getCode())) {
-            List<FollowingDO> followingDOS = followingDOMapper.selectByUserId(userId);
-
-            if (CollUtil.isEmpty(followingDOS)) {
+            relationListCacheService.ensureFollowingCache(userId);
+            result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
+                    String.valueOf(unfollowUserId), String.valueOf(expireSeconds));
+            if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
                 throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
-            } else {
-                List<FollowingDO> capped = followingDOS.size() > RelationListCacheService.FOLLOWING_LIST_MAX
-                        ? followingDOS.subList(0, RelationListCacheService.FOLLOWING_LIST_MAX) : followingDOS;
-                String[] luaArgs = buildLuaArgs(capped, expireSeconds);
-
-                stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), (Object[]) luaArgs);
-
-                result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
-                        String.valueOf(unfollowUserId), String.valueOf(expireSeconds));
-                if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
-                    throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
-                }
             }
         }
 
@@ -316,16 +291,7 @@ public class RelationServiceImpl implements RelationService {
         }
     }
 
-    /**
-     * 构建 Lua 脚本参数
-     *
-     * @param followingDOS
-     * @param expireSeconds
-     * @return
-     */
-    private static String[] buildLuaArgs(List<FollowingDO> followingDOS, long expireSeconds) {
-        return RelationListCacheService.buildMemberArgs(followingDOS, FollowingDO::getFollowingUserId, expireSeconds);
-    }
+
 
     @Override
     public Response<Boolean> isFollowing(CheckFollowingReqVO checkFollowingReqVO) {

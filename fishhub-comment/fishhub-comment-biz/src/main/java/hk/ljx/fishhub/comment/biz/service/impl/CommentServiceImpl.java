@@ -291,44 +291,43 @@ public class CommentServiceImpl implements CommentService {
                         .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, rank, pageSize);
 
                 if (CollUtil.isNotEmpty(childCommentIds)) {
-                List<String> childCommentIdList = Lists.newArrayList(childCommentIds);
+                    List<String> childCommentIdList = Lists.newArrayList(childCommentIds);
 
-                List<String> commentIdKeys = childCommentIds.stream()
-                        .map(RedisKeyConstants::buildCommentDetailKey)
-                        .toList();
+                    List<String> commentIdKeys = childCommentIds.stream()
+                            .map(RedisKeyConstants::buildCommentDetailKey)
+                            .toList();
 
-                List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
+                    List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
 
-                List<Long> expiredChildCommentIds = Lists.newArrayList();
+                    List<Long> expiredChildCommentIds = Lists.newArrayList();
 
-                for (int i = 0; i < commentsJsonList.size(); i++) {
-                    String commentJson = commentsJsonList.get(i);
-                    Long commentId = Long.valueOf(childCommentIdList.get(i));
-                    if (Objects.nonNull(commentJson)) {
-                        FindChildCommentItemRspVO childCommentRspVO = JsonUtils.parseObject(commentJson, FindChildCommentItemRspVO.class);
-                        childCommentRspVOS.add(childCommentRspVO);
-                    } else {
-                        expiredChildCommentIds.add(commentId);
+                    for (int i = 0; i < commentsJsonList.size(); i++) {
+                        String commentJson = commentsJsonList.get(i);
+                        Long commentId = Long.valueOf(childCommentIdList.get(i));
+                        if (Objects.nonNull(commentJson)) {
+                            FindChildCommentItemRspVO childCommentRspVO = JsonUtils.parseObject(commentJson, FindChildCommentItemRspVO.class);
+                            childCommentRspVOS.add(childCommentRspVO);
+                        } else {
+                            expiredChildCommentIds.add(commentId);
+                        }
                     }
+
+                    if (CollUtil.isNotEmpty(childCommentRspVOS)) {
+                        setChildCommentCountData(childCommentRspVOS, expiredChildCommentIds);
+                    }
+
+                    if (CollUtil.isNotEmpty(expiredChildCommentIds)) {
+                        List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredChildCommentIds);
+                        getChildCommentDataAndSync2Redis(commentDOS, childCommentRspVOS);
+                    }
+
+                    childCommentRspVOS = childCommentRspVOS.stream()
+                            .sorted(Comparator.comparing(FindChildCommentItemRspVO::getCommentId))
+                            .collect(Collectors.toList());
+
+                    return PageResponse.success(childCommentRspVOS, pageNo, count, pageSize);
                 }
-
-                if (CollUtil.isNotEmpty(childCommentRspVOS)) {
-                    setChildCommentCountData(childCommentRspVOS, expiredChildCommentIds);
-                }
-
-                if (CollUtil.isNotEmpty(expiredChildCommentIds)) {
-                    List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredChildCommentIds);
-                    getChildCommentDataAndSync2Redis(commentDOS, childCommentRspVOS);
-                }
-
-                childCommentRspVOS = childCommentRspVOS.stream()
-                        .sorted(Comparator.comparing(FindChildCommentItemRspVO::getCommentId))
-                        .collect(Collectors.toList());
-
-                return PageResponse.success(childCommentRspVOS, pageNo, count, pageSize);
             }
-            }
-
         }
 
         List<CommentDO> childCommentDOS = commentDOMapper.selectChildPageList(parentCommentId, offset, pageSize);

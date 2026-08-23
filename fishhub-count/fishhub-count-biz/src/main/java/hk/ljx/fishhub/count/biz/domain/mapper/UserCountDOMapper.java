@@ -3,6 +3,8 @@ package hk.ljx.fishhub.count.biz.domain.mapper;
 import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
+
 public interface UserCountDOMapper {
     int deleteByPrimaryKey(Long id);
 
@@ -63,7 +65,7 @@ public interface UserCountDOMapper {
      * @param userIds
      * @return
      */
-    java.util.List<UserCountDO> selectByUserIds(@Param("userIds") java.util.List<Long> userIds);
+    List<UserCountDO> selectByUserIds(@Param("userIds") List<Long> userIds);
 
     int updateByPrimaryKeySelective(UserCountDO record);
 

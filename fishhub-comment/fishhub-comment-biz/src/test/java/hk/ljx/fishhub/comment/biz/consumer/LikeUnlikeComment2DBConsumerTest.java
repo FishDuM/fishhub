@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.messaging.Message;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -99,7 +100,7 @@ class LikeUnlikeComment2DBConsumerTest {
         // 回滚不触发
         verify(commentLikeRealtimeService, never()).markUnliked(any(), any());
         // comment 已不存在，热度更新不向已删评论发送
-        verify(rocketMQTemplate, never()).asyncSend(anyString(), any(org.springframework.messaging.Message.class), any());
+        verify(rocketMQTemplate, never()).asyncSend(anyString(), any(Message.class), any());
     }
 
     @Test

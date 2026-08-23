@@ -3,10 +3,10 @@ package hk.ljx.fishhub.distributed.id.generator.biz.controller;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Result;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Status;
 import hk.ljx.fishhub.distributed.id.generator.biz.exception.LeafServerException;
-import hk.ljx.fishhub.distributed.id.generator.biz.exception.NoKeyException;
 import hk.ljx.fishhub.distributed.id.generator.biz.service.SnowflakeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,17 +19,9 @@ public class LeafController {
 
     private final SnowflakeService snowflakeService;
 
-    @RequestMapping(value = "/snowflake/get/{key}")
+    @GetMapping(value = "/snowflake/get/{key}")
     public String getSnowflakeId(@PathVariable("key") String key) {
-        return get(key, snowflakeService.getId(key));
-    }
-
-    private String get(@PathVariable("key") String key, Result id) {
-        Result result;
-        if (key == null || key.isEmpty()) {
-            throw new NoKeyException();
-        }
-        result = id;
+        Result result = snowflakeService.getId(key);
         if (result.getStatus().equals(Status.EXCEPTION)) {
             throw new LeafServerException(result.toString());
         }

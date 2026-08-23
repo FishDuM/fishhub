@@ -20,6 +20,7 @@ import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
@@ -45,7 +46,7 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     @Override
     public void onMessage(Message message) {
         // 消息体
-        String bodyJsonStr = new String(message.getBody(), java.nio.charset.StandardCharsets.UTF_8);
+        String bodyJsonStr = new String(message.getBody(), StandardCharsets.UTF_8);
         // 标签
         String tags = message.getTags();
 

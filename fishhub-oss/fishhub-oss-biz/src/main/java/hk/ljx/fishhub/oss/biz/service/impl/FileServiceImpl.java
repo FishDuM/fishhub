@@ -40,7 +40,7 @@ public class FileServiceImpl implements FileService {
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new IllegalArgumentException("上传文件不能超过 100MB");
         }
-        String extension = validateAndGetExtension(file.getOriginalFilename());
+        validateAndGetExtension(file.getOriginalFilename());
         String contentType = file.getContentType();
         if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
             throw new IllegalArgumentException("仅支持图片和常见视频格式");

@@ -3,8 +3,10 @@ package hk.ljx.framework.web.exception;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -42,18 +44,18 @@ public abstract class AbstractGlobalExceptionHandler {
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             BindException.class,
-            jakarta.validation.ConstraintViolationException.class,
-            org.springframework.http.converter.HttpMessageNotReadableException.class
+            ConstraintViolationException.class,
+            HttpMessageNotReadableException.class
     })
     @ResponseBody
     public Response<Object> handleControllerException(HttpServletRequest request, Throwable e) {
         String errorCode = paramNotValidCode();
-        if (e instanceof jakarta.validation.ConstraintViolationException cve) {
+        if (e instanceof ConstraintViolationException cve) {
             String errorMessage = cve.getMessage();
             log.warn("{} request error, errorCode: {}, errorMessage: {}", request.getRequestURI(), errorCode, errorMessage);
             return Response.fail(errorCode, errorMessage);
         }
-        if (e instanceof org.springframework.http.converter.HttpMessageNotReadableException) {
+        if (e instanceof HttpMessageNotReadableException) {
             String errorMessage = "请求体 JSON 格式非法或不可解析";
             log.warn("{} request error, errorCode: {}, errorMessage: {}", request.getRequestURI(), errorCode, errorMessage);
             return Response.fail(errorCode, errorMessage);

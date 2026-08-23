@@ -33,6 +33,9 @@ import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.List;
 
 
@@ -113,13 +116,13 @@ public class SentinelGatewayConfig {
      * 2. auth 路由整体保护，QPS 500
      */
     private void loadGatewayRules() {
-        java.util.Set<GatewayFlowRule> rules = buildDefaultRules();
+        Set<GatewayFlowRule> rules = buildDefaultRules();
         GatewayRuleManager.loadRules(rules);
         log.info("Sentinel 网关默认限流规则已加载: {}", rules);
     }
 
-    private java.util.Set<GatewayFlowRule> buildDefaultRules() {
-        java.util.Set<GatewayFlowRule> rules = new java.util.HashSet<>();
+    private Set<GatewayFlowRule> buildDefaultRules() {
+        Set<GatewayFlowRule> rules = new HashSet<>();
         rules.add(new GatewayFlowRule("loginApi").setCount(10).setIntervalSec(1));
         rules.add(new GatewayFlowRule("auth").setCount(500).setIntervalSec(1));
         return rules;
@@ -134,13 +137,13 @@ public class SentinelGatewayConfig {
 
     private void initNacosDataSource() {
         try {
-            ReadableDataSource<String, java.util.Set<GatewayFlowRule>> dataSource = new NacosDataSource<>(
+            ReadableDataSource<String, Set<GatewayFlowRule>> dataSource = new NacosDataSource<>(
                     nacosServerAddr, nacosGroupId, nacosRuleDataId, source -> {
                         if (StringUtils.isBlank(source)) {
                             return buildDefaultRules();
                         }
                         try {
-                            return new java.util.HashSet<>(
+                            return new HashSet<>(
                                     objectMapper.readValue(source, new TypeReference<List<GatewayFlowRule>>() {}));
                         } catch (Exception e) {
                             log.error("Sentinel 网关限流规则 JSON 解析失败", e);

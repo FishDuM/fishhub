@@ -27,6 +27,7 @@ import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -134,7 +135,7 @@ public class UserCountServiceImpl implements UserCountService {
 
         // 1. 查询 Redis
         List<Long> cacheVersions = userCountCacheVersionService.currentVersions(userIds);
-        List<String> hashKeys = new java.util.ArrayList<>(userIds.size());
+        List<String> hashKeys = new ArrayList<>(userIds.size());
         for (int i = 0; i < userIds.size(); i++) {
             hashKeys.add(CountKeyConstants.buildCountUserSnapshotKey(userIds.get(i), cacheVersions.get(i)));
         }
@@ -155,8 +156,8 @@ public class UserCountServiceImpl implements UserCountService {
             }
         });
 
-        List<FindUserCountsByIdRspDTO> resultList = new java.util.ArrayList<>();
-        List<Long> userIdsNeedQuery = new java.util.ArrayList<>();
+        List<FindUserCountsByIdRspDTO> resultList = new ArrayList<>();
+        List<Long> userIdsNeedQuery = new ArrayList<>();
 
         for (int i = 0; i < userIds.size(); i++) {
             Long userId = userIds.get(i);

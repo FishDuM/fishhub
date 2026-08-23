@@ -19,6 +19,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
@@ -65,7 +66,7 @@ public class TxMqAutoConfiguration {
     @ConditionalOnMissingBean
     public MqIdempotentExecutor mqIdempotentExecutor(MqConsumeRecordStore mqConsumeRecordStore, DataSource dataSource) {
         return new MqIdempotentExecutor(mqConsumeRecordStore,
-                new TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(dataSource)));
+                new TransactionTemplate(new DataSourceTransactionManager(dataSource)));
     }
 
     @Bean

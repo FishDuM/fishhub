@@ -15,9 +15,11 @@ import org.springframework.data.redis.core.ZSetOperations;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -68,8 +70,7 @@ class CommentLikeRealtimeServiceTest {
         String setKey = RedisKeyConstants.buildUserCommentLikeSetKey(2L);
         when(stringRedisTemplate.opsForSet()).thenReturn(setOps);
         lenient().when(stringRedisTemplate.opsForZSet()).thenReturn(zsetOps);
-        lenient().when(stringRedisTemplate.expire(anyString(), anyLong(), org.mockito.ArgumentMatchers.any(
-                java.util.concurrent.TimeUnit.class))).thenReturn(true);
+        lenient().when(stringRedisTemplate.expire(anyString(), anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(setOps.isMember(setKey, RedisKeyConstants.COMMENT_LIKE_SET_INITIALIZED)).thenReturn(false);
         when(commentLikeDOMapper.selectLikedCommentsByUserId(2L))
                 .thenReturn(List.of(CommentLikeDO.builder()

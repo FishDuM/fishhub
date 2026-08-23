@@ -13,10 +13,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -118,13 +118,14 @@ public class RelationListCacheService {
                 if (candidateList.isEmpty()) {
                     return Collections.emptySet();
                 }
-                List<Object> scores = stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                    byte[] rawKey = stringRedisTemplate.getStringSerializer().serialize(key);
-                    for (Long candidateId : candidateList) {
-                        connection.zSetCommands().zScore(rawKey,
-                                stringRedisTemplate.getStringSerializer().serialize(String.valueOf(candidateId)));
+                List<Object> scores = stringRedisTemplate.executePipelined(new SessionCallback<>() {
+                    @Override
+                    public Object execute(RedisOperations operations) {
+                        for (Long candidateId : candidateList) {
+                            operations.opsForZSet().score(key, String.valueOf(candidateId));
+                        }
+                        return null;
                     }
-                    return null;
                 });
                 Set<Long> followed = new HashSet<>();
                 for (int i = 0; i < candidateList.size(); i++) {
@@ -157,7 +158,7 @@ public class RelationListCacheService {
         return CacheTtl.days(7, 1);
     }
 
-    private void ensureFollowingCache(Long userId) {
+    public void ensureFollowingCache(Long userId) {
         String key = RedisKeyConstants.buildUserFollowingKey(userId);
         String lockKey = RedisKeyConstants.buildFollowingRebuildLockKey(userId);
         CacheRebuildSupport.rebuildIfMissing(redissonRebuildLock(lockKey),
@@ -177,7 +178,7 @@ public class RelationListCacheService {
                 (Object[]) buildMemberArgs(capped, FollowingDO::getFollowingUserId, ttlSeconds()));
     }
 
-    private void ensureFansCache(Long userId) {
+    public void ensureFansCache(Long userId) {
         String key = RedisKeyConstants.buildUserFansKey(userId);
         String lockKey = RedisKeyConstants.buildFansRebuildLockKey(userId);
         CacheRebuildSupport.rebuildIfMissing(redissonRebuildLock(lockKey),

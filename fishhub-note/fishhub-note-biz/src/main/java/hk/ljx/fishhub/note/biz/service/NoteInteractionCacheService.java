@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * 用户笔记互动状态缓存
@@ -135,7 +136,7 @@ public class NoteInteractionCacheService {
         });
     }
 
-    private String ensureInteractionCache(Long userId, String key, java.util.function.Supplier<List<Long>> dbLoader) {
+    private String ensureInteractionCache(Long userId, String key, Supplier<List<Long>> dbLoader) {
         if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             return key;
         }

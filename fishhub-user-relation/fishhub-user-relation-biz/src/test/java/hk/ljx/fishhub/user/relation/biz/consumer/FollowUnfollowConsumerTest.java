@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.framework.mq.tx.TxLocalTransaction;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -25,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -49,7 +51,7 @@ class FollowUnfollowConsumerTest {
     void shouldMaintainFansAndSendCountEventWhenFollowCreatesRelation() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
-            return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
+            return callback.doInTransaction(mock(TransactionStatus.class));
         });
         when(followingDOMapper.insertIgnore(any())).thenReturn(1);
         doAnswer(invocation -> {
@@ -75,7 +77,7 @@ class FollowUnfollowConsumerTest {
     void shouldNotMaintainFansWhenFollowAlreadyExists() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
-            return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
+            return callback.doInTransaction(mock(TransactionStatus.class));
         });
         // 重复投递 / 已关注：insertIgnore 返回 0
         when(followingDOMapper.insertIgnore(any())).thenReturn(0);
@@ -101,7 +103,7 @@ class FollowUnfollowConsumerTest {
     void shouldMaintainFansAndSendCountEventWhenUnfollowRemovesRelation() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
-            return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
+            return callback.doInTransaction(mock(TransactionStatus.class));
         });
         when(followingDOMapper.deleteByUserIdAndFollowingUserId(1L, 2L)).thenReturn(1);
         doAnswer(invocation -> {
@@ -126,7 +128,7 @@ class FollowUnfollowConsumerTest {
     void shouldNotMaintainFansWhenUnfollowDidNotRemoveRelation() {
         when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
             TransactionCallback<Boolean> callback = invocation.getArgument(0);
-            return callback.doInTransaction(org.mockito.Mockito.mock(org.springframework.transaction.TransactionStatus.class));
+            return callback.doInTransaction(mock(TransactionStatus.class));
         });
         when(followingDOMapper.deleteByUserIdAndFollowingUserId(1L, 2L)).thenReturn(0);
         doAnswer(invocation -> {

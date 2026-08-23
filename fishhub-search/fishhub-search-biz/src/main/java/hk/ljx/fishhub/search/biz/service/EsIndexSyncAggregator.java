@@ -21,6 +21,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -94,7 +95,7 @@ public class EsIndexSyncAggregator {
     /**
      * 批量提交笔记同步（用户资料变更导致该用户全部笔记文档需要重建）。
      */
-    public void submitNoteIds(java.util.Collection<Long> noteIds) {
+    public void submitNoteIds(Collection<Long> noteIds) {
         if (noteIds == null || noteIds.isEmpty()) {
             return;
         }
