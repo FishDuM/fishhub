@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.user.biz.service.impl;
 
+import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.framework.common.enums.DeletedEnum;
@@ -7,6 +8,8 @@ import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
+import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
@@ -35,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -218,5 +222,16 @@ class UserServiceImplTest {
 
         assertTrue(response.getData().isLoginable());
         verify(userRoleDOMapper).insert(any());
+    }
+
+    @Test
+    void findUserProfileShouldThrowWhenUserIdIsNull() {
+        FindUserProfileReqVO request = new FindUserProfileReqVO();
+        request.setUserId(null);
+
+        BizException exception = assertThrows(BizException.class, () -> userService.findUserProfile(request));
+        assertEquals(ResponseCodeEnum.USER_NOT_FOUND.getErrorCode(), exception.getErrorCode());
+        verify(stringRedisTemplate, never()).opsForValue();
+        verify(userDOMapper, never()).selectByPrimaryKey(any());
     }
 }

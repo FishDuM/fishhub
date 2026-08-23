@@ -607,6 +607,10 @@ public class UserServiceImpl implements UserService {
             userId = LoginUserContextHolder.getUserId();
         }
 
+        if (Objects.isNull(userId)) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+        }
+
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
         String userProfileJson = stringRedisTemplate.opsForValue().get(userProfileRedisKey);
