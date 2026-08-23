@@ -23,6 +23,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +41,26 @@ public class NoteCountServiceImpl implements NoteCountService {
     private final StringRedisTemplate stringRedisTemplate;
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor fishhubTaskExecutor;
+
+    private static final List<String> NOTE_COUNT_FIELDS = List.of(
+            CountKeyConstants.FIELD_LIKE_TOTAL,
+            CountKeyConstants.FIELD_COLLECT_TOTAL,
+            CountKeyConstants.FIELD_COMMENT_TOTAL
+    );
+
+    private static Map<String, String> toNoteCountMap(List<?> rawList) {
+        if (rawList == null || rawList.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new HashMap<>(NOTE_COUNT_FIELDS.size());
+        for (int i = 0; i < NOTE_COUNT_FIELDS.size() && i < rawList.size(); i++) {
+            Object val = rawList.get(i);
+            if (val != null) {
+                map.put(NOTE_COUNT_FIELDS.get(i), String.valueOf(val));
+            }
+        }
+        return map;
+    }
 
     /**
      * 批量查询笔记计数
@@ -70,12 +91,13 @@ public class NoteCountServiceImpl implements NoteCountService {
         // 循环入参中需要查询的笔记 ID 集合，构建对应 DTO, 并设置缓存中存在的计数，以及过滤出需要查数据库的笔记 ID
         for (int i = 0; i < noteIds.size(); i++) {
             Long currNoteId = noteIds.get(i);
-            List<String> currCountHash = (List<String>) countHashes.get(i);
+            List<?> currCountHash = (countHashes.get(i) instanceof List<?> list) ? list : Collections.emptyList();
+            Map<String, String> countMap = toNoteCountMap(currCountHash);
 
             // 点赞数、收藏数、评论数
-            Long likeTotal = toLong(currCountHash.get(0));
-            Long collectTotal = toLong(currCountHash.get(1));
-            Long commentTotal = toLong(currCountHash.get(2));
+            Long likeTotal = toLong(countMap.get(CountKeyConstants.FIELD_LIKE_TOTAL));
+            Long collectTotal = toLong(countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL));
+            Long commentTotal = toLong(countMap.get(CountKeyConstants.FIELD_COMMENT_TOTAL));
 
             // Hash 中存在任意一个 Field 为 null, 都需要查询数据库
             if (Objects.isNull(likeTotal) || Objects.isNull(collectTotal) || Objects.isNull(commentTotal)) {

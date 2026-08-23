@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,6 +48,28 @@ public class UserCountServiceImpl implements UserCountService {
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
     private final UserCountCacheVersionService userCountCacheVersionService;
+
+    private static final List<String> USER_COUNT_FIELDS = List.of(
+            CountKeyConstants.FIELD_COLLECT_TOTAL,
+            CountKeyConstants.FIELD_FANS_TOTAL,
+            CountKeyConstants.FIELD_NOTE_TOTAL,
+            CountKeyConstants.FIELD_FOLLOWING_TOTAL,
+            CountKeyConstants.FIELD_LIKE_TOTAL
+    );
+
+    private static Map<String, String> toCountMap(List<?> rawList) {
+        if (rawList == null || rawList.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> map = new HashMap<>(USER_COUNT_FIELDS.size());
+        for (int i = 0; i < USER_COUNT_FIELDS.size() && i < rawList.size(); i++) {
+            Object val = rawList.get(i);
+            if (val != null) {
+                map.put(USER_COUNT_FIELDS.get(i), String.valueOf(val));
+            }
+        }
+        return map;
+    }
 
     /**
      * 查询用户相关计数
@@ -69,20 +92,16 @@ public class UserCountServiceImpl implements UserCountService {
         String userCountHashKey = CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
 
         List<String> counts = stringRedisTemplate.<String, String>opsForHash()
-                .multiGet(userCountHashKey, List.of(
-                        CountKeyConstants.FIELD_COLLECT_TOTAL,
-                        CountKeyConstants.FIELD_FANS_TOTAL,
-                        CountKeyConstants.FIELD_NOTE_TOTAL,
-                        CountKeyConstants.FIELD_FOLLOWING_TOTAL,
-                        CountKeyConstants.FIELD_LIKE_TOTAL
-                ));
+                .multiGet(userCountHashKey, USER_COUNT_FIELDS);
+
+        Map<String, String> countMap = toCountMap(counts);
 
         // 若 Hash 中计数不为空，优先以其为主（实时性更高）
-        String collectTotal = counts.get(0);
-        String fansTotal = counts.get(1);
-        String noteTotal = counts.get(2);
-        String followingTotal = counts.get(3);
-        String likeTotal = counts.get(4);
+        String collectTotal = countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL);
+        String fansTotal = countMap.get(CountKeyConstants.FIELD_FANS_TOTAL);
+        String noteTotal = countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL);
+        String followingTotal = countMap.get(CountKeyConstants.FIELD_FOLLOWING_TOTAL);
+        String likeTotal = countMap.get(CountKeyConstants.FIELD_LIKE_TOTAL);
 
         findUserCountByIdRspDTO.setCollectTotal(NumberUtil.parseLong(collectTotal, 0L));
         findUserCountByIdRspDTO.setFansTotal(NumberUtil.parseLong(fansTotal, 0L));
@@ -91,7 +110,7 @@ public class UserCountServiceImpl implements UserCountService {
         findUserCountByIdRspDTO.setLikeTotal(NumberUtil.parseLong(likeTotal, 0L));
 
         // 若 Hash 中有任何一个计数为空
-        boolean isAnyNull = counts.stream().anyMatch(Objects::isNull);
+        boolean isAnyNull = counts == null || counts.stream().anyMatch(Objects::isNull);
 
         if (isAnyNull) {
             // 从数据库查询该用户的计数
@@ -144,13 +163,7 @@ public class UserCountServiceImpl implements UserCountService {
             @Override
             public Object execute(RedisOperations operations) {
                 for (String hashKey : hashKeys) {
-                    operations.opsForHash().multiGet(hashKey, List.of(
-                            CountKeyConstants.FIELD_COLLECT_TOTAL,
-                            CountKeyConstants.FIELD_FANS_TOTAL,
-                            CountKeyConstants.FIELD_NOTE_TOTAL,
-                            CountKeyConstants.FIELD_FOLLOWING_TOTAL,
-                            CountKeyConstants.FIELD_LIKE_TOTAL
-                    ));
+                    operations.opsForHash().multiGet(hashKey, USER_COUNT_FIELDS);
                 }
                 return null;
             }
@@ -161,13 +174,14 @@ public class UserCountServiceImpl implements UserCountService {
 
         for (int i = 0; i < userIds.size(); i++) {
             Long userId = userIds.get(i);
-            List<String> counts = (List<String>) countHashes.get(i);
+            List<?> rawCounts = (countHashes.get(i) instanceof List<?> list) ? list : Collections.emptyList();
+            Map<String, String> countMap = toCountMap(rawCounts);
 
-            String collectTotal = counts.get(0);
-            String fansTotal = counts.get(1);
-            String noteTotal = counts.get(2);
-            String followingTotal = counts.get(3);
-            String likeTotal = counts.get(4);
+            String collectTotal = countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL);
+            String fansTotal = countMap.get(CountKeyConstants.FIELD_FANS_TOTAL);
+            String noteTotal = countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL);
+            String followingTotal = countMap.get(CountKeyConstants.FIELD_FOLLOWING_TOTAL);
+            String likeTotal = countMap.get(CountKeyConstants.FIELD_LIKE_TOTAL);
 
             if (collectTotal == null || fansTotal == null || noteTotal == null || followingTotal == null || likeTotal == null) {
                 userIdsNeedQuery.add(userId);
@@ -201,11 +215,12 @@ public class UserCountServiceImpl implements UserCountService {
             UserCountDO userCountDO = countDOMap.get(userId);
 
             List<?> rawCounts = (countHashes.get(i) instanceof List<?> list) ? list : Collections.emptyList();
-            String rawCollect = rawCounts.size() > 0 && rawCounts.get(0) != null ? String.valueOf(rawCounts.get(0)) : null;
-            String rawFans = rawCounts.size() > 1 && rawCounts.get(1) != null ? String.valueOf(rawCounts.get(1)) : null;
-            String rawNote = rawCounts.size() > 2 && rawCounts.get(2) != null ? String.valueOf(rawCounts.get(2)) : null;
-            String rawFollowing = rawCounts.size() > 3 && rawCounts.get(3) != null ? String.valueOf(rawCounts.get(3)) : null;
-            String rawLike = rawCounts.size() > 4 && rawCounts.get(4) != null ? String.valueOf(rawCounts.get(4)) : null;
+            Map<String, String> countMap = toCountMap(rawCounts);
+            String rawCollect = countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL);
+            String rawFans = countMap.get(CountKeyConstants.FIELD_FANS_TOTAL);
+            String rawNote = countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL);
+            String rawFollowing = countMap.get(CountKeyConstants.FIELD_FOLLOWING_TOTAL);
+            String rawLike = countMap.get(CountKeyConstants.FIELD_LIKE_TOTAL);
 
             if (dto.getCollectTotal() == null) {
                 dto.setCollectTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getCollectTotal()));

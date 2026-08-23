@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.note.biz.service.impl;
 
+import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
 
 import cn.hutool.core.collection.CollUtil;
@@ -125,33 +126,25 @@ public class FeedServiceImpl implements FeedService {
         String cacheKey = RedisKeyConstants.buildDiscoverFeedCursorKey(version, channelId, cursor);
         String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(version, channelId, cursor);
 
-        try {
-            DiscoverPageSnapshot snapshot = readDiscoverPageSnapshot(cacheKey);
-            if (isValidDiscoverPageSnapshot(snapshot)) {
-                return snapshot;
-            }
-
-            RLock lock = tryAcquireRebuildLock(lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS);
-            if (lock == null) {
-                DiscoverPageSnapshot waited = waitForDiscoverPageSnapshot(cacheKey);
-                return isValidDiscoverPageSnapshot(waited) ? waited : loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-            }
-
-            try {
-                DiscoverPageSnapshot recheck = readDiscoverPageSnapshot(cacheKey);
-                if (isValidDiscoverPageSnapshot(recheck)) {
-                    return recheck;
-                }
-                DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-                cacheDiscoverPageSnapshot(cacheKey, fresh);
-                return fresh;
-            } finally {
-                releaseRebuildLock(lock, lockKey);
-            }
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页缓存流程异常，直接回源 MySQL，key={}", cacheKey, e);
-            return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+        DiscoverPageSnapshot snapshot = readDiscoverPageSnapshot(cacheKey);
+        if (isValidDiscoverPageSnapshot(snapshot)) {
+            return snapshot;
         }
+
+        return CacheRebuildSupport.getOrRebuild(
+                new hk.ljx.framework.redisson.lock.RedissonRebuildLock(redissonClient, lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS),
+                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
+                () -> {
+                    DiscoverPageSnapshot s = readDiscoverPageSnapshot(cacheKey);
+                    return isValidDiscoverPageSnapshot(s) ? s : null;
+                },
+                () -> {
+                    DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+                    cacheDiscoverPageSnapshot(cacheKey, fresh);
+                    return fresh;
+                },
+                () -> loadDiscoverPageSnapshotFromMySql(channelId, cursor)
+        );
     }
 
     private DiscoverPageSnapshot loadDiscoverPageSnapshotFromMySql(Long channelId, Long cursor) {
@@ -312,49 +305,8 @@ public class FeedServiceImpl implements FeedService {
         }
     }
 
-    private DiscoverPageSnapshot waitForDiscoverPageSnapshot(String cacheKey) {
-        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
-            sleepBeforeCacheRetry();
-            DiscoverPageSnapshot snapshot = readDiscoverPageSnapshot(cacheKey);
-            if (isValidDiscoverPageSnapshot(snapshot)) {
-                return snapshot;
-            }
-        }
-        return null;
-    }
-
     private boolean isValidDiscoverPageSnapshot(DiscoverPageSnapshot snapshot) {
         return snapshot != null && snapshot.getNotes() != null;
-    }
-
-    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
-        RLock lock = redissonClient.getLock(lockKey);
-        if (lock == null) {
-            return null;
-        }
-        try {
-            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
-        } catch (Exception e) {
-            throw new IllegalStateException("Redis 不可用，发现页重建锁获取失败, lockKey=" + lockKey, e);
-        }
-    }
-
-    private void releaseRebuildLock(RLock lock, String lockKey) {
-        try {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页重建锁释放失败，key={}", lockKey, e);
-        }
-    }
-
-    private void sleepBeforeCacheRetry() {
-        try {
-            Thread.sleep(CACHE_REBUILD_RETRY_INTERVAL_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     private List<FindTopicRspVO> activeTopics() {
