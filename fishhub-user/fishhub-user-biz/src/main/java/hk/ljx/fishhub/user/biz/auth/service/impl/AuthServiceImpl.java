@@ -161,8 +161,6 @@ public class AuthServiceImpl implements AuthService {
         String phone = updatePasswordReqVO.getPhone();
         String verificationCode = updatePasswordReqVO.getCode();
 
-        Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
-
         FindUserByPhoneRspDTO user = userRpcService.findUserByPhone(phone);
         if (user == null || !Objects.equals(user.getId(), LoginUserContextHolder.getUserId())) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);

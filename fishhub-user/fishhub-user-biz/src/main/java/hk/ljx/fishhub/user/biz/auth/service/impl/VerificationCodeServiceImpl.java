@@ -2,13 +2,16 @@ package hk.ljx.fishhub.user.biz.auth.service.impl;
 
 import cn.hutool.core.util.DesensitizedUtil;
 import cn.hutool.core.util.RandomUtil;
+import com.aliyun.dysmsapi20170525.Client;
+import com.aliyun.dysmsapi20170525.models.SendSmsRequest;
+import com.aliyun.dysmsapi20170525.models.SendSmsResponse;
+import com.aliyun.teautil.models.RuntimeOptions;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
 import hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.auth.model.vo.verificationcode.SendVerificationCodeReqVO;
 import hk.ljx.fishhub.user.biz.auth.service.VerificationCodeService;
-import hk.ljx.fishhub.user.biz.auth.sms.AliyunSmsHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import hk.ljx.framework.common.util.RedisScriptHelper;
@@ -26,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 public class VerificationCodeServiceImpl implements VerificationCodeService {
 
     private final StringRedisTemplate stringRedisTemplate;
-    private final AliyunSmsHelper aliyunSmsHelper;
+    private final Client client;
 
     private static final int PHONE_RATE_LIMIT_PER_MINUTE = 100;
     private static final int IP_RATE_LIMIT_PER_MINUTE = 500;
@@ -73,7 +76,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         String signName = "阿里云短信测试";
         String templateCode = "SMS_154950909";
         String templateParam = String.format("{\"code\":\"%s\"}", verificationCode);
-        boolean sent = aliyunSmsHelper.sendMessage(signName, templateCode, phone, templateParam);
+        boolean sent = sendSms(signName, templateCode, phone, templateParam);
         if (!sent) {
             stringRedisTemplate.delete(key);
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FAIL);
@@ -82,5 +85,21 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
         log.info("==> 验证码短信发送成功, phone: {}", DesensitizedUtil.mobilePhone(phone));
 
         return Response.success();
+    }
+
+    private boolean sendSms(String signName, String templateCode, String phone, String templateParam) {
+        SendSmsRequest sendSmsRequest = new SendSmsRequest()
+                .setSignName(signName)
+                .setTemplateCode(templateCode)
+                .setPhoneNumbers(phone)
+                .setTemplateParam(templateParam);
+        try {
+            SendSmsResponse response = client.sendSmsWithOptions(sendSmsRequest, new RuntimeOptions());
+            return response != null && response.getBody() != null
+                    && "OK".equalsIgnoreCase(response.getBody().getCode());
+        } catch (Exception error) {
+            log.error("==> 阿里云短信发送异常: ", error);
+            return false;
+        }
     }
 }

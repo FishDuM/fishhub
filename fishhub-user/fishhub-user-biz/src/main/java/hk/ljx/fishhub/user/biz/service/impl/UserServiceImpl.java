@@ -438,13 +438,12 @@ public class UserServiceImpl implements UserService {
     @Override
     public Response<List<FindUserByIdRspDTO>> findByIds(FindUsersByIdsReqDTO findUsersByIdsReqDTO) {
         List<Long> userIds = findUsersByIdsReqDTO.getIds();
-
         if (CollUtil.isEmpty(userIds)) {
             return Response.success(Collections.emptyList());
         }
 
         List<Long> distinctUserIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
-        if (CollUtil.isEmpty(distinctUserIds)) {
+        if (distinctUserIds.isEmpty()) {
             return Response.success(Collections.emptyList());
         }
 

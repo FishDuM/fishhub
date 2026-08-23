@@ -754,24 +754,20 @@ public class CommentServiceImpl implements CommentService {
                     .likeTotal(childCommentDO.getLikeTotal())
                     .build();
 
-            if (CollUtil.isNotEmpty(userIdAndDTOMap)) {
-                FindUserByIdRspDTO findUserByIdRspDTO = userIdAndDTOMap.get(userId);
-                if (Objects.nonNull(findUserByIdRspDTO)) {
-                    childCommentRspVO.setAvatar(findUserByIdRspDTO.getAvatar());
-                    childCommentRspVO.setNickname(findUserByIdRspDTO.getNickName());
-                }
+            FindUserByIdRspDTO author = userIdAndDTOMap.get(userId);
+            if (author != null) {
+                childCommentRspVO.setAvatar(author.getAvatar());
+                childCommentRspVO.setNickname(author.getNickName());
+            }
 
-                Long replyCommentId = childCommentDO.getReplyCommentId();
-                Long parentId = childCommentDO.getParentId();
+            Long replyCommentId = childCommentDO.getReplyCommentId();
+            Long parentId = childCommentDO.getParentId();
 
-                if (Objects.nonNull(replyCommentId)
-                        && !Objects.equals(replyCommentId, parentId)) {
-                    Long replyUserId = childCommentDO.getReplyUserId();
-                    FindUserByIdRspDTO replyUser = userIdAndDTOMap.get(replyUserId);
-                    if (replyUser != null) {
-                        childCommentRspVO.setReplyUserName(replyUser.getNickName());
-                        childCommentRspVO.setReplyUserId(replyUser.getId());
-                    }
+            if (replyCommentId != null && !Objects.equals(replyCommentId, parentId)) {
+                FindUserByIdRspDTO replyUser = userIdAndDTOMap.get(childCommentDO.getReplyUserId());
+                if (replyUser != null) {
+                    childCommentRspVO.setReplyUserName(replyUser.getNickName());
+                    childCommentRspVO.setReplyUserId(replyUser.getId());
                 }
             }
 

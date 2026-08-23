@@ -167,55 +167,49 @@ public class NoteServiceImpl implements NoteService {
             SearchHits hits = searchResponse.getHits();
 
             for (SearchHit hit : hits) {
-                log.debug("==> 文档数据: {}", hit.getSourceAsString());
-
-                Map<String, Object> sourceAsMap = hit.getSourceAsMap();
-
-                Long noteId = ((Number) sourceAsMap.get(NoteIndex.FIELD_NOTE_ID)).longValue();
-                Object creatorIdValue = sourceAsMap.get(NoteIndex.FIELD_NOTE_CREATOR_ID);
-                Long creatorId = creatorIdValue instanceof Number ? ((Number) creatorIdValue).longValue() : null;
-                String cover = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_COVER);
-                Object typeValue = sourceAsMap.get(NoteIndex.FIELD_NOTE_TYPE);
-                Integer noteType = typeValue instanceof Number ? ((Number) typeValue).intValue() : null;
-                String videoUri = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_VIDEO_URI);
-                String title = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_TITLE);
-                String avatar = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_AVATAR);
-                String nickname = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_NICKNAME);
-                String updateTimeStr = (String) sourceAsMap.get(NoteIndex.FIELD_NOTE_UPDATE_TIME);
-                LocalDateTime updateTime = LocalDateTime.parse(updateTimeStr, DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
-                long likeTotal = ((Number) sourceAsMap.getOrDefault(NoteIndex.FIELD_NOTE_LIKE_TOTAL, 0)).longValue();
-                long commentTotal = ((Number) sourceAsMap.getOrDefault(NoteIndex.FIELD_NOTE_COMMENT_TOTAL, 0)).longValue();
-                long collectTotal = ((Number) sourceAsMap.getOrDefault(NoteIndex.FIELD_NOTE_COLLECT_TOTAL, 0)).longValue();
-
-                String highlightedTitle = null;
-                if (CollUtil.isNotEmpty(hit.getHighlightFields())
-                        && hit.getHighlightFields().containsKey(NoteIndex.FIELD_NOTE_TITLE)) {
-                    highlightedTitle = hit.getHighlightFields().get(NoteIndex.FIELD_NOTE_TITLE).fragments()[0].string();
-                }
-
-                SearchNoteRspVO searchNoteRspVO = SearchNoteRspVO.builder()
-                        .noteId(noteId)
-                        .creatorId(creatorId)
-                        .cover(cover)
-                        .type(noteType)
-                        .videoUri(videoUri)
-                        .title(title)
-                        .highlightTitle(highlightedTitle)
-                        .avatar(avatar)
-                        .nickname(nickname)
-                        .updateTime(DateUtils.formatRelativeTime(updateTime))
-                        .likeTotal(NumberUtils.formatNumberString(likeTotal))
-                        .commentTotal(NumberUtils.formatNumberString(commentTotal))
-                        .collectTotal(NumberUtils.formatNumberString(collectTotal))
-                        .build();
-                searchNoteRspVOS.add(searchNoteRspVO);
+                searchNoteRspVOS.add(buildSearchNoteRspVO(hit));
             }
         } catch (IOException e) {
-            log.error("==> 查询 Elasticserach 异常: ", e);
+            log.error("==> 查询 Elasticsearch 异常: ", e);
             throw new IllegalStateException("Elasticsearch 查询失败", e);
         }
 
         return PageResponse.success(searchNoteRspVOS, pageNo, total);
+    }
+
+    private static SearchNoteRspVO buildSearchNoteRspVO(SearchHit hit) {
+        Map<String, Object> map = hit.getSourceAsMap();
+        String updateTimeStr = (String) map.get(NoteIndex.FIELD_NOTE_UPDATE_TIME);
+        LocalDateTime updateTime = StringUtils.isNotBlank(updateTimeStr)
+                ? LocalDateTime.parse(updateTimeStr, DateConstants.DATE_FORMAT_Y_M_D_H_M_S) : LocalDateTime.now();
+
+        String highlightedTitle = null;
+        if (CollUtil.isNotEmpty(hit.getHighlightFields()) && hit.getHighlightFields().containsKey(NoteIndex.FIELD_NOTE_TITLE)) {
+            highlightedTitle = hit.getHighlightFields().get(NoteIndex.FIELD_NOTE_TITLE).fragments()[0].string();
+        }
+
+        long likeTotal = map.get(NoteIndex.FIELD_NOTE_LIKE_TOTAL) instanceof Number n ? n.longValue() : 0L;
+        long commentTotal = map.get(NoteIndex.FIELD_NOTE_COMMENT_TOTAL) instanceof Number n ? n.longValue() : 0L;
+        long collectTotal = map.get(NoteIndex.FIELD_NOTE_COLLECT_TOTAL) instanceof Number n ? n.longValue() : 0L;
+        Long noteId = map.get(NoteIndex.FIELD_NOTE_ID) instanceof Number n ? n.longValue() : null;
+        Long creatorId = map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n ? n.longValue() : null;
+        Integer noteType = map.get(NoteIndex.FIELD_NOTE_TYPE) instanceof Number n ? n.intValue() : null;
+
+        return SearchNoteRspVO.builder()
+                .noteId(noteId)
+                .creatorId(creatorId)
+                .cover((String) map.get(NoteIndex.FIELD_NOTE_COVER))
+                .type(noteType)
+                .videoUri((String) map.get(NoteIndex.FIELD_NOTE_VIDEO_URI))
+                .title((String) map.get(NoteIndex.FIELD_NOTE_TITLE))
+                .highlightTitle(highlightedTitle)
+                .avatar((String) map.get(NoteIndex.FIELD_NOTE_AVATAR))
+                .nickname((String) map.get(NoteIndex.FIELD_NOTE_NICKNAME))
+                .updateTime(DateUtils.formatRelativeTime(updateTime))
+                .likeTotal(NumberUtils.formatNumberString(likeTotal))
+                .commentTotal(NumberUtils.formatNumberString(commentTotal))
+                .collectTotal(NumberUtils.formatNumberString(collectTotal))
+                .build();
     }
 
 }
