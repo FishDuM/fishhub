@@ -121,6 +121,21 @@ public class NoteInteractionCacheService {
 
     private String ensureLikeCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteLikeSetKey(userId);
+        return ensureInteractionCache(userId, key, () -> {
+            List<NoteLikeDO> records = noteLikeDOMapper.selectByUserId(userId);
+            return records == null ? Collections.emptyList() : records.stream().map(NoteLikeDO::getNoteId).toList();
+        });
+    }
+
+    private String ensureCollectCache(Long userId) {
+        String key = RedisKeyConstants.buildUserNoteCollectSetKey(userId);
+        return ensureInteractionCache(userId, key, () -> {
+            List<NoteCollectionDO> records = noteCollectionDOMapper.selectByUserId(userId);
+            return records == null ? Collections.emptyList() : records.stream().map(NoteCollectionDO::getNoteId).toList();
+        });
+    }
+
+    private String ensureInteractionCache(Long userId, String key, java.util.function.Supplier<List<Long>> dbLoader) {
         if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             return key;
         }
@@ -131,49 +146,13 @@ public class NoteInteractionCacheService {
             if (waitForCacheKey(key)) {
                 return key;
             }
-            List<NoteLikeDO> records = noteLikeDOMapper.selectByUserId(userId);
-            initializeSet(key, records == null ? Collections.emptyList() : records.stream()
-                    .map(NoteLikeDO::getNoteId)
-                    .toList());
+            initializeSet(key, dbLoader.get());
             return key;
         }
         try {
             // 二次检查：抢锁期间其他节点可能已写入。
             if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                List<NoteLikeDO> records = noteLikeDOMapper.selectByUserId(userId);
-                initializeSet(key, records == null ? Collections.emptyList() : records.stream()
-                        .map(NoteLikeDO::getNoteId)
-                        .toList());
-            }
-            return key;
-        } finally {
-            releaseRebuildLock(lock, lockKey);
-        }
-    }
-
-    private String ensureCollectCache(Long userId) {
-        String key = RedisKeyConstants.buildUserNoteCollectSetKey(userId);
-        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-            return key;
-        }
-        String lockKey = RedisKeyConstants.buildUserNoteInteractionInitLockKey(userId);
-        RLock lock = tryAcquireRebuildLock(lockKey, INTERACTION_CACHE_REBUILD_LOCK_SECONDS);
-        if (lock == null) {
-            if (waitForCacheKey(key)) {
-                return key;
-            }
-            List<NoteCollectionDO> records = noteCollectionDOMapper.selectByUserId(userId);
-            initializeSet(key, records == null ? Collections.emptyList() : records.stream()
-                    .map(NoteCollectionDO::getNoteId)
-                    .toList());
-            return key;
-        }
-        try {
-            if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                List<NoteCollectionDO> records = noteCollectionDOMapper.selectByUserId(userId);
-                initializeSet(key, records == null ? Collections.emptyList() : records.stream()
-                        .map(NoteCollectionDO::getNoteId)
-                        .toList());
+                initializeSet(key, dbLoader.get());
             }
             return key;
         } finally {

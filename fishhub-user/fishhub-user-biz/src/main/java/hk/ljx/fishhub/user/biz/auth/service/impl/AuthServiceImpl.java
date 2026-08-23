@@ -124,10 +124,13 @@ public class AuthServiceImpl implements AuthService {
             log.warn("获取用户角色权限失败，本次登录将无角色权限，userId={}", userId);
         }
         SaSession session = StpUtil.getSession();
-        session.set(SaSession.ROLE_LIST, rolePermission == null || rolePermission.getRoles() == null
-                ? Collections.emptyList() : rolePermission.getRoles());
-        session.set(SaSession.PERMISSION_LIST, rolePermission == null || rolePermission.getPermissions() == null
-                ? Collections.emptyList() : rolePermission.getPermissions());
+        List<String> roles = (rolePermission != null && rolePermission.getRoles() != null)
+                ? rolePermission.getRoles() : Collections.emptyList();
+        List<String> permissions = (rolePermission != null && rolePermission.getPermissions() != null)
+                ? rolePermission.getPermissions() : Collections.emptyList();
+
+        session.set(SaSession.ROLE_LIST, roles);
+        session.set(SaSession.PERMISSION_LIST, permissions);
 
         SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
         return Response.success(tokenInfo.tokenValue);

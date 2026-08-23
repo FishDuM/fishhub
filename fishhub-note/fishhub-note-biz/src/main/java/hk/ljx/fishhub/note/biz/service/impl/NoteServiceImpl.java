@@ -412,51 +412,40 @@ public class NoteServiceImpl implements NoteService {
 
         checkNoteVisible(noteDO.getVisible(), userId, noteDO.getCreatorId());
 
-        // 并发查询优化
-        CompletableFuture<FindUserByIdRspDTO> userResultFuture = CompletableFuture
+        // 并发异步查询作者信息与笔记正文
+        CompletableFuture<FindUserByIdRspDTO> userFuture = CompletableFuture
                 .supplyAsync(() -> userClient.findById(noteDO.getCreatorId()), threadPoolTaskExecutor);
 
-        CompletableFuture<String> contentResultFuture = CompletableFuture.completedFuture(null);
-        if (Objects.equals(noteDO.getIsContentEmpty(), Boolean.FALSE)) {
-            contentResultFuture = CompletableFuture
-                    .supplyAsync(() -> keyValueClient.findNoteContent(noteDO.getContentUuid()), threadPoolTaskExecutor);
+        CompletableFuture<String> contentFuture = Boolean.FALSE.equals(noteDO.getIsContentEmpty())
+                ? CompletableFuture.supplyAsync(() -> keyValueClient.findNoteContent(noteDO.getContentUuid()), threadPoolTaskExecutor)
+                : CompletableFuture.completedFuture(null);
+
+        FindUserByIdRspDTO author = userFuture.get();
+        String content = contentFuture.get();
+
+        Integer noteType = noteDO.getType();
+        String imgUrisStr = noteDO.getImgUris();
+        List<String> imgUris = null;
+        if (Objects.equals(noteType, NoteTypeEnum.IMAGE_TEXT.getCode()) && StringUtils.isNotBlank(imgUrisStr)) {
+            imgUris = List.of(imgUrisStr.split(","));
         }
 
-        CompletableFuture<String> finalContentResultFuture = contentResultFuture;
-        CompletableFuture<FindNoteDetailRspVO> resultFuture = CompletableFuture
-                .allOf(userResultFuture, contentResultFuture)
-                .thenApply(s -> {
-                    FindUserByIdRspDTO findUserByIdRspDTO = userResultFuture.join();
-                    String content = finalContentResultFuture.join();
-
-                    Integer noteType = noteDO.getType();
-                    String imgUrisStr = noteDO.getImgUris();
-                    List<String> imgUris = null;
-                    if (Objects.equals(noteType, NoteTypeEnum.IMAGE_TEXT.getCode())
-                            && StringUtils.isNotBlank(imgUrisStr)) {
-                        imgUris = List.of(imgUrisStr.split(","));
-                    }
-
-                    return FindNoteDetailRspVO.builder()
-                            .id(noteDO.getId())
-                            .revision(noteDO.getRevision())
-                            .type(noteDO.getType())
-                            .title(noteDO.getTitle())
-                            .content(content)
-                            .imgUris(imgUris)
-                            .topicId(noteDO.getTopicId())
-                            .topicName(noteDO.getTopicName())
-                            .creatorId(noteDO.getCreatorId())
-                            .creatorName(findUserByIdRspDTO == null ? null : findUserByIdRspDTO.getNickName())
-                            .avatar(findUserByIdRspDTO == null ? null : findUserByIdRspDTO.getAvatar())
-                            .videoUri(noteDO.getVideoUri())
-                            .updateTime(noteDO.getUpdateTime())
-                            .visible(noteDO.getVisible())
-                            .build();
-
-                });
-
-        FindNoteDetailRspVO findNoteDetailRspVO = resultFuture.get();
+        FindNoteDetailRspVO findNoteDetailRspVO = FindNoteDetailRspVO.builder()
+                .id(noteDO.getId())
+                .revision(noteDO.getRevision())
+                .type(noteDO.getType())
+                .title(noteDO.getTitle())
+                .content(content)
+                .imgUris(imgUris)
+                .topicId(noteDO.getTopicId())
+                .topicName(noteDO.getTopicName())
+                .creatorId(noteDO.getCreatorId())
+                .creatorName(author != null ? author.getNickName() : null)
+                .avatar(author != null ? author.getAvatar() : null)
+                .videoUri(noteDO.getVideoUri())
+                .updateTime(noteDO.getUpdateTime())
+                .visible(noteDO.getVisible())
+                .build();
 
         // 计数随详情 JSON 一起缓存，命中路径免 count Feign（TTL 缩至 30~90s 保新鲜）。
         fillNoteCounts(findNoteDetailRspVO);
@@ -1277,9 +1266,15 @@ public class NoteServiceImpl implements NoteService {
         try {
             List<FindNoteCountsByIdRspDTO> counts = countClient.findByNoteIds(List.of(noteId));
             FindNoteCountsByIdRspDTO count = CollUtil.isEmpty(counts) ? null : counts.get(0);
-            noteDetail.setLikeTotal(count == null || count.getLikeTotal() == null ? 0L : count.getLikeTotal());
-            noteDetail.setCollectTotal(count == null || count.getCollectTotal() == null ? 0L : count.getCollectTotal());
-            noteDetail.setCommentTotal(count == null || count.getCommentTotal() == null ? 0L : count.getCommentTotal());
+            if (count != null) {
+                noteDetail.setLikeTotal(count.getLikeTotal() != null ? count.getLikeTotal() : 0L);
+                noteDetail.setCollectTotal(count.getCollectTotal() != null ? count.getCollectTotal() : 0L);
+                noteDetail.setCommentTotal(count.getCommentTotal() != null ? count.getCommentTotal() : 0L);
+            } else {
+                noteDetail.setLikeTotal(0L);
+                noteDetail.setCollectTotal(0L);
+                noteDetail.setCommentTotal(0L);
+            }
         } catch (Exception e) {
             log.warn("查询笔记计数失败，noteId={}", noteId, e);
             noteDetail.setLikeTotal(0L);

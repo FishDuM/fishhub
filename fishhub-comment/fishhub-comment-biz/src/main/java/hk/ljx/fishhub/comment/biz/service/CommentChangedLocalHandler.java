@@ -73,11 +73,13 @@ public class CommentChangedLocalHandler {
         }
 
         // 一级评论：维护笔记评论列表 ZSET + 一级评论计数版本
-        Map<Long, List<Long>> oneLevelByNote = event.getItems().stream()
-                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.ONE.getCode()))
-                .filter(item -> item.getNoteId() != null && item.getId() != null)
-                .collect(Collectors.groupingBy(CommentItemMqDTO::getNoteId,
-                        Collectors.mapping(CommentItemMqDTO::getId, Collectors.toList())));
+        Map<Long, List<Long>> oneLevelByNote = new java.util.HashMap<>();
+        for (CommentItemMqDTO item : event.getItems()) {
+            if (Objects.equals(item.getLevel(), CommentLevelEnum.ONE.getCode())
+                    && item.getNoteId() != null && item.getId() != null) {
+                oneLevelByNote.computeIfAbsent(item.getNoteId(), k -> new ArrayList<>()).add(item.getId());
+            }
+        }
         oneLevelByNote.forEach((noteId, commentIds) -> {
             if (isDelete) {
                 deleteOneLevelComments(noteId, commentIds);

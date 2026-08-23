@@ -124,48 +124,33 @@ public class FeedServiceImpl implements FeedService {
     private DiscoverPageSnapshot loadDiscoverPageSnapshot(Long channelId, Long cursor, String version) {
         String cacheKey = RedisKeyConstants.buildDiscoverFeedCursorKey(version, channelId, cursor);
         String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(version, channelId, cursor);
-        DiscoverPageSnapshot snapshot;
-        try {
-            snapshot = readDiscoverPageSnapshot(cacheKey);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页缓存读取失败，回源 MySQL，key={}", cacheKey, e);
-            return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-        }
-        if (isValidDiscoverPageSnapshot(snapshot)) {
-            return snapshot;
-        }
 
-        RLock lock;
         try {
-            lock = tryAcquireRebuildLock(lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页重建锁获取失败，回源 MySQL，key={}", cacheKey, e);
-            return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-        }
-        if (lock == null) {
-            try {
-                snapshot = waitForDiscoverPageSnapshot(cacheKey);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，发现页缓存重试失败，回源 MySQL，key={}", cacheKey, e);
-                return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-            }
-            return snapshot == null ? loadDiscoverPageSnapshotFromMySql(channelId, cursor) : snapshot;
-        }
-        try {
-            try {
-                snapshot = readDiscoverPageSnapshot(cacheKey);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，发现页二次缓存读取失败，回源 MySQL，key={}", cacheKey, e);
-                return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-            }
+            DiscoverPageSnapshot snapshot = readDiscoverPageSnapshot(cacheKey);
             if (isValidDiscoverPageSnapshot(snapshot)) {
                 return snapshot;
             }
-            snapshot = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-            cacheDiscoverPageSnapshot(cacheKey, snapshot);
-            return snapshot;
-        } finally {
-            releaseRebuildLock(lock, lockKey);
+
+            RLock lock = tryAcquireRebuildLock(lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS);
+            if (lock == null) {
+                DiscoverPageSnapshot waited = waitForDiscoverPageSnapshot(cacheKey);
+                return isValidDiscoverPageSnapshot(waited) ? waited : loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+            }
+
+            try {
+                DiscoverPageSnapshot recheck = readDiscoverPageSnapshot(cacheKey);
+                if (isValidDiscoverPageSnapshot(recheck)) {
+                    return recheck;
+                }
+                DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+                cacheDiscoverPageSnapshot(cacheKey, fresh);
+                return fresh;
+            } finally {
+                releaseRebuildLock(lock, lockKey);
+            }
+        } catch (Exception e) {
+            log.warn("Redis 不可用，发现页缓存流程异常，直接回源 MySQL，key={}", cacheKey, e);
+            return loadDiscoverPageSnapshotFromMySql(channelId, cursor);
         }
     }
 
@@ -200,7 +185,7 @@ public class FeedServiceImpl implements FeedService {
         List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
                 .noteId(note.getId())
                 .type(note.getType())
-                .cover(StringUtils.isBlank(note.getImgUris()) ? null : StringUtils.split(note.getImgUris(), ',')[0])
+                .cover(getFirstCover(note.getImgUris()))
                 .videoUri(note.getVideoUri())
                 .title(note.getTitle())
                 .creatorId(note.getCreatorId())
@@ -227,6 +212,14 @@ public class FeedServiceImpl implements FeedService {
         return notes;
     }
 
+    private static String getFirstCover(String imgUris) {
+        if (StringUtils.isBlank(imgUris)) {
+            return null;
+        }
+        int commaIndex = imgUris.indexOf(',');
+        return commaIndex >= 0 ? imgUris.substring(0, commaIndex) : imgUris;
+    }
+
     private void hydrateVolatileFields(List<NoteItemRspVO> notes) {
         if (CollUtil.isEmpty(notes)) {
             return;
@@ -249,7 +242,8 @@ public class FeedServiceImpl implements FeedService {
                 Function.identity(), (left, right) -> left));
         notes.forEach(note -> {
             FindNoteCountsByIdRspDTO count = counts.get(note.getNoteId());
-            note.setLikeTotal(String.valueOf(count == null || count.getLikeTotal() == null ? 0L : count.getLikeTotal()));
+            long likeTotal = (count != null && count.getLikeTotal() != null) ? count.getLikeTotal() : 0L;
+            note.setLikeTotal(String.valueOf(likeTotal));
         });
     }
 

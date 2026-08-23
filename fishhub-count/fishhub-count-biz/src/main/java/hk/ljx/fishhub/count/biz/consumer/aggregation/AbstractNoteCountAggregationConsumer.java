@@ -109,30 +109,30 @@ public abstract class AbstractNoteCountAggregationConsumer {
                 return false;
             }
             // 1. 按 noteId 升序聚合并更新笔记计数
-            freshEvents.stream()
-                    .collect(Collectors.groupingBy(
-                            CountNoteMqDTO::getNoteId,
-                            TreeMap::new,
-                            Collectors.summingInt(e -> deltaOf(e.getType()))
-                    ))
-                    .forEach((noteId, delta) -> {
-                        if (delta != 0) {
-                            updateNoteCount(noteId, delta);
-                        }
-                    });
+            Map<Long, Integer> noteDeltas = new TreeMap<>();
+            for (CountNoteMqDTO event : freshEvents) {
+                if (event.getNoteId() != null) {
+                    noteDeltas.merge(event.getNoteId(), deltaOf(event.getType()), Integer::sum);
+                }
+            }
+            noteDeltas.forEach((noteId, delta) -> {
+                if (delta != 0) {
+                    updateNoteCount(noteId, delta);
+                }
+            });
 
             // 2. 按 creatorId 升序聚合并更新用户计数
-            freshEvents.stream()
-                    .collect(Collectors.groupingBy(
-                            CountNoteMqDTO::getNoteCreatorId,
-                            TreeMap::new,
-                            Collectors.summingInt(e -> deltaOf(e.getType()))
-                    ))
-                    .forEach((creatorId, delta) -> {
-                        if (delta != 0) {
-                            updateUserCount(creatorId, delta);
-                        }
-                    });
+            Map<Long, Integer> creatorDeltas = new TreeMap<>();
+            for (CountNoteMqDTO event : freshEvents) {
+                if (event.getNoteCreatorId() != null) {
+                    creatorDeltas.merge(event.getNoteCreatorId(), deltaOf(event.getType()), Integer::sum);
+                }
+            }
+            creatorDeltas.forEach((creatorId, delta) -> {
+                if (delta != 0) {
+                    updateUserCount(creatorId, delta);
+                }
+            });
             return true;
         });
 

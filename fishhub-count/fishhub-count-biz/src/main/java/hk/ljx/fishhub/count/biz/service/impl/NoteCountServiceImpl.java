@@ -22,10 +22,12 @@ import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -101,10 +103,8 @@ public class NoteCountServiceImpl implements NoteCountService {
         List<NoteCountDO> noteCountDOS = noteCountDOMapper.selectByNoteIds(noteIdsNeedQuery);
 
         // DO 转 Map；没有计数行的笔记按 0 处理
-        Map<Long, NoteCountDO> noteIdAndDOMap = CollUtil.isEmpty(noteCountDOS)
-                ? Map.of()
-                : noteCountDOS.stream()
-                .collect(Collectors.toMap(NoteCountDO::getNoteId, noteCountDO -> noteCountDO));
+        Map<Long, NoteCountDO> noteIdAndDOMap = CollUtil.isEmpty(noteCountDOS) ? Collections.emptyMap()
+                : noteCountDOS.stream().collect(Collectors.toMap(NoteCountDO::getNoteId, Function.identity(), (a, b) -> a));
 
         // 填充前保留 null 快照再异步回写，避免填充后写回被整体跳过
         List<FindNoteCountsByIdRspDTO> needWriteBack = findNoteCountsByIdRspDTOS.stream()

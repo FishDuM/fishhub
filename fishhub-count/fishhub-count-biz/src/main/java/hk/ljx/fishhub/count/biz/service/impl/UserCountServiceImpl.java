@@ -2,6 +2,7 @@ package hk.ljx.fishhub.count.biz.service.impl;
 
 import hk.ljx.framework.common.util.CacheTtl;
 
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.NumberUtil;
 import com.alibaba.csp.sentinel.annotation.SentinelResource;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
@@ -26,10 +27,13 @@ import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -186,8 +190,8 @@ public class UserCountServiceImpl implements UserCountService {
 
         // 3. 查数据库兜底
         List<UserCountDO> userCountDOS = userCountDOMapper.selectByUserIds(userIdsNeedQuery);
-        Map<Long, UserCountDO> countDOMap = userCountDOS == null || userCountDOS.isEmpty() ? Map.of()
-            : userCountDOS.stream().collect(java.util.stream.Collectors.toMap(UserCountDO::getUserId, countDO -> countDO));
+        Map<Long, UserCountDO> countDOMap = CollUtil.isEmpty(userCountDOS) ? Collections.emptyMap()
+                : userCountDOS.stream().collect(Collectors.toMap(UserCountDO::getUserId, Function.identity(), (a, b) -> a));
 
         // 4. 回填并异步写缓存
         for (int i = 0; i < resultList.size(); i++) {
@@ -195,13 +199,12 @@ public class UserCountServiceImpl implements UserCountService {
             Long userId = dto.getUserId();
             UserCountDO userCountDO = countDOMap.get(userId);
 
-            @SuppressWarnings("unchecked")
-            List<String> rawCounts = (List<String>) (List<?>) countHashes.get(i);
-            String rawCollect = rawCounts != null && rawCounts.size() > 0 ? rawCounts.get(0) : null;
-            String rawFans = rawCounts != null && rawCounts.size() > 1 ? rawCounts.get(1) : null;
-            String rawNote = rawCounts != null && rawCounts.size() > 2 ? rawCounts.get(2) : null;
-            String rawFollowing = rawCounts != null && rawCounts.size() > 3 ? rawCounts.get(3) : null;
-            String rawLike = rawCounts != null && rawCounts.size() > 4 ? rawCounts.get(4) : null;
+            List<?> rawCounts = (countHashes.get(i) instanceof List<?> list) ? list : Collections.emptyList();
+            String rawCollect = rawCounts.size() > 0 && rawCounts.get(0) != null ? String.valueOf(rawCounts.get(0)) : null;
+            String rawFans = rawCounts.size() > 1 && rawCounts.get(1) != null ? String.valueOf(rawCounts.get(1)) : null;
+            String rawNote = rawCounts.size() > 2 && rawCounts.get(2) != null ? String.valueOf(rawCounts.get(2)) : null;
+            String rawFollowing = rawCounts.size() > 3 && rawCounts.get(3) != null ? String.valueOf(rawCounts.get(3)) : null;
+            String rawLike = rawCounts.size() > 4 && rawCounts.get(4) != null ? String.valueOf(rawCounts.get(4)) : null;
 
             if (dto.getCollectTotal() == null) {
                 dto.setCollectTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getCollectTotal()));
@@ -260,20 +263,27 @@ public class UserCountServiceImpl implements UserCountService {
             try {
                 // 存放计数
                 Map<String, String> userCountMap = Maps.newHashMap();
-                if (Objects.isNull(collectTotal))
-                    userCountMap.put(CountKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getCollectTotal())));
+                long dbCollect = userCountDO != null && userCountDO.getCollectTotal() != null ? Math.max(0, userCountDO.getCollectTotal()) : 0L;
+                long dbFans = userCountDO != null && userCountDO.getFansTotal() != null ? Math.max(0, userCountDO.getFansTotal()) : 0L;
+                long dbNote = userCountDO != null && userCountDO.getNoteTotal() != null ? Math.max(0, userCountDO.getNoteTotal()) : 0L;
+                long dbFollowing = userCountDO != null && userCountDO.getFollowingTotal() != null ? Math.max(0, userCountDO.getFollowingTotal()) : 0L;
+                long dbLike = userCountDO != null && userCountDO.getLikeTotal() != null ? Math.max(0, userCountDO.getLikeTotal()) : 0L;
 
-                if (Objects.isNull(fansTotal))
-                    userCountMap.put(CountKeyConstants.FIELD_FANS_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFansTotal())));
-
-                if (Objects.isNull(noteTotal))
-                    userCountMap.put(CountKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getNoteTotal())));
-
-                if (Objects.isNull(followingTotal))
-                    userCountMap.put(CountKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getFollowingTotal())));
-
-                if (Objects.isNull(likeTotal))
-                    userCountMap.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(Counts.clamp0(Objects.isNull(userCountDO) ? null : userCountDO.getLikeTotal())));
+                if (Objects.isNull(collectTotal)) {
+                    userCountMap.put(CountKeyConstants.FIELD_COLLECT_TOTAL, String.valueOf(dbCollect));
+                }
+                if (Objects.isNull(fansTotal)) {
+                    userCountMap.put(CountKeyConstants.FIELD_FANS_TOTAL, String.valueOf(dbFans));
+                }
+                if (Objects.isNull(noteTotal)) {
+                    userCountMap.put(CountKeyConstants.FIELD_NOTE_TOTAL, String.valueOf(dbNote));
+                }
+                if (Objects.isNull(followingTotal)) {
+                    userCountMap.put(CountKeyConstants.FIELD_FOLLOWING_TOTAL, String.valueOf(dbFollowing));
+                }
+                if (Objects.isNull(likeTotal)) {
+                    userCountMap.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(dbLike));
+                }
 
                 stringRedisTemplate.executePipelined(new SessionCallback<>() {
                     @Override

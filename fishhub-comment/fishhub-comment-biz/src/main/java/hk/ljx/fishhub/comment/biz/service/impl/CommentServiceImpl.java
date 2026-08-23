@@ -55,6 +55,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -484,19 +485,17 @@ public class CommentServiceImpl implements CommentService {
                 .map(CommentDO::getUserId)
                 .distinct()
                 .toList();
-        Map<Long, FindUserByIdRspDTO> userIdAndDTOMap;
+        Map<Long, FindUserByIdRspDTO> userIdAndDTOMap = Collections.emptyMap();
         if (CollUtil.isNotEmpty(authorIds)) {
             List<FindUserByIdRspDTO> users = userClient.findByIds(authorIds);
-            userIdAndDTOMap = CollUtil.isNotEmpty(users)
-                    ? users.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, dto -> dto, (a, b) -> a))
-                    : Collections.emptyMap();
-
-        } else {
-            userIdAndDTOMap = Collections.emptyMap();
+            if (CollUtil.isNotEmpty(users)) {
+                userIdAndDTOMap = users.stream().collect(Collectors.toMap(FindUserByIdRspDTO::getId, Function.identity(), (a, b) -> a));
+            }
         }
 
+        Map<Long, FindUserByIdRspDTO> finalUserMap = userIdAndDTOMap;
         List<FindLikedCommentItemRspVO> items = accessibleComments.stream().map(comment -> {
-            FindUserByIdRspDTO author = userIdAndDTOMap.get(comment.getUserId());
+            FindUserByIdRspDTO author = finalUserMap.get(comment.getUserId());
             String content = null;
             if (!Boolean.TRUE.equals(comment.getIsContentEmpty()) && StringUtils.isNotBlank(comment.getContentUuid())) {
                 content = contentByUuid.get(comment.getContentUuid());
@@ -505,8 +504,8 @@ public class CommentServiceImpl implements CommentService {
                     .commentId(comment.getId())
                     .noteId(comment.getNoteId())
                     .userId(comment.getUserId())
-                    .avatar(author == null ? null : author.getAvatar())
-                    .nickname(author == null ? null : author.getNickName())
+                    .avatar(author != null ? author.getAvatar() : null)
+                    .nickname(author != null ? author.getNickName() : null)
                     .content(content)
                     .imageUrl(comment.getImageUrl())
                     .likeTime(DateUtils.formatRelativeTime(comment.getCreateTime()))
@@ -678,9 +677,11 @@ public class CommentServiceImpl implements CommentService {
                         commentDOS.forEach(commentDO -> {
                             String key = CountKeyConstants.buildCountCommentKey(commentDO.getId());
                             Integer level = commentDO.getLevel();
-                            Map<String, String> fieldsMap = Objects.equals(level, CommentLevelEnum.ONE.getCode()) ?
-                                    Map.of(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()),
-                                            CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal())) : Map.of(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
+                            Map<String, String> fieldsMap = new HashMap<>();
+                            fieldsMap.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
+                            if (Objects.equals(level, CommentLevelEnum.ONE.getCode())) {
+                                fieldsMap.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
+                            }
                             operations.opsForHash().putAll(key, fieldsMap);
 
                             long expireTime = CacheTtl.hours(1, 4);

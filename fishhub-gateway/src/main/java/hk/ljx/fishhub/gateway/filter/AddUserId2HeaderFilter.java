@@ -82,9 +82,7 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
         return Mono.fromCallable(() -> resolveLoginIdFromRequest(request))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(loginId -> {
-                    if (loginId != null) {
-                        requestBuilder.header(USER_ID, loginId.toString());
-                    }
+                    requestBuilder.header(USER_ID, loginId.toString());
                     return chain.filter(exchange.mutate().request(requestBuilder.build()).build());
                 })
                 .switchIfEmpty(Mono.defer(() -> chain.filter(exchange.mutate().request(requestBuilder.build()).build())));

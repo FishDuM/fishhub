@@ -52,7 +52,7 @@ public class UserNoteListService {
         List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
                 .noteId(note.getId())
                 .type(note.getType())
-                .cover(StringUtils.isBlank(note.getImgUris()) ? null : StringUtils.split(note.getImgUris(), ',')[0])
+                .cover(getFirstCover(note.getImgUris()))
                 .videoUri(note.getVideoUri())
                 .title(note.getTitle())
                 .creatorId(note.getCreatorId())
@@ -113,5 +113,13 @@ public class UserNoteListService {
             note.setLikeTotal(count != null && count.getLikeTotal() != null
                     ? NumberUtils.formatNumberString(count.getLikeTotal()) : "0");
         });
+    }
+
+    private static String getFirstCover(String imgUris) {
+        if (StringUtils.isBlank(imgUris)) {
+            return null;
+        }
+        int commaIndex = imgUris.indexOf(',');
+        return commaIndex >= 0 ? imgUris.substring(0, commaIndex) : imgUris;
     }
 }

@@ -244,19 +244,21 @@ public class RelationServiceImpl implements RelationService {
             return Collections.emptyList();
         }
         List<FindUserCountsByIdRspDTO> counts = countClient.findByUserIds(userIds);
-        Map<Long, FindUserCountsByIdRspDTO> countMap = CollUtil.isEmpty(counts) ? Map.of() : counts.stream()
-                .collect(Collectors.toMap(FindUserCountsByIdRspDTO::getUserId, Function.identity(), (a, b) -> a));
+        Map<Long, FindUserCountsByIdRspDTO> countMap = CollUtil.isEmpty(counts) ? Collections.emptyMap()
+                : counts.stream().collect(Collectors.toMap(FindUserCountsByIdRspDTO::getUserId, Function.identity(), (a, b) -> a));
 
         Set<Long> followedUserIds = findCurrentUserFollowedIds(userIds);
         return findUserByIdRspDTOS.stream()
                 .map(dto -> {
                     FindUserCountsByIdRspDTO count = countMap.get(dto.getId());
+                    long noteTotal = (count != null && count.getNoteTotal() != null) ? count.getNoteTotal() : 0L;
+                    long fansTotal = (count != null && count.getFansTotal() != null) ? count.getFansTotal() : 0L;
                     return FindFansUserRspVO.builder()
                             .userId(dto.getId())
                             .avatar(dto.getAvatar())
                             .nickname(dto.getNickName())
-                            .noteTotal(count != null && count.getNoteTotal() != null ? count.getNoteTotal() : 0L)
-                            .fansTotal(count != null && count.getFansTotal() != null ? count.getFansTotal() : 0L)
+                            .noteTotal(noteTotal)
+                            .fansTotal(fansTotal)
                             .isFollowed(followedUserIds.contains(dto.getId()))
                             .build();
                 })

@@ -120,29 +120,33 @@ public class Comment2DBConsumer {
             }
 
             // 校验笔记写入权限
+            Set<NoteWriteAccessCheckReqDTO> checkReqs = publishCommentMqDTOS.stream()
+                    .map(comment -> NoteWriteAccessCheckReqDTO.builder()
+                            .noteId(comment.getNoteId())
+                            .userId(comment.getCreatorId())
+                            .build())
+                    .collect(Collectors.toSet());
             Set<NoteWriteAccessCheckReqDTO> writableAccesses = new HashSet<>(
-                    noteRpcService.findWritableNoteAccesses(publishCommentMqDTOS.stream()
-                            .map(comment -> NoteWriteAccessCheckReqDTO.builder()
-                                    .noteId(comment.getNoteId())
-                                    .userId(comment.getCreatorId())
-                                    .build())
-                            .toList()));
-            List<PublishCommentMqDTO> nonWritable = publishCommentMqDTOS.stream()
-                    .filter(comment -> !writableAccesses.contains(NoteWriteAccessCheckReqDTO.builder()
-                            .noteId(comment.getNoteId())
-                            .userId(comment.getCreatorId())
-                            .build()))
-                    .toList();
-            if (CollUtil.isNotEmpty(nonWritable)) {
-                log.warn("消费端检测到不可写笔记上的评论发布（并发或已被删除），丢弃消息, commentIds={}",
-                        nonWritable.stream().map(PublishCommentMqDTO::getCommentId).toList());
+                    noteRpcService.findWritableNoteAccesses(new ArrayList<>(checkReqs)));
+
+            List<PublishCommentMqDTO> validComments = new ArrayList<>();
+            List<Long> nonWritableIds = new ArrayList<>();
+            for (PublishCommentMqDTO comment : publishCommentMqDTOS) {
+                NoteWriteAccessCheckReqDTO req = NoteWriteAccessCheckReqDTO.builder()
+                        .noteId(comment.getNoteId())
+                        .userId(comment.getCreatorId())
+                        .build();
+                if (writableAccesses.contains(req)) {
+                    validComments.add(comment);
+                } else {
+                    nonWritableIds.add(comment.getCommentId());
+                }
             }
-            publishCommentMqDTOS = publishCommentMqDTOS.stream()
-                    .filter(comment -> writableAccesses.contains(NoteWriteAccessCheckReqDTO.builder()
-                            .noteId(comment.getNoteId())
-                            .userId(comment.getCreatorId())
-                            .build()))
-                    .toList();
+
+            if (CollUtil.isNotEmpty(nonWritableIds)) {
+                log.warn("消费端检测到不可写笔记上的评论发布（并发或已被删除），丢弃消息, commentIds={}", nonWritableIds);
+            }
+            publishCommentMqDTOS = validComments;
             if (CollUtil.isEmpty(publishCommentMqDTOS)) {
                 return true;
             }
