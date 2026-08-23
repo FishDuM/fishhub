@@ -4,7 +4,11 @@ import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 
 
+import java.util.regex.Pattern;
+
 public class PhoneNumberValidator implements ConstraintValidator<PhoneNumber, String> {
+
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\d{11}$");
 
     @Override
     public void initialize(PhoneNumber constraintAnnotation) {
@@ -12,7 +16,6 @@ public class PhoneNumberValidator implements ConstraintValidator<PhoneNumber, St
 
     @Override
     public boolean isValid(String phoneNumber, ConstraintValidatorContext context) {
-        // 校验逻辑：正则表达式判断手机号是否为 11 位数字
-        return phoneNumber != null && phoneNumber.matches("\\d{11}");
+        return phoneNumber != null && PHONE_PATTERN.matcher(phoneNumber).matches();
     }
 }

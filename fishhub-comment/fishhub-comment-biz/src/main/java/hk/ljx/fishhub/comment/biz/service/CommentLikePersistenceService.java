@@ -41,12 +41,10 @@ public class CommentLikePersistenceService {
             Long commentId = entry.getKey();
             List<LikeUnlikeCommentMqDTO> ops = entry.getValue();
 
-            List<LikeUnlikeCommentMqDTO> likeOps = ops.stream()
-                    .filter(op -> Objects.equals(op.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode()))
-                    .toList();
-            List<LikeUnlikeCommentMqDTO> unlikeOps = ops.stream()
-                    .filter(op -> Objects.equals(op.getType(), LikeUnlikeCommentTypeEnum.UNLIKE.getCode()))
-                    .toList();
+            Map<Boolean, List<LikeUnlikeCommentMqDTO>> partitioned = ops.stream()
+                    .collect(Collectors.partitioningBy(op -> Objects.equals(op.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())));
+            List<LikeUnlikeCommentMqDTO> likeOps = partitioned.get(Boolean.TRUE);
+            List<LikeUnlikeCommentMqDTO> unlikeOps = partitioned.get(Boolean.FALSE);
 
             int inserted = CollUtil.isEmpty(likeOps) ? 0 : commentLikeDOMapper.batchInsert(likeOps);
             int deleted = CollUtil.isEmpty(unlikeOps) ? 0 : commentLikeDOMapper.batchDelete(unlikeOps);

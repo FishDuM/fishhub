@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.cassandra.core.CassandraTemplate;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -113,7 +114,7 @@ class CommentContentServiceImplTest {
 
     @Test
     void shouldMatchKeysCaseInsensitively() {
-        String upperU1 = U1.toUpperCase(java.util.Locale.ROOT);
+        String upperU1 = U1.toUpperCase(Locale.ROOT);
         List<FindCommentContentReqDTO> keys = List.of(key(M2, upperU1));
         when(commentContentRepository
                 .findByPrimaryKeyNoteIdAndPrimaryKeyYearMonthInAndPrimaryKeyContentIdIn(

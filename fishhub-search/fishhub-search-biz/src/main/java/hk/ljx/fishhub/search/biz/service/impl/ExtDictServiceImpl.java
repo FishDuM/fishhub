@@ -41,8 +41,9 @@ public class ExtDictServiceImpl implements ExtDictService {
                     return ResponseEntity.notFound().build();
                 }
                 try (InputStream inputStream = resource.getInputStream()) {
-                    String fileContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-                    String eTag = DigestUtils.md5DigestAsHex(fileContent.getBytes(StandardCharsets.UTF_8));
+                    byte[] bytes = inputStream.readAllBytes();
+                    String eTag = DigestUtils.md5DigestAsHex(bytes);
+                    String fileContent = new String(bytes, StandardCharsets.UTF_8);
                     return ResponseEntity.ok()
                             .eTag(eTag)
                             .contentType(MediaType.valueOf("text/plain;charset=UTF-8"))
@@ -54,8 +55,9 @@ public class ExtDictServiceImpl implements ExtDictService {
             long lastModifiedTime = Files.getLastModifiedTime(path).toMillis();
 
             // 生成 ETag（使用文件内容的 MD5 哈希值）
-            String fileContent = Files.readString(path, StandardCharsets.UTF_8);
-            String eTag = DigestUtils.md5DigestAsHex(fileContent.getBytes(StandardCharsets.UTF_8));
+            byte[] bytes = Files.readAllBytes(path);
+            String eTag = DigestUtils.md5DigestAsHex(bytes);
+            String fileContent = new String(bytes, StandardCharsets.UTF_8);
 
             // 设置响应头
             HttpHeaders headers = new HttpHeaders();

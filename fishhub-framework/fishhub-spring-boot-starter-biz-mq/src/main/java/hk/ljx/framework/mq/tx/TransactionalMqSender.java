@@ -1,11 +1,10 @@
 package hk.ljx.framework.mq.tx;
 
+import cn.hutool.core.util.IdUtil;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-
-import java.util.UUID;
 
 /**
  * 事务消息发送入口：半消息 + 本地事务原子提交。
@@ -40,7 +39,7 @@ public class TransactionalMqSender {
             throw new IllegalStateException(
                     "sendInTransaction 禁止在已开启的数据库事务内调用，请在事务外发送、由 localTxAction 自建事务边界");
         }
-        String txId = UUID.randomUUID().toString().replace("-", "");
+        String txId = IdUtil.fastSimpleUUID();
         Message<String> message = MessageBuilder.withPayload(payload)
                 .setHeader(TX_ID_HEADER, txId)
                 .build();

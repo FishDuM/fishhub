@@ -254,16 +254,15 @@ public class RelationListCacheService {
     }
 
     private List<String> sliceRows(List<FollowingDO> rows, long offset, int count, Function<FollowingDO, Long> mapper) {
-        if (CollUtil.isEmpty(rows) || offset >= rows.size()) {
+        if (CollUtil.isEmpty(rows)) {
             return Collections.emptyList();
         }
-        int from = (int) offset;
-        int to = Math.min(rows.size(), from + count);
-        List<String> result = new ArrayList<>(to - from);
-        for (int i = from; i < to; i++) {
-            result.add(String.valueOf(mapper.apply(rows.get(i))));
-        }
-        return result;
+        int from = (int) Math.min(offset, Integer.MAX_VALUE);
+        int to = from + count;
+        return CollUtil.sub(rows, from, to).stream()
+                .map(mapper)
+                .map(String::valueOf)
+                .toList();
     }
 
 }

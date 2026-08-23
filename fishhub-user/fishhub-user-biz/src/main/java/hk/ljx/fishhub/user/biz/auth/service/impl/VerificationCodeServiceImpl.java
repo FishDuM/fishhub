@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.user.biz.auth.service.impl;
 
+import cn.hutool.core.util.DesensitizedUtil;
 import cn.hutool.core.util.RandomUtil;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
@@ -16,6 +17,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -47,13 +49,13 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
 
         // 双维度分钟限流：手机号/IP 任一超限即拒绝
         Long phoneCount = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
-                java.util.Collections.singletonList(RedisKeyConstants.buildPhoneRateLimitKey(phone)), String.valueOf(60));
+                List.of(RedisKeyConstants.buildPhoneRateLimitKey(phone)), String.valueOf(60));
         if (phoneCount != null && phoneCount > PHONE_RATE_LIMIT_PER_MINUTE) {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
         }
         if (StringUtils.isNotBlank(clientIp)) {
             Long ipCount = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
-                    java.util.Collections.singletonList(RedisKeyConstants.buildIpRateLimitKey(clientIp)), String.valueOf(60));
+                    List.of(RedisKeyConstants.buildIpRateLimitKey(clientIp)), String.valueOf(60));
             if (ipCount != null && ipCount > IP_RATE_LIMIT_PER_MINUTE) {
                 throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FREQUENTLY);
             }
@@ -77,8 +79,7 @@ public class VerificationCodeServiceImpl implements VerificationCodeService {
             throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_SEND_FAIL);
         }
 
-        log.info("==> 验证码短信发送成功, phone: {}****{}",
-                phone.substring(0, 3), phone.substring(phone.length() - 4));
+        log.info("==> 验证码短信发送成功, phone: {}", DesensitizedUtil.mobilePhone(phone));
 
         return Response.success();
     }

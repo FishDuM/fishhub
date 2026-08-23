@@ -4,6 +4,7 @@ import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Servlet 服务统一异常处理基类。
@@ -62,28 +64,15 @@ public abstract class AbstractGlobalExceptionHandler {
         } else if (e instanceof BindException) {
             bindingResult = ((BindException) e).getBindingResult();
         }
-        StringBuilder sb = new StringBuilder();
-        if (bindingResult != null) {
-            Optional.ofNullable(bindingResult.getFieldErrors()).ifPresent(errors ->
-                    errors.forEach(error ->
-                            sb.append(error.getField())
-                                    .append(" ")
-                                    .append(error.getDefaultMessage())
-                                    .append(", 当前值: '")
-                                    .append(error.getRejectedValue())
-                                    .append("'; ")
-                    )
-            );
-            Optional.ofNullable(bindingResult.getGlobalErrors()).ifPresent(errors ->
-                    errors.forEach(error ->
-                            sb.append(error.getObjectName())
-                                    .append(" ")
-                                    .append(error.getDefaultMessage())
-                                    .append("; ")
-                    )
-            );
+        String errorMessage = "参数校验失败";
+        if (bindingResult != null && bindingResult.hasErrors()) {
+            String msg = bindingResult.getFieldErrors().stream()
+                    .map(err -> err.getField() + " " + err.getDefaultMessage() + ", 当前值: '" + err.getRejectedValue() + "'")
+                    .collect(Collectors.joining("; "));
+            if (StringUtils.isNotBlank(msg)) {
+                errorMessage = msg;
+            }
         }
-        String errorMessage = sb.length() > 0 ? sb.toString() : "参数校验失败";
         log.warn("{} request error, errorCode: {}, errorMessage: {}", request.getRequestURI(), errorCode, errorMessage);
         return Response.fail(errorCode, errorMessage);
     }

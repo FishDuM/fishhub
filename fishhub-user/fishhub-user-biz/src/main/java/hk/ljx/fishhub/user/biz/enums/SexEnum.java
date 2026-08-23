@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.util.Objects;
+import java.util.Set;
 
 
 @Getter
@@ -15,13 +16,10 @@ public enum SexEnum {
 
     private final Integer value;
 
+    private static final Set<Integer> VALID_VALUES = Set.of(WOMAN.value, MAN.value);
+
     public static boolean isValid(Integer value) {
-        for (SexEnum loginTypeEnum : SexEnum.values()) {
-            if (Objects.equals(value, loginTypeEnum.getValue())) {
-                return true;
-            }
-        }
-        return false;
+        return value != null && VALID_VALUES.contains(value);
     }
 
 }

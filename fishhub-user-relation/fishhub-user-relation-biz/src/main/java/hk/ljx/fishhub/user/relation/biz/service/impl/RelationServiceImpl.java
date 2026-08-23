@@ -36,6 +36,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -64,65 +66,47 @@ public class RelationServiceImpl implements RelationService {
      */
     @Override
     public Response<?> follow(FollowUserReqVO followUserReqVO) {
-        // 关注的用户 ID
         Long followUserId = followUserReqVO.getFollowUserId();
-
         Long userId = LoginUserContextHolder.getUserId();
 
-        // 校验：无法关注自己
         if (Objects.equals(userId, followUserId)) {
             throw new BizException(ResponseCodeEnum.CANT_FOLLOW_YOUR_SELF);
         }
 
-        // 校验关注的用户是否存在（未禁用、未删除）
         FindUserByIdRspDTO findUserByIdRspDTO = userClient.findActiveById(followUserId);
-
         if (Objects.isNull(findUserByIdRspDTO)) {
             throw new BizException(ResponseCodeEnum.FOLLOW_USER_NOT_EXISTED);
         }
 
-        // 构建当前用户关注列表的 Redis Key
         String followingRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
-
-        // 当前时间
         LocalDateTime now = LocalDateTime.now();
-        // 当前时间转时间戳
         long timestamp = DateUtils.localDateTime2Timestamp(now);
-        // 缓存随机过期时间：保底7天+随机抖动，成功操作时续期
         long expireSeconds = CacheTtl.days(7, 1);
 
         Long result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey),
                 String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
 
-        // 校验 Lua 脚本执行结果
         checkLuaScriptResult(result);
 
-        // ZSET 不存在
         if (Objects.equals(result, LuaResultEnum.ZSET_NOT_EXIST.getCode())) {
-            // 从数据库查询当前用户的关注关系记录
             List<FollowingDO> followingDOS = followingDOMapper.selectByUserId(userId);
 
-            // 若记录为空，直接 ZADD 对象, 并设置过期时间
             if (CollUtil.isEmpty(followingDOS)) {
                 stringRedisTemplate.execute(FOLLOW_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey),
                         String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
-            } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
-                // 只缓存展示上限内的关注记录
+            } else {
                 List<FollowingDO> capped = followingDOS.size() > RelationListCacheService.FOLLOWING_LIST_MAX
                         ? followingDOS.subList(0, RelationListCacheService.FOLLOWING_LIST_MAX) : followingDOS;
                 String[] luaArgs = buildLuaArgs(capped, expireSeconds);
 
-                // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
                 stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), (Object[]) luaArgs);
 
-                // 再次调用上面的 Lua 脚本：follow_check_and_add.lua , 将最新的关注关系添加进去
                 result = stringRedisTemplate.execute(FOLLOW_CHECK_AND_ADD_SCRIPT, Collections.singletonList(followingRedisKey),
                         String.valueOf(followUserId), String.valueOf(timestamp), String.valueOf(expireSeconds));
                 checkLuaScriptResult(result);
             }
         }
 
-        // 发送 MQ
         FollowUserMqDTO followUserMqDTO = FollowUserMqDTO.builder()
                 .userId(userId)
                 .followUserId(followUserId)
@@ -131,19 +115,12 @@ public class RelationServiceImpl implements RelationService {
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(followUserMqDTO))
                 .build();
-
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW + ":" + MQConstants.TAG_FOLLOW;
-
-        log.info("==> 开始发送关注操作 MQ, 消息体: {}", followUserMqDTO);
-
-        // 分区键
         String hashKey = String.valueOf(userId);
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "关注用户");
         } catch (Exception e) {
-            // 发送失败：回滚 Redis 关注状态后向上抛出，避免假成功
             stringRedisTemplate.delete(followingRedisKey);
             throw e;
         }
@@ -151,67 +128,46 @@ public class RelationServiceImpl implements RelationService {
         return Response.success();
     }
 
-    /**
-     * 取关用户
-     *
-     * @param unfollowUserReqVO
-     * @return
-     */
     @Override
     public Response<?> unfollow(UnfollowUserReqVO unfollowUserReqVO) {
-        // 想要取关了用户 ID
         Long unfollowUserId = unfollowUserReqVO.getUnfollowUserId();
         Long userId = LoginUserContextHolder.getUserId();
 
-        // 无法取关自己
         if (Objects.equals(userId, unfollowUserId)) {
             throw new BizException(ResponseCodeEnum.CANT_UNFOLLOW_YOUR_SELF);
         }
 
-        // 当前用户的关注列表 Redis Key
         String followingRedisKey = RedisKeyConstants.buildUserFollowingKey(userId);
-
         LocalDateTime now = LocalDateTime.now();
         long expireSeconds = CacheTtl.days(7, 1);
 
         Long result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
                 String.valueOf(unfollowUserId), String.valueOf(expireSeconds));
 
-        // 校验 Lua 脚本执行结果
-        // 取关的用户不在关注列表中
         if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
             throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
         }
 
-        if (Objects.equals(result, LuaResultEnum.ZSET_NOT_EXIST.getCode())) { // ZSET 关注列表不存在
-            // 从数据库查询当前用户的关注关系记录
+        if (Objects.equals(result, LuaResultEnum.ZSET_NOT_EXIST.getCode())) {
             List<FollowingDO> followingDOS = followingDOMapper.selectByUserId(userId);
 
-            // 随机过期时间
-            // 保底7天+随机秒数
-
-            // 若记录为空，则表示还未关注任何人，提示还未关注对方
             if (CollUtil.isEmpty(followingDOS)) {
                 throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
-            } else { // 若记录不为空，则将关注关系数据全量同步到 Redis 中，并设置过期时间；
+            } else {
                 List<FollowingDO> capped = followingDOS.size() > RelationListCacheService.FOLLOWING_LIST_MAX
                         ? followingDOS.subList(0, RelationListCacheService.FOLLOWING_LIST_MAX) : followingDOS;
                 String[] luaArgs = buildLuaArgs(capped, expireSeconds);
 
-                // 执行 Lua 脚本，批量同步关注关系数据到 Redis 中
                 stringRedisTemplate.execute(FOLLOW_BATCH_ADD_AND_EXPIRE_SCRIPT, Collections.singletonList(followingRedisKey), (Object[]) luaArgs);
 
-                // 再次调用上面的 Lua 脚本：unfollow_check_and_delete.lua , 将取关的用户删除
                 result = stringRedisTemplate.execute(UNFOLLOW_CHECK_AND_DELETE_SCRIPT, Collections.singletonList(followingRedisKey),
                         String.valueOf(unfollowUserId), String.valueOf(expireSeconds));
-                // 再次校验结果
                 if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
                     throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
                 }
             }
         }
 
-        // 发送 MQ
         UnfollowUserMqDTO unfollowUserMqDTO = UnfollowUserMqDTO.builder()
                 .userId(userId)
                 .unfollowUserId(unfollowUserId)
@@ -220,18 +176,12 @@ public class RelationServiceImpl implements RelationService {
 
         Message<String> message = MessageBuilder.withPayload(JsonUtils.toJsonString(unfollowUserMqDTO))
                 .build();
-
-        // 通过冒号连接, 可让 MQ 发送给主题 Topic 时，携带上标签 Tag
         String destination = MQConstants.TOPIC_FOLLOW_OR_UNFOLLOW + ":" + MQConstants.TAG_UNFOLLOW;
-
-        log.info("==> 开始发送取关操作 MQ, 消息体: {}", unfollowUserMqDTO);
-
         String hashKey = String.valueOf(userId);
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "取关用户");
         } catch (Exception e) {
-            // 发送失败：回滚 Redis 关注状态后向上抛出，避免假成功
             stringRedisTemplate.delete(followingRedisKey);
             throw e;
         }
@@ -290,27 +240,26 @@ public class RelationServiceImpl implements RelationService {
         }
         // RPC: 批量查询用户信息
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
-        List<FindUserCountsByIdRspDTO> counts = countClient.findByUserIds(userIds);
-        Map<Long, FindUserCountsByIdRspDTO> countMap = new HashMap<>();
-        for (FindUserCountsByIdRspDTO count : counts) {
-            countMap.put(count.getUserId(), count);
-        }
-
-        Set<Long> followedUserIds = findCurrentUserFollowedIds(userIds);
         if (CollUtil.isEmpty(findUserByIdRspDTOS)) {
             return Collections.emptyList();
         }
+        List<FindUserCountsByIdRspDTO> counts = countClient.findByUserIds(userIds);
+        Map<Long, FindUserCountsByIdRspDTO> countMap = CollUtil.isEmpty(counts) ? Map.of() : counts.stream()
+                .collect(Collectors.toMap(FindUserCountsByIdRspDTO::getUserId, Function.identity(), (a, b) -> a));
+
+        Set<Long> followedUserIds = findCurrentUserFollowedIds(userIds);
         return findUserByIdRspDTOS.stream()
-                .map(dto -> FindFansUserRspVO.builder()
-                        .userId(dto.getId())
-                        .avatar(dto.getAvatar())
-                        .nickname(dto.getNickName())
-                        .noteTotal(Optional.ofNullable(countMap.get(dto.getId()))
-                                .map(FindUserCountsByIdRspDTO::getNoteTotal).orElse(0L))
-                        .fansTotal(Optional.ofNullable(countMap.get(dto.getId()))
-                                .map(FindUserCountsByIdRspDTO::getFansTotal).orElse(0L))
-                        .isFollowed(followedUserIds.contains(dto.getId()))
-                        .build())
+                .map(dto -> {
+                    FindUserCountsByIdRspDTO count = countMap.get(dto.getId());
+                    return FindFansUserRspVO.builder()
+                            .userId(dto.getId())
+                            .avatar(dto.getAvatar())
+                            .nickname(dto.getNickName())
+                            .noteTotal(count != null && count.getNoteTotal() != null ? count.getNoteTotal() : 0L)
+                            .fansTotal(count != null && count.getFansTotal() != null ? count.getFansTotal() : 0L)
+                            .isFollowed(followedUserIds.contains(dto.getId()))
+                            .build();
+                })
                 .toList();
     }
 
@@ -353,7 +302,9 @@ public class RelationServiceImpl implements RelationService {
     private static void checkLuaScriptResult(Long result) {
         LuaResultEnum luaResultEnum = LuaResultEnum.valueOf(result);
 
-        if (Objects.isNull(luaResultEnum)) throw new RuntimeException("Lua 返回结果错误");
+        if (Objects.isNull(luaResultEnum)) {
+            throw new BizException(ResponseCodeEnum.SYSTEM_ERROR);
+        }
         // 校验 Lua 脚本执行结果
         switch (luaResultEnum) {
             // 关注数已达到上限

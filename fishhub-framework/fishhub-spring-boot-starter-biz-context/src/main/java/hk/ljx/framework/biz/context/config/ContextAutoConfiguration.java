@@ -10,9 +10,7 @@ import org.springframework.context.annotation.Bean;
 public class ContextAutoConfiguration {
 
     @Bean
-    public FilterRegistrationBean<HeaderUserId2ContextFilter> filterFilterRegistrationBean() {
-        HeaderUserId2ContextFilter filter = new HeaderUserId2ContextFilter();
-        FilterRegistrationBean<HeaderUserId2ContextFilter> bean = new FilterRegistrationBean<>(filter);
-        return bean;
+    public FilterRegistrationBean<HeaderUserId2ContextFilter> headerUserId2ContextFilterRegistration() {
+        return new FilterRegistrationBean<>(new HeaderUserId2ContextFilter());
     }
 }

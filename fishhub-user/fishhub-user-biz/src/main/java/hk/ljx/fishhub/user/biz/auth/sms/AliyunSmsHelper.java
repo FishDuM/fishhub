@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.user.biz.auth.sms;
 
+import cn.hutool.core.util.StrUtil;
 import com.aliyun.dysmsapi20170525.Client;
 import com.aliyun.dysmsapi20170525.models.SendSmsRequest;
 import com.aliyun.dysmsapi20170525.models.SendSmsResponse;
@@ -35,7 +36,7 @@ public class AliyunSmsHelper {
 
         try {
             log.info("==> 开始短信发送, phoneSuffix: {}, signName: {}, templateCode: {}",
-                    phone.substring(Math.max(0, phone.length() - 4)), signName, templateCode);
+                    StrUtil.subSufByLength(phone, 4), signName, templateCode);
 
             // 发送短信
             SendSmsResponse response = client.sendSmsWithOptions(sendSmsRequest, runtime);

@@ -5,6 +5,7 @@ import hk.ljx.framework.common.util.CacheTtl;
 import hk.ljx.framework.common.util.RebuildLock;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.collect.Lists;
@@ -557,16 +558,11 @@ public class NoteServiceImpl implements NoteService {
         invalidateNoteRedisCaches(selectNoteDO.getCreatorId(), noteId,
                 selectNoteDO.getChannelId(), updateNoteReqVO.getChannelId());
 
-        Set<String> newMediaUrls = new HashSet<>();
-        if (StringUtils.isNotBlank(media.imgUris())) {
-            newMediaUrls.addAll(Arrays.asList(StringUtils.split(media.imgUris(), ',')));
-        }
+        List<String> newMediaUrls = new ArrayList<>(StrUtil.split(media.imgUris(), ','));
         if (StringUtils.isNotBlank(media.videoUri())) {
             newMediaUrls.add(media.videoUri());
         }
-        List<String> obsoleteMediaUrls = getMediaUrls(selectNoteDO).stream()
-                .filter(url -> !newMediaUrls.contains(url))
-                .toList();
+        List<String> obsoleteMediaUrls = CollUtil.subtractToList(getMediaUrls(selectNoteDO), newMediaUrls);
         if (CollUtil.isNotEmpty(obsoleteMediaUrls)) {
             ossRpcService.deleteFiles(obsoleteMediaUrls);
         }
@@ -703,10 +699,7 @@ public class NoteServiceImpl implements NoteService {
     }
 
     private List<String> getMediaUrls(NoteDO noteDO) {
-        List<String> mediaUrls = new ArrayList<>();
-        if (StringUtils.isNotBlank(noteDO.getImgUris())) {
-            mediaUrls.addAll(Arrays.asList(StringUtils.split(noteDO.getImgUris(), ',')));
-        }
+        List<String> mediaUrls = new ArrayList<>(StrUtil.split(noteDO.getImgUris(), ','));
         if (StringUtils.isNotBlank(noteDO.getVideoUri())) {
             mediaUrls.add(noteDO.getVideoUri());
         }

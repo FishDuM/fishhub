@@ -154,16 +154,10 @@ public class CommentLikeRealtimeService {
                 .sorted(Comparator.comparing(CommentLikeDO::getCreateTime,
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
-        long total = sorted.size();
-        int from = (pageNo - 1) * pageSize;
-        if (from >= sorted.size()) {
-            return new LikedCommentPage(List.of(), total);
-        }
-        int to = Math.min(from + pageSize, sorted.size());
-        List<Long> ids = sorted.subList(from, to).stream()
+        List<Long> ids = CollUtil.page(Math.max(0, pageNo - 1), pageSize, sorted).stream()
                 .map(CommentLikeDO::getCommentId)
                 .toList();
-        return new LikedCommentPage(ids, total);
+        return new LikedCommentPage(ids, sorted.size());
     }
 
     /** 我的点赞足迹分页结果 */

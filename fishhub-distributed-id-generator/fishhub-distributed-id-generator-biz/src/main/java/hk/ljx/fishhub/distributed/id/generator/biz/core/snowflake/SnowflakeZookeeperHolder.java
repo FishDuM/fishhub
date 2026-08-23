@@ -1,5 +1,6 @@
 package hk.ljx.fishhub.distributed.id.generator.biz.core.snowflake;
 
+import cn.hutool.core.io.FileUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Maps;
@@ -98,9 +99,9 @@ public class SnowflakeZookeeperHolder {
                 throw new IllegalStateException("System clock was turned back! Stop starting node.", e);
             }
             LOGGER.error("Start node ERROR {}", e);
-            try {
+            try (FileInputStream fis = new FileInputStream(new File(PROP_PATH.replace("{port}", port)))) {
                 Properties properties = new Properties();
-                properties.load(new FileInputStream(new File(PROP_PATH.replace("{port}", port + ""))));
+                properties.load(fis);
                 workerID = Integer.valueOf(properties.getProperty("workerID"));
                 LOGGER.warn("START FAILED ,use local node file properties workerID-{}", workerID);
             } catch (Exception e1) {
@@ -167,6 +168,8 @@ public class SnowflakeZookeeperHolder {
         }
     }
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     /**
      * 构建需要上传的数据
      *
@@ -174,15 +177,11 @@ public class SnowflakeZookeeperHolder {
      */
     private String buildData() throws JsonProcessingException {
         Endpoint endpoint = new Endpoint(ip, port, System.currentTimeMillis());
-        ObjectMapper mapper = new ObjectMapper();
-        String json = mapper.writeValueAsString(endpoint);
-        return json;
+        return MAPPER.writeValueAsString(endpoint);
     }
 
     private Endpoint deBuildData(String json) throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        Endpoint endpoint = mapper.readValue(json, Endpoint.class);
-        return endpoint;
+        return MAPPER.readValue(json, Endpoint.class);
     }
 
     /**
@@ -192,31 +191,11 @@ public class SnowflakeZookeeperHolder {
      */
     private void updateLocalWorkerID(int workerID) {
         File leafConfFile = new File(PROP_PATH.replace("{port}", port));
-        boolean exists = leafConfFile.exists();
-        LOGGER.info("file exists status is {}", exists);
-        if (exists) {
-            try {
-                FileUtils.writeStringToFile(leafConfFile, "workerID=" + workerID, false);
-                LOGGER.info("update file cache workerID is {}", workerID);
-            } catch (IOException e) {
-                LOGGER.error("update file cache error ", e);
-            }
-        } else {
-            //不存在文件,父目录页肯定不存在
-            try {
-                boolean mkdirs = leafConfFile.getParentFile().mkdirs();
-                LOGGER.info("init local file cache create parent dis status is {}, worker id is {}", mkdirs, workerID);
-                if (mkdirs) {
-                    if (leafConfFile.createNewFile()) {
-                        FileUtils.writeStringToFile(leafConfFile, "workerID=" + workerID, false);
-                        LOGGER.info("local file cache workerID is {}", workerID);
-                    }
-                } else {
-                    LOGGER.warn("create parent dir error===");
-                }
-            } catch (IOException e) {
-                LOGGER.warn("craete workerID conf file error", e);
-            }
+        try {
+            FileUtil.writeUtf8String("workerID=" + workerID, leafConfFile);
+            LOGGER.info("update file cache workerID is {}", workerID);
+        } catch (Exception e) {
+            LOGGER.error("update file cache error ", e);
         }
     }
 

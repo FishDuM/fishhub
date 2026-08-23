@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 分布式 ID 生成统一客户端门面：
- * 提供基于 Leaf Snowflake 的发号能力，并内置 2 次指数退避重试（50ms、100ms）与本地雪花算法优雅降级兜底。
+ * 提供基于 Leaf Snowflake 的发号能力，内置 2 次指数退避重试（50ms、100ms）。
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -19,7 +19,7 @@ public class DistributedIdGeneratorClient {
     private final DistributedIdGeneratorFeignApi distributedIdGeneratorFeignApi;
 
     /**
-     * 获取雪花算法 ID（带 2 次指数退避重试与本地雪花降级）
+     * 获取雪花算法 ID（带 2 次指数退避重试）
      *
      * @param bizTag 业务标识
      * @return 分布式 ID 字符串

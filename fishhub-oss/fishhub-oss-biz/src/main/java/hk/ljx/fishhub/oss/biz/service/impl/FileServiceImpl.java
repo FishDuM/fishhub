@@ -10,6 +10,7 @@ import hk.ljx.fishhub.oss.dto.DeleteFileReqDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Locale;
@@ -39,14 +40,9 @@ public class FileServiceImpl implements FileService {
         if (file.getSize() > MAX_FILE_SIZE) {
             throw new IllegalArgumentException("上传文件不能超过 100MB");
         }
-        String originalFilename = file.getOriginalFilename();
-        int dotIndex = originalFilename == null ? -1 : originalFilename.lastIndexOf('.');
-        if (dotIndex <= 0 || dotIndex == originalFilename.length() - 1) {
-            throw new IllegalArgumentException("文件名缺少合法扩展名");
-        }
-        String extension = originalFilename.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+        String extension = validateAndGetExtension(file.getOriginalFilename());
         String contentType = file.getContentType();
-        if (!ALLOWED_EXTENSIONS.contains(extension) || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
+        if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
             throw new IllegalArgumentException("仅支持图片和常见视频格式");
         }
         // 上传文件
@@ -64,18 +60,23 @@ public class FileServiceImpl implements FileService {
     @Override
     public Response<PresignedUrlRspVO> getPresignedUrl(PresignedUrlReqVO request) {
         String fileName = request.getFileName();
-        int dotIndex = fileName == null ? -1 : fileName.lastIndexOf('.');
-        if (dotIndex <= 0 || dotIndex == fileName.length() - 1) {
-            throw new IllegalArgumentException("文件名缺少合法扩展名");
-        }
-        String extension = fileName.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
-            throw new IllegalArgumentException("仅支持图片和常见视频格式");
-        }
+        validateAndGetExtension(fileName);
 
         PresignedUrlRspVO rsp = fileStrategy.getPresignedUploadUrl(
                 fileName, request.getContentType(), BUCKET_NAME, requireCurrentUserId());
         return Response.success(rsp);
+    }
+
+    private String validateAndGetExtension(String filename) {
+        String extension = StringUtils.getFilenameExtension(filename);
+        if (extension == null || extension.isBlank()) {
+            throw new IllegalArgumentException("文件名缺少合法扩展名");
+        }
+        String lowerExt = extension.toLowerCase(Locale.ROOT);
+        if (!ALLOWED_EXTENSIONS.contains(lowerExt)) {
+            throw new IllegalArgumentException("仅支持图片和常见视频格式");
+        }
+        return lowerExt;
     }
 
     private Long requireCurrentUserId() {

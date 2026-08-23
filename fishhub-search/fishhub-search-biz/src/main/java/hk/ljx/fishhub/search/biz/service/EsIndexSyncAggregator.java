@@ -1,10 +1,13 @@
 package hk.ljx.fishhub.search.biz.service;
 
+import cn.hutool.core.convert.Convert;
+import com.google.common.collect.Lists;
 import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -17,11 +20,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * ES 索引同步聚合器：合并短窗口内的多次计数变更，批量提交至 Elasticsearch。
@@ -251,50 +257,34 @@ public class EsIndexSyncAggregator {
      * 行集合转 id -> row（id 兼容 Long/BigInteger/字符串）
      */
     private Map<Long, Map<String, Object>> queryRows(List<Map<String, Object>> rows) {
-        Map<Long, Map<String, Object>> map = new HashMap<>();
-        if (rows == null) {
-            return map;
+        if (rows == null || rows.isEmpty()) {
+            return Map.of();
         }
-        for (Map<String, Object> row : rows) {
-            Object idObj = row.get("id");
-            if (idObj == null) {
-                continue;
-            }
-            map.put(Long.parseLong(String.valueOf(idObj)), row);
-        }
-        return map;
+        return rows.stream()
+                .filter(row -> row.get("id") != null)
+                .collect(Collectors.toMap(
+                        row -> Convert.toLong(row.get("id")),
+                        Function.identity(),
+                        (a, b) -> a
+                ));
     }
 
     private void submitInBatches(BulkRequest bulk) throws Exception {
         if (bulk.numberOfActions() == 0) {
             return;
         }
-        if (bulk.numberOfActions() <= BULK_BATCH_SIZE) {
-            handleBulkInsert(bulk, 0, bulk.numberOfActions());
-            return;
-        }
-        for (int from = 0; from < bulk.numberOfActions(); from += BULK_BATCH_SIZE) {
-            handleBulkInsert(bulk, from, Math.min(from + BULK_BATCH_SIZE, bulk.numberOfActions()));
-        }
-    }
-
-    private void handleBulkInsert(BulkRequest bulk, int from, int to) throws Exception {
-        BulkRequest part = new BulkRequest();
-        for (int i = from; i < to; i++) {
-            part.add(bulk.requests().get(i));
-        }
-        BulkResponse response = restHighLevelClient.bulk(part, RequestOptions.DEFAULT);
-        if (response.hasFailures()) {
-            boolean hasRealFailure = false;
-            StringBuilder errorMsg = new StringBuilder();
-            for (BulkItemResponse item : response.getItems()) {
-                if (item.isFailed()) {
-                    hasRealFailure = true;
-                    errorMsg.append(item.getFailureMessage()).append("; ");
+        for (List<DocWriteRequest<?>> batch : Lists.partition(bulk.requests(), BULK_BATCH_SIZE)) {
+            BulkRequest part = new BulkRequest();
+            batch.forEach(part::add);
+            BulkResponse response = restHighLevelClient.bulk(part, RequestOptions.DEFAULT);
+            if (response.hasFailures()) {
+                String errorMsg = Arrays.stream(response.getItems())
+                        .filter(BulkItemResponse::isFailed)
+                        .map(BulkItemResponse::getFailureMessage)
+                        .collect(Collectors.joining("; "));
+                if (!errorMsg.isEmpty()) {
+                    throw new IllegalStateException("ES 批量同步部分失败: " + errorMsg);
                 }
-            }
-            if (hasRealFailure) {
-                throw new IllegalStateException("ES 批量同步部分失败: " + errorMsg);
             }
         }
     }

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -104,24 +105,14 @@ public class RolePermissionService {
 
         Set<String> permissionKeys = new LinkedHashSet<>();
         if (CollUtil.isNotEmpty(roleIds)) {
-            Map<Long, List<Long>> roleIdPermissionIdsMap = rolePermissionDOMapper.selectByRoleIds(roleIds).stream()
-                    .collect(Collectors.groupingBy(RolePermissionDO::getRoleId,
-                            Collectors.mapping(RolePermissionDO::getPermissionId, Collectors.toList())));
             Map<Long, String> permissionIdKeyMap = permissionDOMapper.selectAppEnabledList().stream()
-                    .collect(Collectors.toMap(PermissionDO::getId, PermissionDO::getPermissionKey));
+                    .collect(Collectors.toMap(PermissionDO::getId, PermissionDO::getPermissionKey, (a, b) -> a));
 
-            roleIds.forEach(roleId -> {
-                List<Long> permissionIds = roleIdPermissionIdsMap.get(roleId);
-                if (CollUtil.isEmpty(permissionIds)) {
-                    return;
-                }
-                permissionIds.forEach(permissionId -> {
-                    String key = permissionIdKeyMap.get(permissionId);
-                    if (key != null) {
-                        permissionKeys.add(key);
-                    }
-                });
-            });
+            rolePermissionDOMapper.selectByRoleIds(roleIds).stream()
+                    .map(RolePermissionDO::getPermissionId)
+                    .map(permissionIdKeyMap::get)
+                    .filter(Objects::nonNull)
+                    .forEach(permissionKeys::add);
         }
 
         return UserRolePermissionRspDTO.builder()

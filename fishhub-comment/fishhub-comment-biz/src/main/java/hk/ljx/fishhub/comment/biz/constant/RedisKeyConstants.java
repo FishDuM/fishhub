@@ -57,11 +57,6 @@ public class RedisKeyConstants {
      */
     private static final String COMMENT_DETAIL_KEY_PREFIX = "comment:detail:v2:";
 
-    /**
-     * 构建完整 KEY
-     * @param commentId
-     * @return
-     */
     public static String buildHaveFirstReplyCommentKey(Long commentId) {
         return HAVE_FIRST_REPLY_COMMENT_KEY_PREFIX + commentId;
     }
@@ -78,11 +73,7 @@ public class RedisKeyConstants {
         return ONE_LEVEL_COMMENT_TOTAL_CACHE_LOCK_KEY_PREFIX + noteId;
     }
 
-    /**
-     * 构建评论分页 ZSET 完整 KEY
-     * @param noteId
-     * @return
-     */
+    /** 构建评论分页 ZSET 完整 KEY */
     public static String buildCommentListKey(Long noteId) {
         return COMMENT_LIST_KEY_PREFIX + noteId;
     }
@@ -92,11 +83,7 @@ public class RedisKeyConstants {
         return COMMENT_LIST_REBUILD_LOCK_KEY_PREFIX + noteId;
     }
 
-    /**
-     * 构建子评论分页 ZSET 完整 KEY
-     * @param commentId
-     * @return
-     */
+    /** 构建子评论分页 ZSET 完整 KEY */
     public static String buildChildCommentListKey(Long commentId) {
         return CHILD_COMMENT_LIST_KEY_PREFIX + commentId;
     }
@@ -106,31 +93,18 @@ public class RedisKeyConstants {
         return CHILD_COMMENT_LIST_REBUILD_LOCK_KEY_PREFIX + parentCommentId;
     }
 
-    /**
-     * 构建评论详情完整 KEY
-     * @param commentId
-     * @return
-     */
+    /** 构建评论详情完整 KEY */
     public static String buildCommentDetailKey(Object commentId) {
         return COMMENT_DETAIL_KEY_PREFIX + commentId;
     }
 
-    /**
-     * 构建用户已点赞的评论 ID Set 完整 KEY
-     * @param userId
-     * @return
-     */
+    /** 构建用户已点赞的评论 ID Set 完整 KEY */
     public static String buildUserCommentLikeSetKey(Long userId) {
         return USER_COMMENT_LIKE_SET_KEY + userId;
     }
 
-    /**
-     * 构建我的点赞足迹 ZSet 完整 KEY
-     * @param userId
-     * @return
-     */
+    /** 构建我的点赞足迹 ZSet 完整 KEY */
     public static String buildUserCommentLikeZSetKey(Long userId) {
         return USER_COMMENT_LIKE_ZSET_KEY + userId;
     }
-
 }

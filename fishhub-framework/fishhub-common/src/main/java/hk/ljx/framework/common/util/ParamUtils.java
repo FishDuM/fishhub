@@ -14,6 +14,7 @@ public final class ParamUtils {
 
     // 定义特殊字符的正则表达式
     private static final String NICK_NAME_REGEX = "[!@#$%^&*(),.?\":{}|<>]";
+    private static final Pattern NICK_NAME_PATTERN = Pattern.compile(NICK_NAME_REGEX);
 
     /**
      * 昵称校验
@@ -31,8 +32,7 @@ public final class ParamUtils {
         }
 
         // 检查是否含有特殊字符
-        Pattern pattern = Pattern.compile(NICK_NAME_REGEX);
-        return !pattern.matcher(nickname).find();
+        return !NICK_NAME_PATTERN.matcher(nickname).find();
     }
     private static final int ID_MIN_LENGTH = 6;
     private static final int ID_MAX_LENGTH = 32;

@@ -172,7 +172,7 @@ public class FeedServiceImpl implements FeedService {
     private DiscoverPageSnapshot loadDiscoverPageSnapshotFromMySql(Long channelId, Long cursor) {
         List<NoteDO> result = noteDOMapper.selectDiscoverPageListByCursor(channelId, cursor, PAGE_SIZE + 1);
         boolean hasMore = result.size() > PAGE_SIZE;
-        List<NoteDO> page = hasMore ? result.subList(0, (int) PAGE_SIZE) : result;
+        List<NoteDO> page = CollUtil.sub(result, 0, (int) PAGE_SIZE);
         List<NoteItemRspVO> notes = toNoteItems(page);
         notes.forEach(note -> note.setIsLiked(false));
         // 重建时把计数随快照一起缓存，命中路径免 count Feign。

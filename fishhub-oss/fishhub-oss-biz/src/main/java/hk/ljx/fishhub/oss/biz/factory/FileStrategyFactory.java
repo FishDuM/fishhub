@@ -31,7 +31,7 @@ public class FileStrategyFactory {
 
     @Bean
     @RefreshScope
-    public FileStrategy getFileStrategy() {
+    public FileStrategy fileStrategy() {
         if (StringUtils.equals(strategyType, "minio")) {
             MinioProperties minioProperties = minioPropertiesProvider.getIfAvailable();
             MinioClient minioClient = minioClientProvider.getIfAvailable();

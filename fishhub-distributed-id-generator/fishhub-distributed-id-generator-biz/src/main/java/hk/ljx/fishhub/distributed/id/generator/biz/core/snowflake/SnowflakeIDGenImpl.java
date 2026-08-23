@@ -1,10 +1,10 @@
 package hk.ljx.fishhub.distributed.id.generator.biz.core.snowflake;
 
+import cn.hutool.core.net.NetUtil;
 import com.google.common.base.Preconditions;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.IDGen;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Result;
 import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Status;
-import hk.ljx.fishhub.distributed.id.generator.biz.core.common.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +44,7 @@ public class SnowflakeIDGenImpl implements IDGen {
     public SnowflakeIDGenImpl(String zkAddress, int port, long twepoch) {
         this.twepoch = twepoch;
         Preconditions.checkArgument(timeGen() > twepoch, "Snowflake not support twepoch gt currentTime");
-        final String ip = Utils.getIp();
+        final String ip = NetUtil.getLocalhostStr();
         SnowflakeZookeeperHolder holder = new SnowflakeZookeeperHolder(ip, String.valueOf(port), zkAddress);
         LOGGER.info("twepoch:{} ,ip:{} ,zkAddress:{} port:{}", twepoch, ip, zkAddress, port);
         boolean initFlag = holder.init();

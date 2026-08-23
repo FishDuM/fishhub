@@ -3,32 +3,29 @@ package hk.ljx.framework.common.util;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 
+public final class NumberUtils {
 
-public class NumberUtils {
+    private static final ThreadLocal<DecimalFormat> DF_HOLDER = ThreadLocal.withInitial(() -> {
+        DecimalFormat df = new DecimalFormat("#.#");
+        df.setRoundingMode(RoundingMode.DOWN);
+        return df;
+    });
+
+    private NumberUtils() {
+    }
 
     /**
-     * 数字转换字符串工具
-     *
-     * @param number
-     * @return
+     * 数字转换为易读字符串（如 1.2万、3.5亿）
      */
     public static String formatNumberString(long number) {
         if (number < 10000) {
-            return String.valueOf(number);  // 小于 1 万显示原始数字
-        } else if (number >= 10000 && number < 100000000) {
-            // 小于 1 亿，显示万单位
+            return String.valueOf(number);
+        } else if (number < 100000000) {
             double result = number / 10000.0;
-            DecimalFormat df = new DecimalFormat("#.#"); // 保留 1 位小数
-            df.setRoundingMode(RoundingMode.DOWN); // 禁用四舍五入
-            String formatted = df.format(result);
-            return formatted + "万";
+            return DF_HOLDER.get().format(result) + "万";
         } else {
-            // 超过 1 亿，显示亿单位
             double result = number / 100000000.0;
-            DecimalFormat df = new DecimalFormat("#.#");
-            df.setRoundingMode(RoundingMode.DOWN);
-            return df.format(result) + "亿";
+            return DF_HOLDER.get().format(result) + "亿";
         }
     }
-
 }

@@ -53,18 +53,10 @@ public class NoteContentServiceImpl implements NoteContentService {
      */
     @Override
     public Response<FindNoteContentRspDTO> findNoteContent(FindNoteContentReqDTO findNoteContentReqDTO) {
-        // 笔记内容 UUID
         String uuid = findNoteContentReqDTO.getUuid();
-        // 根据笔记 ID 查询笔记内容
-        Optional<NoteContentDO> optional = noteContentRepository.findById(UUID.fromString(uuid));
+        NoteContentDO noteContentDO = noteContentRepository.findById(UUID.fromString(uuid))
+                .orElseThrow(() -> new BizException(ResponseCodeEnum.NOTE_CONTENT_NOT_FOUND));
 
-        // 若笔记内容不存在
-        if (!optional.isPresent()) {
-            throw new BizException(ResponseCodeEnum.NOTE_CONTENT_NOT_FOUND);
-        }
-
-        NoteContentDO noteContentDO = optional.get();
-        // 构建返参 DTO
         FindNoteContentRspDTO findNoteContentRspDTO = FindNoteContentRspDTO.builder()
                 .uuid(noteContentDO.getId())
                 .content(noteContentDO.getContent())

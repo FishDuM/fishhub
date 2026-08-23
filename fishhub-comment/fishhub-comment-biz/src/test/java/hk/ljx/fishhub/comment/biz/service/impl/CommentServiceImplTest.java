@@ -9,6 +9,8 @@ import hk.ljx.fishhub.comment.biz.model.vo.LikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.model.vo.UnlikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
+import hk.ljx.fishhub.comment.biz.model.vo.FindCommentItemRspVO;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.AfterEach;
@@ -26,6 +28,7 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -239,17 +242,17 @@ class CommentServiceImplTest {
         parentUser.setNickName("Alice");
         parentUser.setAvatar("alice.png");
 
-        hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO replyUser = new hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO();
+        FindUserByIdRspDTO replyUser = new FindUserByIdRspDTO();
         replyUser.setId(20L);
         replyUser.setNickName("Bob");
         replyUser.setAvatar("bob.png");
 
-        java.util.Map<Long, hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO> userMap = java.util.Map.of(10L, parentUser, 20L, replyUser);
-        java.util.Map<String, String> contentMap = java.util.Map.of("uuid-1", "这是一级评论", "uuid-2", "这是首条回复");
+        Map<Long, FindUserByIdRspDTO> userMap = Map.of(10L, parentUser, 20L, replyUser);
+        Map<String, String> contentMap = Map.of("uuid-1", "这是一级评论", "uuid-2", "这是首条回复");
 
-        hk.ljx.fishhub.comment.biz.model.vo.FindCommentItemRspVO parentVO = ReflectionTestUtils.invokeMethod(
+        FindCommentItemRspVO parentVO = ReflectionTestUtils.invokeMethod(
                 service, "toCommentItemVO", parentDO, userMap, contentMap);
-        hk.ljx.fishhub.comment.biz.model.vo.FindCommentItemRspVO replyVO = ReflectionTestUtils.invokeMethod(
+        FindCommentItemRspVO replyVO = ReflectionTestUtils.invokeMethod(
                 service, "toCommentItemVO", replyDO, userMap, contentMap);
         parentVO.setFirstReplyComment(replyVO);
 

@@ -86,16 +86,11 @@ public class NoteServiceImpl implements NoteService {
 
         if (Objects.nonNull(notePublishTimeRangeEnum)) {
             String endTime = LocalDateTime.now().format(DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
-            String startTime = null;
-
-            switch (notePublishTimeRangeEnum) {
-                case DAY ->
-                    startTime = DateUtils.localDateTime2String(LocalDateTime.now().minusDays(1)); // 一天之前的时间
-                case WEEK ->
-                    startTime = DateUtils.localDateTime2String(LocalDateTime.now().minusWeeks(1)); // 一周之前的时间
-                case HALF_YEAR ->
-                    startTime = DateUtils.localDateTime2String(LocalDateTime.now().minusMonths(6)); // 半年之前的时间
-            }
+            String startTime = switch (notePublishTimeRangeEnum) {
+                case DAY -> DateUtils.localDateTime2String(LocalDateTime.now().minusDays(1));
+                case WEEK -> DateUtils.localDateTime2String(LocalDateTime.now().minusWeeks(1));
+                case HALF_YEAR -> DateUtils.localDateTime2String(LocalDateTime.now().minusMonths(6));
+            };
             if (StringUtils.isNoneBlank(startTime)) {
                 boolQueryBuilder.filter(QueryBuilders.rangeQuery(NoteIndex.FIELD_NOTE_CREATE_TIME)
                         .gte(startTime)

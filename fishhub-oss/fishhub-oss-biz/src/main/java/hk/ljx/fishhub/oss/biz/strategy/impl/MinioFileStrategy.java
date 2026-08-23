@@ -1,5 +1,7 @@
 package hk.ljx.fishhub.oss.biz.strategy.impl;
 
+import cn.hutool.core.io.file.FileNameUtil;
+import cn.hutool.core.util.IdUtil;
 import hk.ljx.fishhub.oss.biz.config.MinioProperties;
 import hk.ljx.fishhub.oss.biz.model.vo.PresignedUrlRspVO;
 import hk.ljx.fishhub.oss.biz.strategy.FileStrategy;
@@ -17,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.net.URI;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -37,23 +38,13 @@ public class MinioFileStrategy implements FileStrategy  {
     public String uploadFile(MultipartFile file, String bucketName, Long ownerId) {
         log.info("## 上传文件至 Minio ...");
 
-        // 判断文件是否为空
-        if (file == null || file.getSize() == 0) {
-            log.error("==> 上传文件异常：文件大小为空 ...");
-            throw new RuntimeException("文件大小不能为空");
-        }
-
         // 文件的原始名称
         String originalFileName = file.getOriginalFilename();
         // 文件的 Content-Type
         String contentType = file.getContentType();
 
-        // 生成存储对象的名称（将 UUID 字符串中的 - 替换成空字符串）
-        String key = UUID.randomUUID().toString().replace("-", "");
-        // 获取文件的后缀，如 .jpg
-        String suffix = originalFileName.substring(originalFileName.lastIndexOf(".")).toLowerCase(Locale.ROOT);
-
-        // 拼接上文件后缀，即为要存储的文件名
+        String key = IdUtil.fastSimpleUUID();
+        String suffix = "." + FileNameUtil.extName(originalFileName).toLowerCase(Locale.ROOT);
         String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
 
         log.info("==> 开始上传文件至 Minio, ObjectName: {}", objectName);
@@ -101,8 +92,9 @@ public class MinioFileStrategy implements FileStrategy  {
     @Override
     @SneakyThrows
     public PresignedUrlRspVO getPresignedUploadUrl(String fileName, String contentType, String bucketName, Long ownerId) {
-        String key = UUID.randomUUID().toString().replace("-", "");
-        String suffix = fileName != null && fileName.contains(".") ? fileName.substring(fileName.lastIndexOf(".")).toLowerCase(Locale.ROOT) : "";
+        String key = IdUtil.fastSimpleUUID();
+        String ext = FileNameUtil.extName(fileName);
+        String suffix = ext == null || ext.isEmpty() ? "" : "." + ext.toLowerCase(Locale.ROOT);
         String objectName = String.format("user/%d/%s%s", ownerId, key, suffix);
 
         GetPresignedObjectUrlArgs.Builder builder = GetPresignedObjectUrlArgs.builder()

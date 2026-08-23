@@ -45,24 +45,16 @@ public class CommentContentServiceImpl implements CommentContentService {
     public Response<?> batchAddCommentContent(BatchAddCommentContentReqDTO batchAddCommentContentReqDTO) {
         List<CommentContentDO> contentDOS = batchAddCommentContentReqDTO.getComments()
                 .stream()
-                .map(commentContentReqDTO -> {
-                    // 主键
-                    CommentContentPrimaryKey commentContentPrimaryKey = CommentContentPrimaryKey.builder()
-                            .noteId(commentContentReqDTO.getNoteId())
-                            .yearMonth(commentContentReqDTO.getYearMonth())
-                            .contentId(UUID.fromString(commentContentReqDTO.getContentId()))
-                            .build();
+                .map(commentContentReqDTO -> CommentContentDO.builder()
+                        .primaryKey(CommentContentPrimaryKey.builder()
+                                .noteId(commentContentReqDTO.getNoteId())
+                                .yearMonth(commentContentReqDTO.getYearMonth())
+                                .contentId(UUID.fromString(commentContentReqDTO.getContentId()))
+                                .build())
+                        .content(commentContentReqDTO.getContent())
+                        .build())
+                .toList();
 
-                    // DO 实体类
-                    CommentContentDO commentContentDO = CommentContentDO.builder()
-                            .primaryKey(commentContentPrimaryKey)
-                            .content(commentContentReqDTO.getContent())
-                            .build();
-
-                    return commentContentDO;
-                }).toList();
-
-        // 批量插入
         cassandraTemplate.batchOps()
                 .insert(contentDOS)
                 .execute();

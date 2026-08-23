@@ -2,6 +2,7 @@ package hk.ljx.fishhub.count.biz.service.impl;
 
 import hk.ljx.framework.common.util.CacheTtl;
 
+import cn.hutool.core.util.NumberUtil;
 import com.alibaba.csp.sentinel.annotation.SentinelResource;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.google.common.collect.Maps;
@@ -78,11 +79,11 @@ public class UserCountServiceImpl implements UserCountService {
         String followingTotal = counts.get(3);
         String likeTotal = counts.get(4);
 
-        findUserCountByIdRspDTO.setCollectTotal(Objects.isNull(collectTotal) ? 0 : Long.parseLong(collectTotal));
-        findUserCountByIdRspDTO.setFansTotal(Objects.isNull(fansTotal) ? 0 : Long.parseLong(fansTotal));
-        findUserCountByIdRspDTO.setNoteTotal(Objects.isNull(noteTotal) ? 0 : Long.parseLong(noteTotal));
-        findUserCountByIdRspDTO.setFollowingTotal(Objects.isNull(followingTotal) ? 0 : Long.parseLong(followingTotal));
-        findUserCountByIdRspDTO.setLikeTotal(Objects.isNull(likeTotal) ? 0 : Long.parseLong(likeTotal));
+        findUserCountByIdRspDTO.setCollectTotal(NumberUtil.parseLong(collectTotal, 0L));
+        findUserCountByIdRspDTO.setFansTotal(NumberUtil.parseLong(fansTotal, 0L));
+        findUserCountByIdRspDTO.setNoteTotal(NumberUtil.parseLong(noteTotal, 0L));
+        findUserCountByIdRspDTO.setFollowingTotal(NumberUtil.parseLong(followingTotal, 0L));
+        findUserCountByIdRspDTO.setLikeTotal(NumberUtil.parseLong(likeTotal, 0L));
 
         // 若 Hash 中有任何一个计数为空
         boolean isAnyNull = counts.stream().anyMatch(Objects::isNull);
@@ -92,20 +93,22 @@ public class UserCountServiceImpl implements UserCountService {
             UserCountDO userCountDO = userCountDOMapper.selectByUserId(userId);
 
             // 判断 Redis 中对应计数，若为空，则使用 DO 中的计数
-            if (Objects.nonNull(userCountDO) && Objects.isNull(collectTotal)) {
-                findUserCountByIdRspDTO.setCollectTotal(Counts.clamp0(userCountDO.getCollectTotal()));
-            }
-            if (Objects.nonNull(userCountDO) && Objects.isNull(fansTotal)) {
-                findUserCountByIdRspDTO.setFansTotal(Counts.clamp0(userCountDO.getFansTotal()));
-            }
-            if (Objects.nonNull(userCountDO) && Objects.isNull(noteTotal)) {
-                findUserCountByIdRspDTO.setNoteTotal(Counts.clamp0(userCountDO.getNoteTotal()));
-            }
-            if (Objects.nonNull(userCountDO) && Objects.isNull(followingTotal)) {
-                findUserCountByIdRspDTO.setFollowingTotal(Counts.clamp0(userCountDO.getFollowingTotal()));
-            }
-            if (Objects.nonNull(userCountDO) && Objects.isNull(likeTotal)) {
-                findUserCountByIdRspDTO.setLikeTotal(Counts.clamp0(userCountDO.getLikeTotal()));
+            if (Objects.nonNull(userCountDO)) {
+                if (Objects.isNull(collectTotal)) {
+                    findUserCountByIdRspDTO.setCollectTotal(Counts.clamp0(userCountDO.getCollectTotal()));
+                }
+                if (Objects.isNull(fansTotal)) {
+                    findUserCountByIdRspDTO.setFansTotal(Counts.clamp0(userCountDO.getFansTotal()));
+                }
+                if (Objects.isNull(noteTotal)) {
+                    findUserCountByIdRspDTO.setNoteTotal(Counts.clamp0(userCountDO.getNoteTotal()));
+                }
+                if (Objects.isNull(followingTotal)) {
+                    findUserCountByIdRspDTO.setFollowingTotal(Counts.clamp0(userCountDO.getFollowingTotal()));
+                }
+                if (Objects.isNull(likeTotal)) {
+                    findUserCountByIdRspDTO.setLikeTotal(Counts.clamp0(userCountDO.getLikeTotal()));
+                }
             }
 
             // 异步同步到 Redis 缓存中, 以便下次查询能够命中缓存
@@ -217,8 +220,7 @@ public class UserCountServiceImpl implements UserCountService {
             }
 
             if (userIdsNeedQuery.contains(userId)) {
-                int userIndex = userIds.indexOf(userId);
-                syncHashCount2Redis(CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(userIndex)), userCountDO,
+                syncHashCount2Redis(CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(i)), userCountDO,
                         rawCollect, rawFans, rawNote, rawFollowing, rawLike);
             }
         }

@@ -10,18 +10,10 @@ public interface CommentLikeDOMapper {
     int deleteByCommentIds(@Param("commentIds") List<Long> commentIds);
     int deleteByPrimaryKey(Long id);
 
-    /**
-     * 批量删除点赞记录
-     * @param unlikes
-     * @return
-     */
+    /** 批量删除点赞记录 */
     int batchDelete(@Param("unlikes") List<LikeUnlikeCommentMqDTO> unlikes);
 
-    /**
-     * 批量添加点赞记录
-     * @param likes
-     * @return
-     */
+    /** 批量添加点赞记录 */
     int batchInsert(@Param("likes") List<LikeUnlikeCommentMqDTO> likes);
 
     int insertIfAbsent(LikeUnlikeCommentMqDTO operation);
@@ -34,28 +26,14 @@ public interface CommentLikeDOMapper {
 
     CommentLikeDO selectByPrimaryKey(Long id);
 
-    /**
-     * 查询某个评论是否被点赞
-     *
-     * @param userId
-     * @param commentId
-     * @return
-     */
+    /** 查询某个评论是否被点赞 */
     int selectCountByUserIdAndCommentId(@Param("userId") Long userId,
                                         @Param("commentId") Long commentId);
 
-    /**
-     * 查询对应用户点赞的所有评论
-     * @param userId
-     * @return
-     */
+    /** 查询对应用户点赞的所有评论 */
     List<CommentLikeDO> selectByUserId(@Param("userId") Long userId);
 
-    /**
-     * 查询用户点赞过的全部评论（含点赞时间，用于 ZSet 足迹重建）
-     * @param userId
-     * @return
-     */
+    /** 查询用户点赞过的全部评论（含点赞时间，用于 ZSet 足迹重建） */
     List<CommentLikeDO> selectLikedCommentsByUserId(@Param("userId") Long userId);
 
     List<Long> selectLikedCommentIds(@Param("userId") Long userId,

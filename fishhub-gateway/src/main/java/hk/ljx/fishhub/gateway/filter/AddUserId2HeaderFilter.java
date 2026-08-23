@@ -2,6 +2,7 @@ package hk.ljx.fishhub.gateway.filter;
 
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.lang.Validator;
+import cn.hutool.core.util.StrUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -46,16 +47,9 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
 
     @PostConstruct
     public void initTrustedProxies() {
-        Set<String> set = new HashSet<>();
-        if (StringUtils.isNotBlank(trustedProxyIps)) {
-            for (String ip : trustedProxyIps.split(",")) {
-                String trimmed = ip.trim();
-                if (!trimmed.isEmpty()) {
-                    set.add(trimmed);
-                }
-            }
-        }
-        this.trustedProxySet = set;
+        this.trustedProxySet = StringUtils.isNotBlank(trustedProxyIps)
+                ? Set.copyOf(StrUtil.splitTrim(trustedProxyIps, ','))
+                : Set.of();
     }
 
     @Override
@@ -141,6 +135,6 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
     }
 
     private static boolean isValidIp(String ip) {
-        return StringUtils.isNotBlank(ip) && (cn.hutool.core.lang.Validator.isIpv4(ip) || cn.hutool.core.lang.Validator.isIpv6(ip));
+        return StringUtils.isNotBlank(ip) && (Validator.isIpv4(ip) || Validator.isIpv6(ip));
     }
 }

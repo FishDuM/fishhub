@@ -59,8 +59,8 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
             result = Response.fail(ResponseCodeEnum.SYSTEM_ERROR);
         }
 
-        // 设置响应头的内容类型为 application/json;charset=UTF-8，表示响应体为 JSON 格式
-        response.getHeaders().setContentType(MediaType.APPLICATION_JSON_UTF8);
+        // 设置响应头的内容类型为 application/json
+        response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
         // 设置 body 响应体
         return response.writeWith(Mono.fromSupplier(() -> { // 使用 Mono.fromSupplier 创建响应体
             DataBufferFactory bufferFactory = response.bufferFactory();

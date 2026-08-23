@@ -62,7 +62,7 @@ public class SaTokenConfigure {
 
     // 注册 Sa-Token全局过滤器
     @Bean
-    public SaReactorFilter getSaReactorFilter() {
+    public SaReactorFilter saReactorFilter() {
         return new SaReactorFilter()
                 // 拦截地址
                 .addInclude("/**")    /* 拦截全部path */
@@ -107,14 +107,10 @@ public class SaTokenConfigure {
                 })
                 // 异常处理方法：每次setAuth函数出现异常时进入
                 .setError(e -> {
-                    // 手动抛出异常，抛给全局异常处理器
-                    if (e instanceof NotLoginException) {
-                        throw new NotLoginException(e.getMessage(), null, null);
-                    } else if (e instanceof NotPermissionException || e instanceof NotRoleException) {
-                        throw new NotPermissionException(e.getMessage());
-                    } else {
-                        throw new RuntimeException(e.getMessage());
+                    if (e instanceof RuntimeException re) {
+                        throw re;
                     }
+                    throw new RuntimeException(e);
                 })
                 ;
     }

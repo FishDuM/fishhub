@@ -5,7 +5,6 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
-import hk.ljx.fishhub.count.biz.model.dto.AggregationNoteCountMqDTO;
 import hk.ljx.fishhub.count.biz.model.dto.CountNoteMqDTO;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
@@ -17,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 /**
@@ -108,24 +108,31 @@ public abstract class AbstractNoteCountAggregationConsumer {
             if (freshEvents.isEmpty()) {
                 return false;
             }
-            List<AggregationNoteCountMqDTO> countList = aggregateCounts(freshEvents);
-            log.info("## 【{}】聚合后的计数数据: {}", bizLabel(), JsonUtils.toJsonString(countList));
+            // 1. 按 noteId 升序聚合并更新笔记计数
+            freshEvents.stream()
+                    .collect(Collectors.groupingBy(
+                            CountNoteMqDTO::getNoteId,
+                            TreeMap::new,
+                            Collectors.summingInt(e -> deltaOf(e.getType()))
+                    ))
+                    .forEach((noteId, delta) -> {
+                        if (delta != 0) {
+                            updateNoteCount(noteId, delta);
+                        }
+                    });
 
-            // 1. 按 noteId 升序更新笔记计数
-            countList.stream()
-                    .collect(Collectors.groupingBy(AggregationNoteCountMqDTO::getNoteId,
-                            Collectors.summingInt(AggregationNoteCountMqDTO::getCount)))
-                    .entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> updateNoteCount(entry.getKey(), entry.getValue()));
-
-            // 2. 按 creatorId 升序更新用户计数
-            countList.stream()
-                    .collect(Collectors.groupingBy(AggregationNoteCountMqDTO::getCreatorId,
-                            Collectors.summingInt(AggregationNoteCountMqDTO::getCount)))
-                    .entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> updateUserCount(entry.getKey(), entry.getValue()));
+            // 2. 按 creatorId 升序聚合并更新用户计数
+            freshEvents.stream()
+                    .collect(Collectors.groupingBy(
+                            CountNoteMqDTO::getNoteCreatorId,
+                            TreeMap::new,
+                            Collectors.summingInt(e -> deltaOf(e.getType()))
+                    ))
+                    .forEach((creatorId, delta) -> {
+                        if (delta != 0) {
+                            updateUserCount(creatorId, delta);
+                        }
+                    });
             return true;
         });
 
@@ -141,27 +148,6 @@ public abstract class AbstractNoteCountAggregationConsumer {
         if (!applied) {
             log.info("{}计数消息已处理，忽略重复投递, eventCount={}", bizLabel(), events.size());
         }
-    }
-
-    private List<AggregationNoteCountMqDTO> aggregateCounts(List<CountNoteMqDTO> freshEvents) {
-        Map<Long, List<CountNoteMqDTO>> groupMap = freshEvents.stream()
-                .collect(Collectors.groupingBy(CountNoteMqDTO::getNoteId));
-        List<AggregationNoteCountMqDTO> countList = new ArrayList<>();
-        for (Map.Entry<Long, List<CountNoteMqDTO>> entry : groupMap.entrySet()) {
-            Long noteId = entry.getKey();
-            Long creatorId = null;
-            int finalCount = 0;
-            for (CountNoteMqDTO event : entry.getValue()) {
-                creatorId = event.getNoteCreatorId();
-                finalCount += deltaOf(event.getType());
-            }
-            countList.add(AggregationNoteCountMqDTO.builder()
-                    .noteId(noteId)
-                    .creatorId(creatorId)
-                    .count(finalCount)
-                    .build());
-        }
-        return countList;
     }
 
     private List<CountNoteMqDTO> parseEvents(String body) {

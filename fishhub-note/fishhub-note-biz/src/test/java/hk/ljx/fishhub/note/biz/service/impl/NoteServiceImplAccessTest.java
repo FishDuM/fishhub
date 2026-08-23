@@ -9,6 +9,7 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteDetailReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindPublishedNoteListReqVO;
 import hk.ljx.fishhub.count.client.CountClient;
+import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +24,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -231,13 +235,13 @@ class NoteServiceImplAccessTest {
 
     @Test
     void shouldReturnEmbeddedCountsAndHydrateIsLikedOnPublishedListCacheHit() {
-        hk.ljx.framework.biz.context.holder.LoginUserContextHolder.setUserId(2L);
+        LoginUserContextHolder.setUserId(2L);
         try {
             when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
             when(valueOperations.get(RedisKeyConstants.buildPublishedNoteListKey(1L)))
                     .thenReturn("[{\"noteId\":11,\"type\":0,\"title\":\"t\",\"likeTotal\":\"8\",\"isLiked\":false}]");
             when(noteInteractionCacheService.findLikedNoteIds(eq(2L), eq(List.of(11L))))
-                    .thenReturn(java.util.Set.of(11L));
+                    .thenReturn(Set.of(11L));
 
             FindPublishedNoteListReqVO request = new FindPublishedNoteListReqVO();
             request.setUserId(1L);
