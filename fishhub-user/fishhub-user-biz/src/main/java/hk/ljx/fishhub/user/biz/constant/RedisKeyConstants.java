@@ -47,48 +47,16 @@ public class RedisKeyConstants {
     }
 
     /**
-     * 验证码 KEY 前缀
+     * 图形验证码 KEY 前缀
      */
-    private static final String VERIFICATION_CODE_KEY_PREFIX = "verification_code:";
+    private static final String CAPTCHA_KEY_PREFIX = "auth:captcha:";
 
     /**
-     * 每手机号分钟限流 KEY 前缀
-     */
-    private static final String PHONE_RATE_LIMIT_KEY_PREFIX = "verification_code:minute:phone:";
-
-    /**
-     * 每 IP 分钟限流 KEY 前缀（依赖网关透传 X-Forwarded-For）
-     */
-    private static final String IP_RATE_LIMIT_KEY_PREFIX = "verification_code:minute:ip:";
-
-    /**
-     * 登录接口限流 KEY 前缀（与发送验证码限流独立）
-     */
-    private static final String LOGIN_PHONE_RATE_LIMIT_KEY_PREFIX = "login:minute:phone:";
-    private static final String LOGIN_IP_RATE_LIMIT_KEY_PREFIX = "login:minute:ip:";
-
-    /**
-     * 构建验证码 KEY
-     * @param phone
+     * 构建图形验证码 KEY
+     * @param captchaKey
      * @return
      */
-    public static String buildVerificationCodeKey(String phone) {
-        return VERIFICATION_CODE_KEY_PREFIX + phone;
-    }
-
-    public static String buildPhoneRateLimitKey(String phone) {
-        return PHONE_RATE_LIMIT_KEY_PREFIX + phone;
-    }
-
-    public static String buildIpRateLimitKey(String ip) {
-        return IP_RATE_LIMIT_KEY_PREFIX + ip;
-    }
-
-    public static String buildLoginPhoneRateLimitKey(String phone) {
-        return LOGIN_PHONE_RATE_LIMIT_KEY_PREFIX + phone;
-    }
-
-    public static String buildLoginIpRateLimitKey(String ip) {
-        return LOGIN_IP_RATE_LIMIT_KEY_PREFIX + ip;
+    public static String buildCaptchaKey(String captchaKey) {
+        return CAPTCHA_KEY_PREFIX + captchaKey;
     }
 }

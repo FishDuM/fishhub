@@ -14,6 +14,8 @@ import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
+
 
 @Component
 @RequiredArgsConstructor
@@ -21,6 +23,21 @@ public class UserRpcService {
 
     private final UserService userService;
     private final RolePermissionService rolePermissionService;
+
+    /**
+     * 用户注册
+     *
+     * @param phone
+     * @param encodePassword
+     * @return
+     */
+    public Long registerUser(String phone, String encodePassword) {
+        Response<Long> response = userService.register(phone, encodePassword);
+        if (response == null || !response.isSuccess()) {
+            throw new BizException(ResponseCodeEnum.REGISTER_FAIL);
+        }
+        return response.getData();
+    }
 
     /**
      * 查询手机号对应的可登录账号；不存在时创建默认账号。
@@ -51,13 +68,18 @@ public class UserRpcService {
         FindUserByPhoneReqDTO request = new FindUserByPhoneReqDTO();
         request.setPhone(phone);
 
-        Response<FindUserByPhoneRspDTO> response = userService.findByPhone(request);
-
-        if (response == null || !response.isSuccess()) {
-            return null;
+        try {
+            Response<FindUserByPhoneRspDTO> response = userService.findByPhone(request);
+            if (response == null || !response.isSuccess()) {
+                return null;
+            }
+            return response.getData();
+        } catch (BizException e) {
+            if (Objects.equals(e.getErrorCode(), ResponseCodeEnum.USER_NOT_FOUND.getErrorCode())) {
+                return null;
+            }
+            throw e;
         }
-
-        return response.getData();
     }
 
     /**

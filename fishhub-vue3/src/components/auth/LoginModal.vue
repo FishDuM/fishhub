@@ -3,7 +3,6 @@
 
     <div class="absolute inset-0 bg-gray-800/25" style="z-index: 9998;" @click="onClose"></div>
 
-
     <Transition
       name="zoom"
       appear
@@ -22,30 +21,29 @@
           </svg>
         </button>
 
-
         <div class="text-center px-[72px] py-10">
-          <h2 class="text-[18px] font-bold mb-12">手机号登录</h2>
+          <h2 class="text-[18px] font-bold mb-8">{{ loginMode === 'login' ? '账号登录' : '新用户注册' }}</h2>
 
           <div class="flex mb-6 border-b border-gray-100">
             <button
               type="button"
               class="flex-1 pb-3 text-[15px] font-medium transition-colors border-b-2"
-              :class="loginMode === 'code' ? 'text-[var(--color-primary)] border-[var(--color-primary)]' : 'text-gray-500 border-transparent'"
-              @click="loginMode = 'code'"
+              :class="loginMode === 'login' ? 'text-[var(--color-primary)] border-[var(--color-primary)]' : 'text-gray-500 border-transparent'"
+              @click="switchMode('login')"
             >
-              验证码登录
+              登录
             </button>
             <button
               type="button"
               class="flex-1 pb-3 text-[15px] font-medium transition-colors border-b-2"
-              :class="loginMode === 'password' ? 'text-[var(--color-primary)] border-[var(--color-primary)]' : 'text-gray-500 border-transparent'"
-              @click="loginMode = 'password'"
+              :class="loginMode === 'register' ? 'text-[var(--color-primary)] border-[var(--color-primary)]' : 'text-gray-500 border-transparent'"
+              @click="switchMode('register')"
             >
-              密码登录
+              注册
             </button>
           </div>
 
-
+          <!-- 手机号 -->
           <div class="relative mb-4">
             <div class="flex items-center bg-[var(--color-input-surface)] rounded-3xl h-[48px] px-4">
               <div class="flex items-center text-[15px] text-gray-800">
@@ -64,52 +62,67 @@
             </div>
           </div>
 
-
-          <div v-if="loginMode === 'code'" class="relative mb-8">
-            <div class="flex items-center bg-[var(--color-input-surface)] rounded-3xl h-[48px] px-4">
-              <input
-                type="text"
-                placeholder="输入验证码"
-                class="flex-1 outline-none text-[15px] bg-transparent caret-[var(--color-primary)]"
-                v-model="code"
-                maxlength="6"
-                @input="formatCode"
-              >
-              <button
-                class="text-[15px] font-medium ml-4 cursor-pointer transition-colors"
-                :class="buttonClass"
-                @click="getCode"
-                :disabled="!isPhoneValid || countdown > 0"
-              >
-                {{ countdown > 0 ? `重新发送(${countdown}s)` : '获取验证码' }}
-              </button>
-            </div>
-          </div>
-
-
-          <div v-else class="relative mb-8">
+          <!-- 密码 -->
+          <div class="relative mb-4">
             <div class="flex items-center bg-[var(--color-input-surface)] rounded-3xl h-[48px] px-4">
               <input
                 v-model="password"
                 type="password"
-                placeholder="输入密码"
+                :placeholder="loginMode === 'register' ? '设置密码 (6-20位)' : '输入密码'"
                 class="flex-1 outline-none text-[15px] bg-transparent caret-[var(--color-primary)]"
                 autocomplete="current-password"
-                @keyup.enter="handleLogin"
+                maxlength="20"
               >
             </div>
           </div>
 
+          <!-- 确认密码（仅注册模式） -->
+          <div v-if="loginMode === 'register'" class="relative mb-4">
+            <div class="flex items-center bg-[var(--color-input-surface)] rounded-3xl h-[48px] px-4">
+              <input
+                v-model="confirmPassword"
+                type="password"
+                placeholder="确认密码"
+                class="flex-1 outline-none text-[15px] bg-transparent caret-[var(--color-primary)]"
+                autocomplete="new-password"
+                maxlength="20"
+              >
+            </div>
+          </div>
 
+          <!-- 图形验证码 -->
+          <div class="relative mb-6">
+            <div class="flex items-center bg-[var(--color-input-surface)] rounded-3xl h-[48px] px-4">
+              <input
+                type="text"
+                placeholder="输入图形验证码"
+                class="flex-1 outline-none text-[15px] bg-transparent caret-[var(--color-primary)]"
+                v-model="captchaCode"
+                maxlength="4"
+                @keyup.enter="handleSubmit"
+              >
+              <div class="ml-2 flex items-center cursor-pointer select-none" @click="fetchCaptcha" title="点击刷新验证码">
+                <img
+                  v-if="captchaBase64"
+                  :src="captchaBase64"
+                  alt="验证码"
+                  class="h-[36px] rounded object-contain border border-gray-200"
+                >
+                <span v-else class="text-xs text-gray-400 px-2">加载中...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 提交按钮 -->
           <button
             class="w-full bg-[var(--color-primary)] text-[var(--color-primary-contrast)] rounded-full h-[48px] text-[16px] cursor-pointer
-            font-bold hover:bg-opacity-90 mt-5"
-            @click="handleLogin"
+            font-bold hover:bg-opacity-90 mt-2 transition-opacity"
+            @click="handleSubmit"
           >
-            登录
+            {{ loginMode === 'login' ? '登录' : '注册并登录' }}
           </button>
 
-
+          <!-- 协议勾选 -->
           <div class="mt-5 text-xs text-gray-700">
             <div class="flex justify-center gap-1">
               <input type="checkbox" class="w-4 h-4" v-model="agreeTerms">
@@ -122,14 +135,18 @@
             </div>
           </div>
 
-
-          <div class="mt-8 text-[14px] text-gray-500">
-            {{ loginMode === 'code' ? '新用户可直接登录' : '请使用已设置的登录密码' }}
+          <!-- 底部切换提示 -->
+          <div class="mt-6 text-[14px] text-gray-500">
+            <span v-if="loginMode === 'login'">
+              没有账号？<a class="text-[var(--color-primary)] font-medium cursor-pointer" @click="switchMode('register')">去注册</a>
+            </span>
+            <span v-else>
+              已有账号？<a class="text-[var(--color-primary)] font-medium cursor-pointer" @click="switchMode('login')">去登录</a>
+            </span>
           </div>
         </div>
       </div>
     </Transition>
-
 
     <TermsConfirmModal
       v-model:visible="showTermsConfirm"
@@ -139,17 +156,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import gsap from 'gsap'
 import { message } from '@/utils/message'
 import TermsConfirmModal from './TermsConfirmModal.vue'
-import { login, getVerificationCode } from '@/api/auth'
+import { login, register, getCaptcha } from '@/api/auth'
 import { getUserProfile } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 
-defineProps({
+const props = defineProps({
   visible: {
     type: Boolean,
     default: false
@@ -160,17 +177,16 @@ const emit = defineEmits(['update:visible'])
 
 const phone = ref('')
 const formattedPhone = ref('')
-const code = ref('')
 const password = ref('')
-const loginMode = ref('code')
+const confirmPassword = ref('')
+const captchaKey = ref('')
+const captchaCode = ref('')
+const captchaBase64 = ref('')
+const loginMode = ref('login') // 'login' | 'register'
 const agreeTerms = ref(false)
 
 const modalRef = ref(null)
-
 const showTermsConfirm = ref(false)
-
-const countdown = ref(0)
-let timer = null
 
 const onClose = () => {
   emit('update:visible', false)
@@ -180,93 +196,130 @@ const isPhoneValid = computed(() => {
   return phone.value.length === 11 && /^1[3-9]\d{9}$/.test(phone.value)
 })
 
-const buttonClass = computed(() => {
-  if (countdown.value > 0) {
-    return 'text-[var(--color-primary)] opacity-40 cursor-not-allowed'
-  }
-  return isPhoneValid.value
-    ? 'text-[var(--color-primary)] hover:opacity-80'
-    : 'text-[var(--color-primary)] opacity-60 cursor-not-allowed'
-})
-
-const getCode = () => {
-  if (!isPhoneValid.value || countdown.value > 0) return
-
-  getVerificationCode(phone.value).then(res => {
-    if (!res.success) {
-      message.show(res.message)
-      return
+const fetchCaptcha = () => {
+  getCaptcha().then(res => {
+    if (res && res.success && res.data) {
+      captchaKey.value = res.data.captchaKey || ''
+      captchaBase64.value = res.data.captchaBase64 || ''
+      captchaCode.value = ''
     }
-
-    message.show('验证码已发送')
-
-    countdown.value = 180
-    timer = setInterval(() => {
-      countdown.value--
-      if (countdown.value <= 0) {
-        clearInterval(timer)
-      }
-    }, 1000)
+  }).catch(() => {
+    // 忽略异常
   })
 }
 
-onUnmounted(() => {
-  if (timer) {
-    clearInterval(timer)
+const switchMode = (mode) => {
+  if (loginMode.value === mode) return
+  loginMode.value = mode
+  password.value = ''
+  confirmPassword.value = ''
+  // 若已加载过图形验证码，则复用现有验证码，不再重新请求后端
+  if (!captchaKey.value || !captchaBase64.value) {
+    fetchCaptcha()
+  }
+}
+
+watch(() => props.visible, (val) => {
+  if (val) {
+    if (!captchaKey.value || !captchaBase64.value) {
+      fetchCaptcha()
+    }
   }
 })
 
-const handleLogin = () => {
+const handleSubmit = () => {
   if (!agreeTerms.value) {
     showTermsConfirm.value = true
     return
   }
-
-  doLogin()
+  doSubmit()
 }
 
 const handleConfirmTerms = () => {
   agreeTerms.value = true
-  doLogin()
+  doSubmit()
 }
 
-const doLogin = () => {
+const doSubmit = () => {
   if (!isPhoneValid.value) {
-    message.show('请输入正确的手机号')
+    message.show('请输入正确的11位手机号')
     return
   }
 
-  const isPasswordLogin = loginMode.value === 'password'
-  if (isPasswordLogin && !password.value) {
-    message.show('请输入密码')
+  if (!password.value || password.value.length < 6) {
+    message.show('密码长度不能少于6位')
     return
   }
 
-  if (!isPasswordLogin && (!code.value || code.value.length !== 6)) {
-    message.show('请输入正确的验证码')
-    return
-  }
-
-  login(isPasswordLogin
-    ? { phone: phone.value, password: password.value, type: 2 }
-    : { phone: phone.value, code: code.value, type: 1 }
-  ).then(res => {
-    if (!res.success) {
-      message.show(res.message || (isPasswordLogin ? '手机号或密码错误' : '验证码错误'))
+  if (loginMode.value === 'register') {
+    if (password.value !== confirmPassword.value) {
+      message.show('两次输入的密码不一致')
       return
     }
+  }
 
-    userStore.setToken(res.data)
+  if (!captchaCode.value || captchaCode.value.length !== 4) {
+    message.show('请输入4位图形验证码')
+    return
+  }
 
-    getUserProfile().then(res => {
-      if (res.success) {
-        userStore.setProfile(res.data)
+  if (!captchaKey.value) {
+    message.show('验证码已失效，请重新获取')
+    fetchCaptcha()
+    return
+  }
+
+  if (loginMode.value === 'register') {
+    register({
+      phone: phone.value,
+      password: password.value,
+      captchaKey: captchaKey.value,
+      captchaCode: captchaCode.value
+    }).then(res => {
+      if (!res.success) {
+        message.show(res.message || '注册失败')
+        fetchCaptcha()
+        return
       }
-    })
 
-    message.show('登录成功')
-    onClose()
-  })
+      userStore.setToken(res.data)
+      getUserProfile().then(profileRes => {
+        if (profileRes.success) {
+          userStore.setProfile(profileRes.data)
+        }
+      })
+
+      message.show('注册成功并已登录')
+      onClose()
+    }).catch(() => {
+      fetchCaptcha()
+    })
+  } else {
+    login({
+      phone: phone.value,
+      password: password.value,
+      captchaKey: captchaKey.value,
+      captchaCode: captchaCode.value
+    }).then(res => {
+      if (!res.success) {
+        message.show(res.message || '手机号或密码错误')
+        fetchCaptcha()
+        return
+      }
+
+      userStore.setToken(res.data)
+      getUserProfile().then(profileRes => {
+        if (profileRes.success) {
+          userStore.setProfile(profileRes.data)
+        }
+      })
+
+      message.show('登录成功')
+      onClose()
+    }).catch(() => {
+      fetchCaptcha()
+    })
+  }
 }
 
 const onBeforeEnter = (el) => {
@@ -298,7 +351,6 @@ const onLeave = (el) => {
 
 const formatPhoneNumber = (event) => {
   let value = event.target.value.replace(/\D/g, '')
-
   if (value.length > 11) {
     value = value.slice(0, 11)
   }
@@ -312,16 +364,6 @@ const formatPhoneNumber = (event) => {
   }
 
   phone.value = value
-}
-
-const formatCode = (event) => {
-  let value = event.target.value.replace(/\D/g, '')
-
-  if (value.length > 6) {
-    value = value.slice(0, 6)
-  }
-
-  code.value = value
 }
 </script>
 

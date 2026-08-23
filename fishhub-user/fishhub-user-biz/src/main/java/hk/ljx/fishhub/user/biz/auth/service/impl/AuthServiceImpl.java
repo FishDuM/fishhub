@@ -3,19 +3,22 @@ package hk.ljx.fishhub.user.biz.auth.service.impl;
 import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.stp.SaTokenInfo;
 import cn.dev33.satoken.stp.StpUtil;
+import cn.hutool.captcha.CaptchaUtil;
+import cn.hutool.captcha.LineCaptcha;
+import cn.hutool.core.util.IdUtil;
 import com.google.common.base.Preconditions;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.biz.auth.enums.LoginTypeEnum;
 import hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.user.biz.auth.model.vo.captcha.CaptchaRspVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserLoginReqVO;
+import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserRegisterReqVO;
 import hk.ljx.fishhub.user.biz.auth.rpc.UserRpcService;
 import hk.ljx.fishhub.user.biz.auth.service.AuthService;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
-import hk.ljx.fishhub.user.dto.rsp.ResolveLoginableUserRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
@@ -26,99 +29,154 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
-    private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CODE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/verify_and_consume_code.lua");
+    private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CAPTCHA_SCRIPT =
+            RedisScriptHelper.loadLongScript("/lua/verify_and_consume_captcha.lua");
 
-    /** 验证码最大校验失败次数，超过即作废，防止 6 位数字验证码在 TTL 内被穷举 */
-    private static final int VERIFICATION_CODE_MAX_ATTEMPTS = 5;
+    /** 图形验证码有效时长：5 分钟 */
+    private static final long CAPTCHA_EXPIRE_SECONDS = 300L;
 
-    /** 登录接口限流：同一手机号每分钟最大尝试次数 */
-    private static final int LOGIN_PHONE_RATE_LIMIT_PER_MINUTE = 10;
-
-    /** 登录接口限流：同一 IP 每分钟最大尝试次数 */
-    private static final int LOGIN_IP_RATE_LIMIT_PER_MINUTE = 60;
-
-    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = RedisScriptHelper.loadLongScript("/lua/rate_limit.lua");
+    /** 图形验证码最大连续错误次数，超过10次旧验证码自动失效作废 */
+    private static final int CAPTCHA_MAX_ATTEMPTS = 10;
 
     private final StringRedisTemplate stringRedisTemplate;
     private final PasswordEncoder passwordEncoder;
     private final UserRpcService userRpcService;
 
     /**
-     * 登录与注册
+     * 获取图形验证码 (Hutool 生成，5分钟有效)
+     */
+    @Override
+    public Response<CaptchaRspVO> getCaptcha() {
+        // 使用 Hutool 创建 4 位干扰线验证码 (宽 120, 高 40, 4 位字符, 10 条干扰线)
+        LineCaptcha captcha = CaptchaUtil.createLineCaptcha(120, 40, 4, 10);
+        String code = captcha.getCode().toLowerCase();
+        String captchaKey = IdUtil.fastSimpleUUID();
+
+        // 写入 Redis，TTL 为 5 分钟 (300 秒)
+        String redisKey = RedisKeyConstants.buildCaptchaKey(captchaKey);
+        stringRedisTemplate.opsForValue().set(redisKey, code, CAPTCHA_EXPIRE_SECONDS, TimeUnit.SECONDS);
+
+        return Response.success(CaptchaRspVO.builder()
+                .captchaKey(captchaKey)
+                .captchaBase64(captcha.getImageBase64Data())
+                .build());
+    }
+
+    /**
+     * 用户注册
+     *
+     * @param userRegisterReqVO
+     * @return
+     */
+    @Override
+    public Response<String> register(UserRegisterReqVO userRegisterReqVO) {
+        String phone = userRegisterReqVO.getPhone();
+        String password = userRegisterReqVO.getPassword();
+        String captchaKey = userRegisterReqVO.getCaptchaKey();
+        String captchaCode = userRegisterReqVO.getCaptchaCode();
+
+        // 1. 校验并消费图形验证码（5分钟有效，错误超10次自动失效）
+        verifyAndConsumeCaptcha(captchaKey, captchaCode);
+
+        // 2. 密码加密并在数据库中创建用户（内置手机号查重与防并发插入机制）
+        String encodePassword = passwordEncoder.encode(password);
+        Long userId = userRpcService.registerUser(phone, encodePassword);
+
+        // 3. 注册成功后自动执行登录
+        return performLogin(userId);
+    }
+
+    /**
+     * 用户登录
      *
      * @param userLoginReqVO
      * @return
      */
     @Override
-    public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO, String clientIp) {
+    public Response<String> login(UserLoginReqVO userLoginReqVO) {
         String phone = userLoginReqVO.getPhone();
-        Integer type = userLoginReqVO.getType();
+        String password = userLoginReqVO.getPassword();
+        String captchaKey = userLoginReqVO.getCaptchaKey();
+        String captchaCode = userLoginReqVO.getCaptchaCode();
 
-        // 登录接口双维度分钟限流：手机号/IP 任一超限即拒绝，防止密码/验证码被暴力尝试
-        checkLoginRateLimit(phone, clientIp);
+        // 1. 校验并消费图形验证码（5分钟有效，错误超10次自动失效）
+        verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
-        LoginTypeEnum loginTypeEnum = LoginTypeEnum.valueOf(type);
-
-        if (Objects.isNull(loginTypeEnum)) {
-            throw new BizException(ResponseCodeEnum.LOGIN_TYPE_ERROR);
+        // 2. 查询用户
+        FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
+        if (Objects.isNull(findUserByPhoneRspDTO)) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        Long userId = null;
-
-        switch (loginTypeEnum) {
-            case VERIFICATION_CODE: // 验证码登录
-                String verificationCode = userLoginReqVO.getCode();
-
-                Preconditions.checkArgument(StringUtils.isNotBlank(verificationCode), "验证码不能为空");
-
-                verifyAndConsumeVerificationCode(phone, verificationCode);
-
-                ResolveLoginableUserRspDTO resolvedUser = userRpcService.resolveOrRegisterLoginableUser(phone);
-
-                if (Objects.isNull(resolvedUser)) {
-                    throw new BizException(ResponseCodeEnum.LOGIN_FAIL);
-                }
-                if (!resolvedUser.isLoginable()) {
-                    throw new BizException(ResponseCodeEnum.ACCOUNT_NOT_LOGINABLE);
-                }
-
-                userId = resolvedUser.getUserId();
-                break;
-            case PASSWORD: // 密码登录
-                String password = userLoginReqVO.getPassword();
-                Preconditions.checkArgument(StringUtils.isNotBlank(password), "密码不能为空");
-
-                FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
-
-                if (Objects.isNull(findUserByPhoneRspDTO)) {
-                    throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
-                }
-
-                String encodePassword = findUserByPhoneRspDTO.getPassword();
-
-                boolean isPasswordCorrect = StringUtils.isNotBlank(encodePassword)
-                        && passwordEncoder.matches(password, encodePassword);
-
-                if (!isPasswordCorrect) {
-                    throw new BizException(ResponseCodeEnum.PHONE_OR_PASSWORD_ERROR);
-                }
-
-                userId = findUserByPhoneRspDTO.getId();
-                break;
-            default:
-                break;
+        // 3. 校验密码
+        String encodePassword = findUserByPhoneRspDTO.getPassword();
+        boolean isPasswordCorrect = StringUtils.isNotBlank(encodePassword)
+                && passwordEncoder.matches(password, encodePassword);
+        if (!isPasswordCorrect) {
+            throw new BizException(ResponseCodeEnum.PHONE_OR_PASSWORD_ERROR);
         }
 
+        Long userId = findUserByPhoneRspDTO.getId();
+
+        // 4. 执行登录
+        return performLogin(userId);
+    }
+
+    /**
+     * 退出登录
+     *
+     * @return
+     */
+    @Override
+    public Response<?> logout() {
+        Long userId = LoginUserContextHolder.getUserId();
+        if (userId != null) {
+            StpUtil.logout(userId);
+        }
+        return Response.success();
+    }
+
+    /**
+     * 修改密码
+     *
+     * @param updatePasswordReqVO
+     * @return
+     */
+    @Override
+    public Response<?> updatePassword(UpdatePasswordReqVO updatePasswordReqVO) {
+        String phone = updatePasswordReqVO.getPhone();
+
+        FindUserByPhoneRspDTO user = userRpcService.findUserByPhone(phone);
+        if (user == null || !Objects.equals(user.getId(), LoginUserContextHolder.getUserId())) {
+            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
+        }
+
+        String newPassword = updatePasswordReqVO.getNewPassword();
+        String encodePassword = passwordEncoder.encode(newPassword);
+
+        userRpcService.updatePassword(encodePassword);
+
+        StpUtil.logout(LoginUserContextHolder.getUserId());
+
+        return Response.success();
+    }
+
+    /**
+     * 执行 Sa-Token 登录与会话角色权限初始化
+     */
+    private Response<String> performLogin(Long userId) {
         StpUtil.login(userId);
 
-        // 登录时装配角色权限并写入会话，网关鉴权从会话读取，不再维护独立的角色权限缓存。
         UserRolePermissionRspDTO rolePermission = userRpcService.findRoleAndPermissions(userId);
         if (rolePermission == null) {
             log.warn("获取用户角色权限失败，本次登录将无角色权限，userId={}", userId);
@@ -137,77 +195,31 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * 退出登录
-     *
-     * @return
+     * 图形验证码原子校验与消费（5分钟有效，错误超10次旧码自动作废）
      */
-    @Override
-    public Response<?> logout() {
-        Long userId = LoginUserContextHolder.getUserId();
+    private void verifyAndConsumeCaptcha(String captchaKey, String captchaCode) {
+        Preconditions.checkArgument(StringUtils.isNotBlank(captchaKey), "验证码标识不能为空");
+        Preconditions.checkArgument(StringUtils.isNotBlank(captchaCode), "验证码不能为空");
 
-        StpUtil.logout(userId);
+        String key = RedisKeyConstants.buildCaptchaKey(captchaKey);
+        String normalizedCode = captchaCode.trim().toLowerCase();
 
-        return Response.success();
-    }
+        Long result = stringRedisTemplate.execute(
+                VERIFY_AND_CONSUME_CAPTCHA_SCRIPT,
+                Collections.singletonList(key),
+                normalizedCode,
+                String.valueOf(CAPTCHA_MAX_ATTEMPTS)
+        );
 
-    /**
-     * 修改密码
-     *
-     * @param updatePasswordReqVO
-     * @return
-     */
-    @Override
-    public Response<?> updatePassword(UpdatePasswordReqVO updatePasswordReqVO) {
-        String phone = updatePasswordReqVO.getPhone();
-        String verificationCode = updatePasswordReqVO.getCode();
-
-        FindUserByPhoneRspDTO user = userRpcService.findUserByPhone(phone);
-        if (user == null || !Objects.equals(user.getId(), LoginUserContextHolder.getUserId())) {
-            throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
-        }
-
-        verifyAndConsumeVerificationCode(phone, verificationCode);
-
-        String newPassword = updatePasswordReqVO.getNewPassword();
-        String encodePassword = passwordEncoder.encode(newPassword);
-
-        userRpcService.updatePassword(encodePassword);
-
-        StpUtil.logout(LoginUserContextHolder.getUserId());
-
-        return Response.success();
-    }
-
-    private void verifyAndConsumeVerificationCode(String phone, String verificationCode) {
-        String key = RedisKeyConstants.buildVerificationCodeKey(phone);
-        Long result = stringRedisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT,
-                Collections.singletonList(key), verificationCode, String.valueOf(VERIFICATION_CODE_MAX_ATTEMPTS));
         if (Objects.equals(result, 1L)) {
-            return;
+            return; // 校验成功并已删除
         }
         if (Objects.equals(result, -2L)) {
-            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_TOO_MANY_ATTEMPTS);
+            throw new BizException(ResponseCodeEnum.CAPTCHA_TOO_MANY_ATTEMPTS);
         }
-        throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
+        if (Objects.equals(result, -1L)) {
+            throw new BizException(ResponseCodeEnum.CAPTCHA_NOT_FOUND_OR_EXPIRED);
+        }
+        throw new BizException(ResponseCodeEnum.CAPTCHA_ERROR);
     }
-
-    /**
-     * 登录接口双维度分钟限流（固定窗口计数，与发送验证码限流同构）。
-     * 限流键独立于发送验证码的限流键，避免两类接口互相挤占额度。
-     */
-    private void checkLoginRateLimit(String phone, String clientIp) {
-        Long phoneCount = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
-                Collections.singletonList(RedisKeyConstants.buildLoginPhoneRateLimitKey(phone)), String.valueOf(60));
-        if (phoneCount != null && phoneCount > LOGIN_PHONE_RATE_LIMIT_PER_MINUTE) {
-            throw new BizException(ResponseCodeEnum.LOGIN_TOO_FREQUENT);
-        }
-        if (StringUtils.isNotBlank(clientIp)) {
-            Long ipCount = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
-                    Collections.singletonList(RedisKeyConstants.buildLoginIpRateLimitKey(clientIp)), String.valueOf(60));
-            if (ipCount != null && ipCount > LOGIN_IP_RATE_LIMIT_PER_MINUTE) {
-                throw new BizException(ResponseCodeEnum.LOGIN_TOO_FREQUENT);
-            }
-        }
-    }
-
 }

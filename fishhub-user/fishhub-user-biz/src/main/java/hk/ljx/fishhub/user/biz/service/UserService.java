@@ -23,6 +23,15 @@ public interface UserService {
     Response<?> updateUserInfo(UpdateUserInfoReqVO updateUserInfoReqVO);
 
     /**
+     * 用户注册
+     *
+     * @param phone
+     * @param encodePassword
+     * @return
+     */
+    Response<Long> register(String phone, String encodePassword);
+
+    /**
      * 查询手机号对应的可登录账号；不存在时创建默认账号。
      *
      * @param request

@@ -2,8 +2,12 @@ import axios from '@/axios'
 
 const API_PREFIX = '/auth'
 
-export function getVerificationCode(phone) {
-  return axios.post(`${API_PREFIX}/verification/code/send`, { phone })
+export function getCaptcha() {
+  return axios.get(`${API_PREFIX}/captcha`)
+}
+
+export function register(registerReqVO) {
+  return axios.post(`${API_PREFIX}/register`, registerReqVO)
 }
 
 export function login(loginReqVO) {

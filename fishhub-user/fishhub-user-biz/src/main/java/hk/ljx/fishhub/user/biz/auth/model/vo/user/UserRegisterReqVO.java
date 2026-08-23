@@ -6,12 +6,13 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.validator.constraints.Length;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class UserLoginReqVO {
+public class UserRegisterReqVO {
 
     /**
      * 手机号
@@ -24,6 +25,7 @@ public class UserLoginReqVO {
      * 密码
      */
     @NotBlank(message = "密码不能为空")
+    @Length(min = 6, max = 20, message = "密码长度需在 6-20 位之间")
     private String password;
 
     /**

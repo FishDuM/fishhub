@@ -32,8 +32,9 @@ public class SaTokenConfigure {
      * 免登录白名单
      */
     private static final Set<String> LOGIN_WHITELIST_PATHS = Set.of(
+            "/auth/captcha",
             "/auth/login",
-            "/auth/verification/code/send",
+            "/auth/register",
             "/user/user/profile",
             "/note/channel/list",
             "/note/topic/list",

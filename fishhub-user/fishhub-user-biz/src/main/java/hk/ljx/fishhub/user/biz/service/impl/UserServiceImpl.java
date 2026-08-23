@@ -208,6 +208,59 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
+     * 用户注册
+     *
+     * @param phone
+     * @param encodePassword
+     * @return
+     */
+    @Override
+    public Response<Long> register(String phone, String encodePassword) {
+        UserDO existingUser = userDOMapper.selectByPhone(phone);
+        if (Objects.nonNull(existingUser)) {
+            throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
+        }
+
+        String fishhubId = distributedIdGeneratorRpcService.getFishhubId();
+        String userIdStr = distributedIdGeneratorRpcService.getUserId();
+        Long userId = Long.valueOf(userIdStr);
+
+        UserDO newUser = UserDO.builder()
+                .id(userId)
+                .phone(phone)
+                .password(encodePassword)
+                .fishhubId(fishhubId)
+                .nickname("小鱼" + fishhubId)
+                .status(StatusEnum.ENABLE.getValue())
+                .createTime(LocalDateTime.now())
+                .updateTime(LocalDateTime.now())
+                .isDeleted(DeletedEnum.NO.getValue())
+                .build();
+
+        UserDO finalUser = transactionTemplate.execute(status -> {
+            if (userDOMapper.insertIfAbsent(newUser) == 0) {
+                throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
+            }
+
+            UserRoleDO userRoleDO = UserRoleDO.builder()
+                    .userId(userId)
+                    .roleId(RoleConstants.COMMON_USER_ROLE_ID)
+                    .createTime(LocalDateTime.now())
+                    .updateTime(LocalDateTime.now())
+                    .isDeleted(DeletedEnum.NO.getValue())
+                    .build();
+            userRoleDOMapper.insert(userRoleDO);
+            return newUser;
+        });
+
+        if (finalUser != null) {
+            rolePermissionService.evict(finalUser.getId());
+        }
+
+        return Response.success(userId);
+    }
+
+    /**
      * 查询手机号对应的可登录账号；不存在时创建默认账号。
      *
      * @param request
