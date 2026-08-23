@@ -2,4 +2,5 @@ hk.ljx.framework.biz.context.config.ContextAutoConfiguration
 hk.ljx.framework.biz.context.config.FeignContextAutoConfiguration
 hk.ljx.framework.biz.context.config.TaskExecutorAutoConfiguration
 hk.ljx.framework.biz.context.config.VirtualThreadAutoConfiguration
-
+hk.ljx.framework.biz.operationlog.config.ApiOperationLogAutoConfiguration
+hk.ljx.framework.jackson.config.JacksonAutoConfiguration

@@ -137,36 +137,17 @@
             </dependency>
 
             <!-- 业务接口日志组件 -->
-            <dependency>
-                <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- Jackson 组件 -->
-            <dependency>
-                <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- 上下文组件 -->
-            <dependency>
-                <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-spring-boot-starter-biz-context</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <!-- Web 通用组件 -->
+            <!-- Web 综合组件（包含 Web 异常、上下文传递、Jackson 序列化、操作日志） -->
             <dependency>
                 <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-spring-boot-starter-web</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- RocketMQ 事务消息组件 -->
+            <dependency>
+                <groupId>hk.ljx</groupId>
+                <artifactId>fishhub-spring-boot-starter-biz-mq</artifactId>
                 <version>${revision}</version>
             </dependency>
 

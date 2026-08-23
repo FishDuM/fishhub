@@ -15,7 +15,7 @@ import org.springframework.core.task.support.TaskExecutorAdapter;
 import java.util.concurrent.Executors;
 
 /**
- * 虚拟线程配置（Tomcat 协议执行器与默认 TaskExecutor）
+ * 虚拟线程配置
  */
 @AutoConfiguration
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)

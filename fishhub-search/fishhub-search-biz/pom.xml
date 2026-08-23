@@ -21,11 +21,7 @@
             <artifactId>fishhub-common</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
+        <!-- Web 综合组件（统一异常处理、用户上下文传递、Jackson 序列化、接口操作日志） -->
         <dependency>
             <groupId>hk.ljx</groupId>
             <artifactId>fishhub-spring-boot-starter-web</artifactId>
@@ -33,20 +29,13 @@
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
-        </dependency>
-
-        <!-- 业务接口日志组件 -->
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-biz-operationlog</artifactId>
-        </dependency>
-
-        <!-- Jackson 组件 -->
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
         </dependency>
 
         <dependency>

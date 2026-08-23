@@ -21,18 +21,12 @@
     <modules>
         <!-- 通用工具模块 -->
         <module>fishhub-common</module>
-        <!-- 接口日志组件 -->
-        <module>fishhub-spring-boot-starter-biz-operationlog</module>
-        <!-- Jackson 组件 -->
-        <module>fishhub-spring-boot-starter-jackson</module>
-        <!-- 业务上下文组件 -->
-        <module>fishhub-spring-boot-starter-biz-context</module>
+        <!-- Web 综合组件（包含 Web 异常、上下文传递、Jackson 序列化、操作日志） -->
+        <module>fishhub-spring-boot-starter-web</module>
         <!-- RocketMQ 事务消息组件 -->
         <module>fishhub-spring-boot-starter-biz-mq</module>
         <!-- Redisson 分布式组件 -->
         <module>fishhub-spring-boot-starter-biz-redisson</module>
-        <!-- Web 通用组件 -->
-        <module>fishhub-spring-boot-starter-web</module>
     </modules>
 
 </project>

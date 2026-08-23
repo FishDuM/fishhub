@@ -89,12 +89,6 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
-        <!-- Jackson 组件 -->
-        <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-spring-boot-starter-jackson</artifactId>
-        </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

@@ -269,6 +269,17 @@ const doSubmit = () => {
     return
   }
 
+  const handleAuthError = (res, defaultMsg) => {
+    message.show(res?.message || defaultMsg)
+    // 只有当验证码过期(AUTH-20000)或输错达到10次上限已自动失效(AUTH-20002)时，才刷新更换验证码
+    if (res?.errorCode === 'AUTH-20000' || res?.errorCode === 'AUTH-20002') {
+      fetchCaptcha()
+    } else {
+      // 验证码输入错误或密码错误时保留当前图形验证码，仅清空输入框方便重试
+      captchaCode.value = ''
+    }
+  }
+
   if (loginMode.value === 'register') {
     register({
       phone: phone.value,
@@ -277,8 +288,7 @@ const doSubmit = () => {
       captchaCode: captchaCode.value
     }).then(res => {
       if (!res.success) {
-        message.show(res.message || '注册失败')
-        fetchCaptcha()
+        handleAuthError(res, '注册失败')
         return
       }
 
@@ -291,8 +301,8 @@ const doSubmit = () => {
 
       message.show('注册成功并已登录')
       onClose()
-    }).catch(() => {
-      fetchCaptcha()
+    }).catch(err => {
+      handleAuthError(err?.response?.data, '注册请求失败')
     })
   } else {
     login({
@@ -302,8 +312,7 @@ const doSubmit = () => {
       captchaCode: captchaCode.value
     }).then(res => {
       if (!res.success) {
-        message.show(res.message || '手机号或密码错误')
-        fetchCaptcha()
+        handleAuthError(res, '手机号或密码错误')
         return
       }
 
@@ -316,8 +325,8 @@ const doSubmit = () => {
 
       message.show('登录成功')
       onClose()
-    }).catch(() => {
-      fetchCaptcha()
+    }).catch(err => {
+      handleAuthError(err?.response?.data, '登录请求失败')
     })
   }
 }
