@@ -93,6 +93,10 @@ public class RelationServiceImpl implements RelationService {
             checkLuaScriptResult(result);
         }
 
+        if (!Objects.equals(result, LuaResultEnum.FOLLOW_SUCCESS.getCode())) {
+            throw new BizException(ResponseCodeEnum.SYSTEM_ERROR);
+        }
+
         FollowUserMqDTO followUserMqDTO = FollowUserMqDTO.builder()
                 .userId(userId)
                 .followUserId(followUserId)
@@ -141,6 +145,10 @@ public class RelationServiceImpl implements RelationService {
             if (Objects.equals(result, LuaResultEnum.NOT_FOLLOWED.getCode())) {
                 throw new BizException(ResponseCodeEnum.NOT_FOLLOWED);
             }
+        }
+
+        if (!Objects.equals(result, LuaResultEnum.FOLLOW_SUCCESS.getCode())) {
+            throw new BizException(ResponseCodeEnum.SYSTEM_ERROR);
         }
 
         UnfollowUserMqDTO unfollowUserMqDTO = UnfollowUserMqDTO.builder()

@@ -225,12 +225,14 @@ public class UserServiceImpl implements UserService {
         String userIdStr = distributedIdGeneratorRpcService.getUserId();
         Long userId = Long.valueOf(userIdStr);
 
+        String defaultNickname = "小鱼_" + (userIdStr.length() > 6 ? userIdStr.substring(userIdStr.length() - 6) : userIdStr);
+
         UserDO newUser = UserDO.builder()
                 .id(userId)
                 .phone(phone)
                 .password(encodePassword)
                 .fishhubId(fishhubId)
-                .nickname("小鱼" + fishhubId)
+                .nickname(defaultNickname)
                 .status(StatusEnum.ENABLE.getValue())
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
@@ -283,11 +285,13 @@ public class UserServiceImpl implements UserService {
         String userIdStr = distributedIdGeneratorRpcService.getUserId();
         Long userId = Long.valueOf(userIdStr);
 
+        String defaultNickname = "小鱼_" + (userIdStr.length() > 6 ? userIdStr.substring(userIdStr.length() - 6) : userIdStr);
+
         UserDO newUser = UserDO.builder()
                 .id(userId)
                 .phone(phone)
                 .fishhubId(fishhubId) // 自动生成小鱼号 ID
-                .nickname("小鱼" + fishhubId) // 自动生成昵称, 如：小鱼10000
+                .nickname(defaultNickname) // 自动生成昵称, 如：小鱼_123456
                 .status(StatusEnum.ENABLE.getValue()) // 状态为启用
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())

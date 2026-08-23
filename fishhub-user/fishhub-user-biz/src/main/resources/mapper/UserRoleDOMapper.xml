@@ -45,11 +45,11 @@
     delete from t_user_role_rel
     where id = #{id,jdbcType=BIGINT}
   </delete>
-  <insert id="insert" parameterType="hk.ljx.fishhub.user.biz.domain.dataobject.UserRoleDO">
-    insert into t_user_role_rel (id, user_id, role_id, 
+  <insert id="insert" parameterType="hk.ljx.fishhub.user.biz.domain.dataobject.UserRoleDO" useGeneratedKeys="true" keyProperty="id">
+    insert into t_user_role_rel (user_id, role_id, 
       create_time, update_time, is_deleted
       )
-    values (#{id,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{roleId,jdbcType=BIGINT}, 
+    values (#{userId,jdbcType=BIGINT}, #{roleId,jdbcType=BIGINT}, 
       #{createTime,jdbcType=TIMESTAMP}, #{updateTime,jdbcType=TIMESTAMP}, #{isDeleted,jdbcType=BIT}
       )
   </insert>

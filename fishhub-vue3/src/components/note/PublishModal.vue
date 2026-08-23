@@ -495,9 +495,10 @@ import { getTopicList } from '@/api/topic'
 import { uploadFile } from '@/api/file'
 import { publishNote } from '@/api/note'
 import { message } from '@/utils/message'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 
 const props = defineProps({
   visible: {
@@ -835,7 +836,12 @@ const handlePublish = async () => {
     if (res.success) {
       message.show('发布成功')
       onClose()
-      router.push('/discover')
+      const targetChannelId = selectedChannel.value?.id ? String(selectedChannel.value.id) : '0'
+      if (route.path === '/discover') {
+        router.replace({ path: '/discover', query: { channelId: targetChannelId, _t: Date.now() } })
+      } else {
+        router.push({ path: '/discover', query: { channelId: targetChannelId } })
+      }
     } else {
       message.show(res.message || '未知错误')
     }

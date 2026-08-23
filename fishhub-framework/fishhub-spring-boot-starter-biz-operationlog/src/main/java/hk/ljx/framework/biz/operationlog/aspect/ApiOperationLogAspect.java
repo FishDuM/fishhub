@@ -38,6 +38,10 @@ public class ApiOperationLogAspect {
      */
     @Around("apiOperationLog()")
     public Object doAround(ProceedingJoinPoint joinPoint) throws Throwable {
+        if (!log.isInfoEnabled()) {
+            return joinPoint.proceed();
+        }
+
         long startTime = System.currentTimeMillis();
         String className = joinPoint.getTarget().getClass().getSimpleName();
         String methodName = joinPoint.getSignature().getName();

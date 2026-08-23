@@ -19,6 +19,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -105,8 +106,12 @@ public class RolePermissionService {
 
         Set<String> permissionKeys = new LinkedHashSet<>();
         if (CollUtil.isNotEmpty(roleIds)) {
-            Map<Long, String> permissionIdKeyMap = permissionDOMapper.selectAppEnabledList().stream()
-                    .collect(Collectors.toMap(PermissionDO::getId, PermissionDO::getPermissionKey, (a, b) -> a));
+            Map<Long, String> permissionIdKeyMap = new HashMap<>();
+            for (PermissionDO p : permissionDOMapper.selectAppEnabledList()) {
+                if (p != null && p.getId() != null && p.getPermissionKey() != null) {
+                    permissionIdKeyMap.put(p.getId(), p.getPermissionKey());
+                }
+            }
 
             rolePermissionDOMapper.selectByRoleIds(roleIds).stream()
                     .map(RolePermissionDO::getPermissionId)

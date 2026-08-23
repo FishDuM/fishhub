@@ -4,24 +4,28 @@
       class="note-media relative rounded-lg overflow-hidden"
       @click="$emit('click', note)"
     >
-      <img v-if="note.type === 0"
-        :src="note.cover" 
-        class="w-full object-cover border border-gray-200 rounded-2xl hover:brightness-80 cursor-pointer"
-      />
-      
-      <video v-if="note.type === 1"
+      <!-- 视频笔记 -->
+      <template v-if="Number(note.type) === 1">
+        <video
           ref="videoRef"
           :src="note.videoUri" 
           class="w-full object-cover border border-gray-200 rounded-2xl hover:brightness-80 cursor-pointer"
           preload="metadata"
           muted
         ></video>
+        <div class="absolute right-2 top-2 play-icon">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </div>
+      </template>
 
-      <div v-if="note.type === 1" class="absolute right-2 top-2 play-icon">
-        <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8 5v14l11-7z"/>
-        </svg>
-      </div>
+      <!-- 图文笔记（默认） -->
+      <img v-else
+        :src="coverUrl" 
+        class="w-full min-h-[120px] bg-gray-100 object-cover border border-gray-200 rounded-2xl hover:brightness-80 cursor-pointer"
+        loading="lazy"
+      />
     </div>
 
     <div class="p-[12px]">
@@ -87,6 +91,14 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['click', 'like-change'])
+
+// 封面图片解析（支持 cover 字段及 imgUris 降级回退）
+const coverUrl = computed(() => {
+  if (props.note.cover) return props.note.cover
+  if (Array.isArray(props.note.imgUris) && props.note.imgUris.length > 0) return props.note.imgUris[0]
+  if (typeof props.note.imgUris === 'string' && props.note.imgUris) return props.note.imgUris.split(',')[0]
+  return ''
+})
 
 // 点赞状态
 const isLiked = computed(() => Boolean(props.note.isLiked))

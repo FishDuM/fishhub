@@ -230,12 +230,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
 })
 
-watch(() => route.query.channelId, (newChannelId) => {
+watch(() => [route.query.channelId, route.query._t], ([newChannelId]) => {
   const channelId = newChannelId ? String(newChannelId) : '0'
-  if (activeChannelId.value !== channelId) {
-    activeChannelId.value = channelId
-    loadNotes(channelId, true)
-  }
+  activeChannelId.value = channelId
+  loadNotes(channelId, true)
 })
 </script>
 
