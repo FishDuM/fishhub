@@ -88,7 +88,7 @@ const isSelf = computed(() => {
 // 处理关注按钮点击
 const handleFollow = () => {
   // 检查用户是否已登录
-  if (!userStore.token) {
+  if (!userStore.isLoggedIn) {
     // 可以触发登录弹窗
     emit('login-required')
     return

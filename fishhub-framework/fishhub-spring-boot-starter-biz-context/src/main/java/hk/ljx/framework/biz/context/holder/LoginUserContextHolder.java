@@ -1,43 +1,47 @@
 package hk.ljx.framework.biz.context.holder;
 
 import com.alibaba.ttl.TransmittableThreadLocal;
-import hk.ljx.framework.common.constant.GlobalConstants;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+/**
+ * 登录用户上下文持有者（基于 Alibaba TTL，支持线程池复用场景下的跨线程上下文传递）
+ */
+public final class LoginUserContextHolder {
 
+    private static final ThreadLocal<Long> LOGIN_USER_CONTEXT_THREAD_LOCAL = new TransmittableThreadLocal<>();
 
-public class LoginUserContextHolder {
-
-    // 初始化一个 ThreadLocal 变量
-    private static final ThreadLocal<Map<String, Object>> LOGIN_USER_CONTEXT_THREAD_LOCAL
-            = TransmittableThreadLocal.withInitial(HashMap::new);
+    private LoginUserContextHolder() {}
 
     /**
      * 设置用户 ID
-     *
-     * @param value
+     */
+    public static void setUserId(Long value) {
+        LOGIN_USER_CONTEXT_THREAD_LOCAL.set(value);
+    }
+
+    /**
+     * 设置用户 ID（兼容 String / Object 类型入参）
      */
     public static void setUserId(Object value) {
-        LOGIN_USER_CONTEXT_THREAD_LOCAL.get().put(GlobalConstants.USER_ID, value);
+        if (value == null) {
+            LOGIN_USER_CONTEXT_THREAD_LOCAL.remove();
+            return;
+        }
+        if (value instanceof Number number) {
+            LOGIN_USER_CONTEXT_THREAD_LOCAL.set(number.longValue());
+            return;
+        }
+        try {
+            LOGIN_USER_CONTEXT_THREAD_LOCAL.set(Long.valueOf(value.toString().trim()));
+        } catch (NumberFormatException e) {
+            LOGIN_USER_CONTEXT_THREAD_LOCAL.remove();
+        }
     }
 
     /**
      * 获取用户 ID
-     *
-     * @return
      */
     public static Long getUserId() {
-        Object value = LOGIN_USER_CONTEXT_THREAD_LOCAL.get().get(GlobalConstants.USER_ID);
-        if (Objects.isNull(value)) {
-            return null;
-        }
-        try {
-            return Long.valueOf(value.toString());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return LOGIN_USER_CONTEXT_THREAD_LOCAL.get();
     }
 
     /**
@@ -46,5 +50,4 @@ public class LoginUserContextHolder {
     public static void remove() {
         LOGIN_USER_CONTEXT_THREAD_LOCAL.remove();
     }
-
 }

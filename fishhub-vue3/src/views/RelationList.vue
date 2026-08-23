@@ -146,7 +146,7 @@ const loadMore = () => {
 }
 
 const handleFollowUser = (followUserId) => {
-  if (!userStore.token) {
+  if (!userStore.isLoggedIn) {
     showLoginModal.value = true
     return
   }

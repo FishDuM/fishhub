@@ -1,10 +1,13 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref('')
   const profile = ref({})
   const showLoginModal = ref(false)
+
+  // 会话凭据由 HttpOnly Cookie 承载，前端以 profile.userId 判定登录态
+  const isLoggedIn = computed(() => !!profile.value.userId)
 
   const setProfile = (newProfile) => {
     profile.value = newProfile
@@ -31,16 +34,16 @@ export const useUserStore = defineStore('user', () => {
     token,
     profile,
     showLoginModal,
+    isLoggedIn,
     setProfile,
     setToken,
     openLoginModal,
     closeLoginModal,
     logout,
   }
-}, 
-{
-  // 开启持久化，仅持久化 token 和 profile，不持久化弹窗状态
+}, {
+  // 仅持久化 profile（公开资料），不再持久化 token：会话凭据由 httpOnly Cookie 承载
   persist: {
-    paths: ['token', 'profile']
+    paths: ['profile']
   }
 })

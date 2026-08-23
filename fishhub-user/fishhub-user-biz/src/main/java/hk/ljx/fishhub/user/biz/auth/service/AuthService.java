@@ -12,7 +12,7 @@ public interface AuthService {
      * @param userLoginReqVO
      * @return
      */
-    Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO);
+    Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO, String clientIp);
 
     /**
      * 退出登录

@@ -208,4 +208,57 @@ class CommentServiceImplTest {
         inOrder.verify(rocketMQTemplate).syncSendOrderly(
                 anyString(), any(Object.class), anyString());
     }
+
+    @Test
+    void shouldAssembleCommentItemVOWithFirstReply() {
+        hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO parentDO = hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO.builder()
+                .id(1L)
+                .userId(10L)
+                .contentUuid("uuid-1")
+                .firstReplyCommentId(2L)
+                .likeTotal(5L)
+                .childCommentTotal(1L)
+                .heat(3.8)
+                .createTime(java.time.LocalDateTime.now())
+                .isContentEmpty(false)
+                .build();
+
+        hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO replyDO = hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO.builder()
+                .id(2L)
+                .userId(20L)
+                .contentUuid("uuid-2")
+                .likeTotal(1L)
+                .childCommentTotal(0L)
+                .heat(0.7)
+                .createTime(java.time.LocalDateTime.now())
+                .isContentEmpty(false)
+                .build();
+
+        hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO parentUser = new hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO();
+        parentUser.setId(10L);
+        parentUser.setNickName("Alice");
+        parentUser.setAvatar("alice.png");
+
+        hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO replyUser = new hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO();
+        replyUser.setId(20L);
+        replyUser.setNickName("Bob");
+        replyUser.setAvatar("bob.png");
+
+        java.util.Map<Long, hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO> userMap = java.util.Map.of(10L, parentUser, 20L, replyUser);
+        java.util.Map<String, String> contentMap = java.util.Map.of("uuid-1", "这是一级评论", "uuid-2", "这是首条回复");
+
+        hk.ljx.fishhub.comment.biz.model.vo.FindCommentItemRspVO parentVO = ReflectionTestUtils.invokeMethod(
+                service, "toCommentItemVO", parentDO, userMap, contentMap);
+        hk.ljx.fishhub.comment.biz.model.vo.FindCommentItemRspVO replyVO = ReflectionTestUtils.invokeMethod(
+                service, "toCommentItemVO", replyDO, userMap, contentMap);
+        parentVO.setFirstReplyComment(replyVO);
+
+        org.junit.jupiter.api.Assertions.assertNotNull(parentVO);
+        org.junit.jupiter.api.Assertions.assertEquals("Alice", parentVO.getNickname());
+        org.junit.jupiter.api.Assertions.assertEquals("这是一级评论", parentVO.getContent());
+        org.junit.jupiter.api.Assertions.assertNotNull(parentVO.getFirstReplyComment());
+        org.junit.jupiter.api.Assertions.assertEquals(2L, parentVO.getFirstReplyComment().getCommentId());
+        org.junit.jupiter.api.Assertions.assertEquals("Bob", parentVO.getFirstReplyComment().getNickname());
+        org.junit.jupiter.api.Assertions.assertEquals("这是首条回复", parentVO.getFirstReplyComment().getContent());
+    }
 }

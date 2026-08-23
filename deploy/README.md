@@ -61,9 +61,11 @@ FishHub 网关（`fishhub-gateway`）已集成 Sentinel 网关限流并支持通
 
 ## 三、网络与 IP 透传机制说明
 
-为确保短信验证码限流、用户操作日志以及 Sentinel 针对客户端真实 IP 限流生效：
-1. **Nginx 层**：向网关透传 `X-Real-IP`、`X-Forwarded-For` 及 `X-Forwarded-Proto`。
-2. **Gateway 层**：已配置 `server.forward-headers-strategy: framework`，自动将反向代理头部还原为客户端原始连接地址；同时在全局过滤器中清洗并向下游微服务注入安全的 `X-Real-IP` 请求头。
+为确保短信验证码限流、登录防爆破、用户操作日志以及 Sentinel 针对客户端真实 IP 限流生效：
+1. **Nginx 层**：向网关透传 `X-Real-IP`、`X-Forwarded-For` 及 `X-Forwarded-Proto`，且**一律用 `$remote_addr` 覆写**这两个转发头（不再拼接客户端自带的 `X-Forwarded-For` 前缀，避免伪造 IP）。
+2. **Gateway 层**：`server.forward-headers-strategy` 已改为 `none`（不再信任客户端自带的 Forwarded 头重写 remoteAddress）；`AddUserId2HeaderFilter` 会**剥离所有入站转发头**，仅当网关的直连对端命中 `fishhub.gateway.trusted-proxy-ips`（环境变量 `TRUSTED_PROXY_IPS`）时才采信其透传的 `X-Real-IP`/`X-Forwarded-For`，否则一律以 TCP 对端地址为准，最后向微服务注入清洗后的 `X-Real-IP`。
+
+> 部署示例：`TRUSTED_PROXY_IPS=192.168.1.10,10.0.0.5`（填 Nginx 所在机器 IP）；若网关直接对公网开放，则**不要配置**任何可信代理，客户端无法伪造 IP。
 
 ---
 
@@ -83,6 +85,8 @@ FishHub 网关（`fishhub-gateway`）已集成 Sentinel 网关限流并支持通
 | MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY | MinIO（oss） | http://localhost:9000 / fishhub / fish1234 |
 | ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET | 短信（user） | 开发值 |
 | ALIYUN_OSS_* | 阿里云 OSS 备用存储（oss） | 开发值 |
+| TRUSTED_PROXY_IPS | 网关可信反向代理 IP（逗号分隔；为空则一律使用 TCP 对端地址） | 空 |
+| fishhub.auth.cookie-secure | 登录会话 Cookie 是否加 Secure（HTTPS 生产环境置 true） | false（prod 默认 true） |
 
 启动示例（Linux 容器）：
 

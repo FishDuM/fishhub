@@ -1,6 +1,8 @@
 server:
   port: 8000 # 指定端口
-  forward-headers-strategy: framework
+  # 不信任客户端自带的 Forwarded/X-Forwarded-*（framework 策略会按客户端可控头重写 remoteAddress），
+  # 真实 IP 由 AddUserId2HeaderFilter 统一解析清洗后写入 X-Real-IP
+  forward-headers-strategy: none
 spring:
   cloud:
     gateway:
@@ -54,11 +56,18 @@ spring:
       transport:
         dashboard: ${SENTINEL_DASHBOARD:127.0.0.1:8858} # Sentinel Dashboard 地址
         port: 8719 # 客户端上报端口
+
       datasource:
         nacos:
           server-addr: ${NACOS_ADDR:127.0.0.1:8848}
           group-id: DEFAULT_GROUP
           rule-data-id: fishhub-gateway-flow-rules
+
+# 可信反向代理 IP（逗号分隔，如 TRUSTED_PROXY_IPS=192.168.1.10,10.0.0.5）。
+# 网关直连对端命中该列表时才信任其透传的 X-Real-IP/X-Forwarded-For；为空则一律使用 TCP 对端地址。
+fishhub:
+  gateway:
+    trusted-proxy-ips: ${TRUSTED_PROXY_IPS:}
   data:
     redis:
       database: 0 # Redis 数据库索引（默认为 0）
@@ -90,5 +99,7 @@ sa-token:
   is-share: true
   # token 风格（默认可取值：uuid、simple-uuid、random-32、random-64、random-128、tik）
   token-style: random-128
+  # 允许从 HttpOnly 会话 Cookie 读取 token（登录时由 auth 服务下发）
+  is-read-cookie: true
   # 是否输出操作日志
   is-log: true

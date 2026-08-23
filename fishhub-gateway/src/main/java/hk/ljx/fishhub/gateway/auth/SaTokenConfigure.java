@@ -68,7 +68,7 @@ public class SaTokenConfigure {
                 .addInclude("/**")    /* 拦截全部path */
                 // 鉴权方法：每次访问进入
                 .setAuth(obj -> {
-                    log.info("==================> SaReactorFilter, Path: {}", SaHolder.getRequest().getRequestPath());
+                    log.debug("==================> SaReactorFilter, Path: {}", SaHolder.getRequest().getRequestPath());
                     // 登录校验：非白名单路径只解析一次 token，并透传 loginId 到 exchange attribute
                     if (!isWhitelisted(SaHolder.getRequest().getRequestPath())) {
                         Object loginId = StpUtil.getLoginIdDefaultNull();

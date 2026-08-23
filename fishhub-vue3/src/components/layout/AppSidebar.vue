@@ -126,7 +126,7 @@ import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 
-const isLoggedIn = computed(() => !!userStore.token)
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 
 const showLoginModal = inject('showLoginModal')
 const showMoreMenu = ref(false)

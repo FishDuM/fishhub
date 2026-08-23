@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS `t_comment`  (
   `user_id` bigint UNSIGNED NOT NULL COMMENT '发布者用户ID',
   `content_uuid` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT '' COMMENT '评论内容UUID',
   `is_content_empty` bit(1) NOT NULL DEFAULT b'0' COMMENT '内容是否为空(0：不为空 1：为空)',
-  `image_url` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '评论附加图片URL',
+  `image_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '评论附加图片URL',
   `level` tinyint NOT NULL DEFAULT 1 COMMENT '级别(1：一级评论 2：二级评论)',
   `reply_total` bigint NULL DEFAULT 0 COMMENT '评论被回复次数，仅一级评论需要',
   `like_total` bigint NULL DEFAULT 0 COMMENT '评论被点赞次数',
@@ -412,7 +412,7 @@ CREATE TABLE `t_comment`  (
   `user_id` bigint UNSIGNED NOT NULL COMMENT '发布者用户ID',
   `content_uuid` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT '' COMMENT '评论内容UUID',
   `is_content_empty` bit(1) NOT NULL DEFAULT b'0' COMMENT '内容是否为空(0：不为空 1：为空)',
-  `image_url` varchar(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '评论附加图片URL',
+  `image_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '评论附加图片URL',
   `level` tinyint NOT NULL DEFAULT 1 COMMENT '级别(1：一级评论 2：二级评论)',
   `reply_total` bigint NULL DEFAULT 0 COMMENT '评论被回复次数，仅一级评论需要',
   `like_total` bigint NULL DEFAULT 0 COMMENT '评论被点赞次数',
@@ -1058,6 +1058,9 @@ HAVING db_total != actual_total;
 
 -- 说明：子评论总数 child_comment_total 与 first_reply_comment_id 在评论服务事务内维护，
 -- 若怀疑漂移，可对比 t_comment.child_comment_total 与 level=2 的父评论计数（量小可全量核对）。
+
+-- 存量库升级：评论图片 URL 列扩容（幂等；全新安装自动空跑，已在上方建表为 varchar(255)）
+ALTER TABLE `fishhub_comment`.`t_comment` MODIFY COLUMN `image_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '评论附加图片URL';
 
 USE `fishhub_user`;
 INSERT INTO t_user (fishhub_id, password, nickname, phone, status) VALUES

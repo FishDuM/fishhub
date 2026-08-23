@@ -35,6 +35,17 @@ public class AuthServiceImpl implements AuthService {
 
     private static final DefaultRedisScript<Long> VERIFY_AND_CONSUME_CODE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/verify_and_consume_code.lua");
 
+    /** 验证码最大校验失败次数，超过即作废，防止 6 位数字验证码在 TTL 内被穷举 */
+    private static final int VERIFICATION_CODE_MAX_ATTEMPTS = 5;
+
+    /** 登录接口限流：同一手机号每分钟最大尝试次数 */
+    private static final int LOGIN_PHONE_RATE_LIMIT_PER_MINUTE = 10;
+
+    /** 登录接口限流：同一 IP 每分钟最大尝试次数 */
+    private static final int LOGIN_IP_RATE_LIMIT_PER_MINUTE = 60;
+
+    private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = RedisScriptHelper.loadLongScript("/lua/rate_limit.lua");
+
     private final StringRedisTemplate stringRedisTemplate;
     private final PasswordEncoder passwordEncoder;
     private final UserRpcService userRpcService;
@@ -46,9 +57,12 @@ public class AuthServiceImpl implements AuthService {
      * @return
      */
     @Override
-    public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO) {
+    public Response<String> loginAndRegister(UserLoginReqVO userLoginReqVO, String clientIp) {
         String phone = userLoginReqVO.getPhone();
         Integer type = userLoginReqVO.getType();
+
+        // 登录接口双维度分钟限流：手机号/IP 任一超限即拒绝，防止密码/验证码被暴力尝试
+        checkLoginRateLimit(phone, clientIp);
 
         LoginTypeEnum loginTypeEnum = LoginTypeEnum.valueOf(type);
 
@@ -164,9 +178,33 @@ public class AuthServiceImpl implements AuthService {
 
     private void verifyAndConsumeVerificationCode(String phone, String verificationCode) {
         String key = RedisKeyConstants.buildVerificationCodeKey(phone);
-        Long result = stringRedisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT, Collections.singletonList(key), verificationCode);
-        if (!Objects.equals(result, 1L)) {
-            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
+        Long result = stringRedisTemplate.execute(VERIFY_AND_CONSUME_CODE_SCRIPT,
+                Collections.singletonList(key), verificationCode, String.valueOf(VERIFICATION_CODE_MAX_ATTEMPTS));
+        if (Objects.equals(result, 1L)) {
+            return;
+        }
+        if (Objects.equals(result, -2L)) {
+            throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_TOO_MANY_ATTEMPTS);
+        }
+        throw new BizException(ResponseCodeEnum.VERIFICATION_CODE_ERROR);
+    }
+
+    /**
+     * 登录接口双维度分钟限流（固定窗口计数，与发送验证码限流同构）。
+     * 限流键独立于发送验证码的限流键，避免两类接口互相挤占额度。
+     */
+    private void checkLoginRateLimit(String phone, String clientIp) {
+        Long phoneCount = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
+                Collections.singletonList(RedisKeyConstants.buildLoginPhoneRateLimitKey(phone)), String.valueOf(60));
+        if (phoneCount != null && phoneCount > LOGIN_PHONE_RATE_LIMIT_PER_MINUTE) {
+            throw new BizException(ResponseCodeEnum.LOGIN_TOO_FREQUENT);
+        }
+        if (StringUtils.isNotBlank(clientIp)) {
+            Long ipCount = stringRedisTemplate.execute(RATE_LIMIT_SCRIPT,
+                    Collections.singletonList(RedisKeyConstants.buildLoginIpRateLimitKey(clientIp)), String.valueOf(60));
+            if (ipCount != null && ipCount > LOGIN_IP_RATE_LIMIT_PER_MINUTE) {
+                throw new BizException(ResponseCodeEnum.LOGIN_TOO_FREQUENT);
+            }
         }
     }
 

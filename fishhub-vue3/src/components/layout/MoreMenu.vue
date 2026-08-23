@@ -87,7 +87,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 // 使用 store 中的计算属性判断登录状态
-const isLoggedIn = computed(() => !!userStore.token)
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 
 defineProps({
   visible: {

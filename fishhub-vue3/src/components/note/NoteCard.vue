@@ -113,7 +113,7 @@ const formatLikeTotal = (total) => {
 
 
 // 登录状态控制
-const isLoggedIn = computed(() => !!userStore.token)
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 const showLoginModal = inject('showLoginModal')
 
 // 切换点赞状态

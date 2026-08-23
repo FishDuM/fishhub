@@ -1046,12 +1046,15 @@ public class NoteServiceImpl implements NoteService {
 
             if (StringUtils.isNotBlank(publishedNoteListJson)) {
                 try {
-                    log.info("已发布笔记列表命中了 Redis 缓存...");
+                    log.debug("已发布笔记列表命中了 Redis 缓存...");
                     List<NoteItemRspVO> noteItemRspVOS = JsonUtils.parseList(publishedNoteListJson, NoteItemRspVO.class);
                     List<NoteItemRspVO> sortedList = noteItemRspVOS.stream().sorted(Comparator.comparing(NoteItemRspVO::getNoteId).reversed()).toList();
 
                     // 实时回填当前用户点赞状态（计数复用快照内嵌基准值，零 Feign 零 Hash 往返）
                     batchGetAndSetNoteIsLiked(sortedList);
+
+                    // 作者本人查看时实时刷新点赞计数，避免命中缓存读到 30~60 分钟前的旧值
+                    getAndSetLatestLikeTotalIfAuthor(userId, sortedList);
 
                     Optional<Long> earliestNoteId = sortedList.stream().map(NoteItemRspVO::getNoteId).min(Long::compareTo);
 
@@ -1150,7 +1153,6 @@ public class NoteServiceImpl implements NoteService {
 
     /**
      * 批量获取笔记的点赞状态
-     * @param noteItemRspVOS
      */
     private void batchGetAndSetNoteIsLiked(List<NoteItemRspVO> noteItemRspVOS) {
         Long loginUserId = LoginUserContextHolder.getUserId();
@@ -1162,9 +1164,7 @@ public class NoteServiceImpl implements NoteService {
     }
 
     /**
-     * 如果是博主本人，需要调用计数服务，获取最新的点赞数据
-     * @param userId
-     * @param sortedList
+     * 作者本人查看已发布笔记时，实时从计数服务刷新点赞数，避免命中旧快照缓存
      */
     private void getAndSetLatestLikeTotalIfAuthor(Long userId, List<NoteItemRspVO> sortedList) {
         Long loginUserId = LoginUserContextHolder.getUserId();
@@ -1178,13 +1178,11 @@ public class NoteServiceImpl implements NoteService {
 
     /**
      * 设置 VO 集合中每篇笔记的点赞量
-     * @param noteItemRspVOS
-     * @param findNoteCountsByIdRspDTOS
      */
     private static void setVOListLikeTotal(List<NoteItemRspVO> noteItemRspVOS, List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS) {
         if (CollUtil.isNotEmpty(findNoteCountsByIdRspDTOS)) {
             Map<Long, FindNoteCountsByIdRspDTO> noteIdAndDTOMap = findNoteCountsByIdRspDTOS.stream()
-                    .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, dto -> dto));
+                    .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, dto -> dto, (a, b) -> a));
 
             noteItemRspVOS.forEach(noteItemRspVO -> {
                 Long currNoteId = noteItemRspVO.getNoteId();

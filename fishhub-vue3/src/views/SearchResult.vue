@@ -326,7 +326,7 @@ const performSearch = async (isFirstPage = true) => {
       return
     }
 
-    if (searchTab === 'users' && userStore.token && (res.data || []).length > 0) {
+    if (searchTab === 'users' && userStore.isLoggedIn && (res.data || []).length > 0) {
       const targetUserIds = res.data.map(user => user.userId).filter(Boolean)
       const followingRes = await checkFollowingBatch(targetUserIds)
       if (searchId !== latestSearchId) return

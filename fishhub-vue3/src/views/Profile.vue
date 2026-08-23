@@ -19,7 +19,7 @@
                   <h1 class="user-nickname">{{ profile.nickname }}</h1>
                   <div class="flex items-center gap-3">
                     <button 
-                    v-if="!userStore.token || userStore.profile.userId !== profile.userId"
+                    v-if="!userStore.isLoggedIn || userStore.profile.userId !== profile.userId"
                     @click="handleFollow"
                     :class="isFollowing ? 'border border-gray-300 text-gray-600 bg-white' : 'bg-[var(--color-primary)] text-[var(--color-primary-contrast)]'"
                     class="rounded-full font-bold w-[96px] h-[40px] cursor-pointer">
@@ -51,7 +51,7 @@
                           class="absolute right-0 mt-2 w-[140px] bg-white rounded-lg shadow-lg p-1 z-50 border border-gray-100"
                         >
                           <button 
-                            v-if="!userStore.token || userStore.profile.userId === profile.userId"
+                            v-if="!userStore.isLoggedIn || userStore.profile.userId === profile.userId"
                             class="w-full px-4 py-2 text-left text-gray-600 hover:text-gray-800 
                             hover:bg-gray-50 flex items-center rounded-lg cursor-pointer"
                             @click="editProfile"
@@ -226,7 +226,7 @@ const toggleDropdown = () => {
 
 const showEditModal = ref(false)
 
-const isLoggedIn = computed(() => !!userStore.token)
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 const isOwnProfile = computed(() => isLoggedIn.value
   && String(userStore.profile.userId) === String(profile.value.userId))
 const profileTabs = computed(() => {

@@ -25,7 +25,7 @@ public class HeaderUserId2ContextFilter extends OncePerRequestFilter {
 
             // 判断请求头中是否存在用户 ID
             if (StringUtils.isNotBlank(userId)) {
-                log.info("===== 设置 userId 到 ThreadLocal 中， 用户 ID: {}", userId);
+                log.debug("===== 设置 userId 到 ThreadLocal 中， 用户 ID: {}", userId);
                 LoginUserContextHolder.setUserId(userId);
             }
 

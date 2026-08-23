@@ -23,6 +23,8 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     VERIFICATION_CODE_SEND_FAIL("AUTH-20006", "验证码发送失败，请稍后重试"),
     PASSWORD_UPDATE_FAIL("AUTH-20007", "密码更新失败，请稍后重试"),
     ACCOUNT_NOT_LOGINABLE("AUTH-20008", "该账号已被禁用或注销"),
+    LOGIN_TOO_FREQUENT("AUTH-20009", "尝试过于频繁，请稍后再试"),
+    VERIFICATION_CODE_TOO_MANY_ATTEMPTS("AUTH-20010", "验证码错误次数过多，请重新获取"),
     ;
 
     // 异常码

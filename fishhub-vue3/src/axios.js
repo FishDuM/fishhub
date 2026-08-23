@@ -4,7 +4,8 @@ import { useUserStore } from '@/stores/user'
 
 const instance = axios.create({
   baseURL: '/api',
-  timeout: 15000
+  timeout: 15000,
+  withCredentials: true // 允许跨源携带 HttpOnly Cookie
 })
 
 instance.interceptors.request.use((config) => {

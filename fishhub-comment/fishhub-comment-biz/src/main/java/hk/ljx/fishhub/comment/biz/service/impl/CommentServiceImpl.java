@@ -1063,39 +1063,14 @@ public class CommentServiceImpl implements CommentService {
 
 
         for (CommentDO commentDO : oneLevelCommentDOS) {
-            Long userId = commentDO.getUserId();
-            FindCommentItemRspVO oneLevelCommentRspVO = FindCommentItemRspVO.builder()
-                    .userId(userId)
-                    .commentId(commentDO.getId())
-                    .imageUrl(commentDO.getImageUrl())
-                    .createTime(DateUtils.formatRelativeTime(commentDO.getCreateTime()))
-                    .likeTotal(commentDO.getLikeTotal())
-                    .childCommentTotal(commentDO.getChildCommentTotal())
-                    .heat(commentDO.getHeat())
-                    .build();
-
-            setUserInfo(userIdAndDTOMap, userId, oneLevelCommentRspVO);
-            setCommentContent(commentUuidAndContentMap, commentDO, oneLevelCommentRspVO);
-
+            FindCommentItemRspVO oneLevelCommentRspVO = toCommentItemVO(commentDO, userIdAndDTOMap, commentUuidAndContentMap);
 
             Long firstReplyCommentId = commentDO.getFirstReplyCommentId();
-            if (CollUtil.isNotEmpty(commentIdAndDOMap)) {
+            if (CollUtil.isNotEmpty(commentIdAndDOMap) && firstReplyCommentId != null) {
                 CommentDO firstReplyCommentDO = commentIdAndDOMap.get(firstReplyCommentId);
-                if (Objects.nonNull(firstReplyCommentDO)) {
-                    Long firstReplyCommentUserId = firstReplyCommentDO.getUserId();
-                    FindCommentItemRspVO firstReplyCommentRspVO = FindCommentItemRspVO.builder()
-                            .userId(firstReplyCommentDO.getUserId())
-                            .commentId(firstReplyCommentDO.getId())
-                            .imageUrl(firstReplyCommentDO.getImageUrl())
-                            .createTime(DateUtils.formatRelativeTime(firstReplyCommentDO.getCreateTime()))
-                            .likeTotal(firstReplyCommentDO.getLikeTotal())
-                            .heat(firstReplyCommentDO.getHeat())
-                            .build();
-
-                    setUserInfo(userIdAndDTOMap, firstReplyCommentUserId, firstReplyCommentRspVO);
-
+                if (firstReplyCommentDO != null) {
+                    FindCommentItemRspVO firstReplyCommentRspVO = toCommentItemVO(firstReplyCommentDO, userIdAndDTOMap, commentUuidAndContentMap);
                     oneLevelCommentRspVO.setFirstReplyComment(firstReplyCommentRspVO);
-                    setCommentContent(commentUuidAndContentMap, firstReplyCommentDO, firstReplyCommentRspVO);
                 }
             }
             commentRspVOS.add(oneLevelCommentRspVO);
@@ -1157,36 +1132,39 @@ public class CommentServiceImpl implements CommentService {
         }
     }
 
-    /**
-     * 设置评论内容
-     * @param commentUuidAndContentMap
-     * @param commentDO1
-     * @param firstReplyCommentRspVO
-     */
-    private static void setCommentContent(Map<String, String> commentUuidAndContentMap, CommentDO commentDO1, FindCommentItemRspVO firstReplyCommentRspVO) {
+    private static FindCommentItemRspVO toCommentItemVO(CommentDO commentDO,
+                                                        Map<Long, FindUserByIdRspDTO> userIdAndDTOMap,
+                                                        Map<String, String> commentUuidAndContentMap) {
+        FindCommentItemRspVO vo = FindCommentItemRspVO.builder()
+                .userId(commentDO.getUserId())
+                .commentId(commentDO.getId())
+                .imageUrl(commentDO.getImageUrl())
+                .createTime(DateUtils.formatRelativeTime(commentDO.getCreateTime()))
+                .likeTotal(commentDO.getLikeTotal())
+                .childCommentTotal(commentDO.getChildCommentTotal())
+                .heat(commentDO.getHeat())
+                .build();
+        setUserInfo(userIdAndDTOMap, commentDO.getUserId(), vo);
+        setCommentContent(commentUuidAndContentMap, commentDO, vo);
+        return vo;
+    }
+
+    private static void setCommentContent(Map<String, String> commentUuidAndContentMap, CommentDO commentDO, FindCommentItemRspVO commentRspVO) {
         if (CollUtil.isNotEmpty(commentUuidAndContentMap)) {
-            String contentUuid = commentDO1.getContentUuid();
+            String contentUuid = commentDO.getContentUuid();
             if (StringUtils.isNotBlank(contentUuid)) {
-                firstReplyCommentRspVO.setContent(commentUuidAndContentMap.get(contentUuid));
+                commentRspVO.setContent(commentUuidAndContentMap.get(contentUuid));
             }
         }
     }
 
-    /**
-     * 设置用户信息
-     * @param userIdAndDTOMap
-     * @param userId
-     * @param oneLevelCommentRspVO
-     */
-    private static void setUserInfo(Map<Long, FindUserByIdRspDTO> userIdAndDTOMap, Long userId, FindCommentItemRspVO oneLevelCommentRspVO) {
+    private static void setUserInfo(Map<Long, FindUserByIdRspDTO> userIdAndDTOMap, Long userId, FindCommentItemRspVO commentRspVO) {
         if (CollUtil.isNotEmpty(userIdAndDTOMap)) {
             FindUserByIdRspDTO findUserByIdRspDTO = userIdAndDTOMap.get(userId);
             if (Objects.nonNull(findUserByIdRspDTO)) {
-                oneLevelCommentRspVO.setAvatar(findUserByIdRspDTO.getAvatar());
-                oneLevelCommentRspVO.setNickname(findUserByIdRspDTO.getNickName());
+                commentRspVO.setAvatar(findUserByIdRspDTO.getAvatar());
+                commentRspVO.setNickname(findUserByIdRspDTO.getNickName());
             }
         }
     }
-
-
 }

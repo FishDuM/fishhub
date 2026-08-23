@@ -51,7 +51,7 @@
 
 
               <button
-              v-if="!userStore.token || userStore.profile.userId !== currNote.creatorId"
+              v-if="!userStore.isLoggedIn || userStore.profile.userId !== currNote.creatorId"
               @click="handleFollow"
               :class="isCreatorFollowed ? 'border border-gray-300 text-gray-600 bg-white' : 'bg-[var(--color-primary)] text-[var(--color-primary-contrast)]'"
               class="px-6 py-2 rounded-full font-bold hover:opacity-90 w-[96px] h-[40px] cursor-pointer">
@@ -463,7 +463,7 @@ const loadMoreComments = () => {
   })
 }
 
-const isLoggedIn = computed(() => !!userStore.token)
+const isLoggedIn = computed(() => userStore.isLoggedIn)
 const isCreatorFollowed = ref(false)
 
 const handleVisibilityToggle = async () => {
