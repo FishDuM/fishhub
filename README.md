@@ -13,8 +13,8 @@
    - **高可用读写拦截**：在评论发布、点赞等操作前进行笔记存在性与可写性前置校验，防止对已删内容进行脏操作。
 3. **高性能聚合计数中枢 (`fishhub-count`)**：
    - 全站计数（点赞数、收藏数、评论数、粉丝数、关注数、笔记数）通过 **Redis Hash 实时计数（防负数拦截）+ RocketMQ 批量聚合异步落库**，极大削减 MySQL 写入压力。
-4. **海量正文 KV 存储解耦 (`fishhub-kv`)**：
-   - 笔记大文本正文由 Cassandra / KV 引擎独立存储与水平扩容，关系型数据库仅存储结构化元数据。
+4. **海量正文高性能 KV 存储（Cassandra 本地直连）**：
+   - 笔记与评论的大文本正文由 Cassandra NoSQL 引擎直连持久化与水平扩容，彻底消除跨进程 RPC 开销，关系型 MySQL 仅存储核心结构化元数据。
 5. **智能全文检索 (`fishhub-search`)**：
    - 基于 Elasticsearch 7/8 深度定制，支持拼音分词、多维度权重打分（Function Score 结合点赞/热度/时间）、自适应时间格式解析与检索高亮。
 6. **企业级基础框架 (`fishhub-framework`)**：
@@ -34,19 +34,16 @@ fishhub
 ├── fishhub-framework                     # 平台基础框架
 │   ├── fishhub-common                    # 底层通用：枚举/常量/工具类/通用响应
 │   ├── fishhub-spring-boot-starter-web   # 【核心 Web 聚合 Starter】上下文/Jackson/异常/操作日志
+│   ├── fishhub-spring-boot-starter-biz-id# 【发号组件】Leaf Snowflake / Segment 高性能嵌入式发号器
 │   ├── fishhub-spring-boot-starter-biz-mq# 【按需组件】RocketMQ 事务消息与幂等消费
 │   └── fishhub-spring-boot-starter-biz-redisson # 【按需组件】Redisson 分布式锁与缓存重建锁
 │
-├── fishhub-gateway                       # 统一接入网关（WebFlux 响应式、Sa-Token 鉴权、Sentinel 限流）
-├── fishhub-user                          # 用户服务（注册登录、BCrypt 加密、图形验证码、RBAC 权限）
-├── fishhub-note                          # 笔记服务（发布、编辑、话题频道、点赞/收藏、详情组装）
-├── fishhub-comment                       # 评论服务（一级/二级嵌套评论、热度排序、实时点赞）
-├── fishhub-user-relation                 # 用户关系服务（关注/粉丝列表、双向缓存、事务通知）
-├── fishhub-count                         # 计数服务（全站计数聚合、Redis Hash 缓冲、批量 MQ 落库）
-├── fishhub-search                        # 搜索服务（Elasticsearch 笔记与用户检索、高亮、权重排序）
-├── fishhub-oss                           # 对象存储服务（MinIO / 阿里云 OSS 文件上传凭据与清理）
-├── fishhub-kv                            # 海量正文存储服务（Cassandra 大文本解耦）
-├── fishhub-distributed-id-generator      # 分布式 ID 服务（美团 Leaf Snowflake / Segment 双模式）
+├── fishhub-gateway                       # 统一接入网关（WebFlux 响应式、Sa-Token 鉴权、Sentinel 限流、IP 透传）
+├── fishhub-user                          # 用户与关系域服务（注册登录、RBAC 权限、关注/粉丝、MinIO/OSS 直传）
+├── fishhub-note                          # 笔记与内容域服务（发布编辑、话题频道、点赞/收藏、Cassandra 大文本直存）
+├── fishhub-comment                       # 评论域服务（一级/二级嵌套评论、热度权重排序、实时点赞、Cassandra 直存）
+├── fishhub-count                         # 计数中枢服务（全站计数聚合、Redis Hash 缓冲、批量 RocketMQ 异步落库）
+├── fishhub-search                        # 搜索域服务（Elasticsearch 笔记与用户检索、高亮、多维权重打分）
 │
 ├── fishhub-vue3                          # 前端 SPA 应用（Vue 3 + Vite 5 + Pinia + Tailwind CSS）
 ├── scripts                               # 启动与运维脚本（一键启动脚本 start-all.bat / start-services.ps1）
@@ -56,20 +53,16 @@ fishhub
 
 ---
 
-## 🔌 微服务端口规划
+## 🔌 微服务端口规划（6 大核心业务域）
 
-| 服务名称 | 端口 | 模块架构 | 核心职责 |
-| :--- | :---: | :---: | :--- |
-| **Gateway** | **8000** | 单层 | 统一对外网关（路由转发、Sa-Token 鉴权、IP 清洗、Sentinel 限流） |
-| **User** | **8082** | `api + biz` | 用户/认证/角色权限/图形验证码 |
-| **OSS** | **8081** | `api + biz` | 对象存储（MinIO 文件上传与清理） |
-| **KV** | **8084** | `api + biz` | Cassandra 大文本正文独立存储 |
-| **Distributed ID** | **8085** | `api + biz` | 美团 Leaf 分布式 ID 分发（Snowflake / Segment） |
-| **Note** | **8086** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏） |
-| **User Relation**| **8087** | 单层 `biz` | 关注/取关、粉丝列表、ZSet 关系缓存 |
-| **Count** | **8090** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库） |
-| **Search** | **8092** | 单层 `biz` | Elasticsearch 全文搜索、多级分词、相关度排序 |
-| **Comment** | **8093** | 单层 `biz` | 评论、二级回复、热度权重、实时点赞 |
+| 服务名称 | 端口 | 模块架构 | 核心职责 | 持久化 / 存储组件 |
+| :--- | :---: | :---: | :--- | :--- |
+| **Gateway** | **8000** | 单层 | 统一接入网关（流量路由、Sa-Token 鉴权、Sentinel 限流、IP 透传） | Redis（Token 会话） |
+| **User** | **8082** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub_user`) + Redis + MinIO/OSS |
+| **Note** | **8086** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub_note`) + **Cassandra (`fishhub`)** + Redis |
+| **Comment** | **8093** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub_comment`) + **Cassandra (`fishhub`)** + Redis |
+| **Count** | **8090** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub_count`) + Redis Hash + RocketMQ |
+| **Search** | **8092** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL |
 
 > **安全说明**：除 Gateway（8000）对外开放外，其余微服务均为内网 RPC 服务，跨服务调用一律走 OpenFeign 或 RocketMQ 异步通知。
 

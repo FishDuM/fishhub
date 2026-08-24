@@ -50,6 +50,10 @@ class NoteServiceImplAccessTest {
     @Mock
     private ValueOperations<String, String> valueOperations;
     @Mock
+    private org.springframework.data.redis.core.HashOperations<String, Object, Object> hashOperations;
+    @Mock
+    private hk.ljx.fishhub.note.biz.kv.KeyValueClient keyValueClient;
+    @Mock
     private RedissonClient redissonClient;
     @Mock
     private RLock rebuildLock;
@@ -163,12 +167,15 @@ class NoteServiceImplAccessTest {
     }
 
     @Test
-    void shouldNotCallCountRpcWhenDetailCacheHasEmbeddedCounts() {
+    void shouldNotCallCountRpcWhenRedisHashHasCounts() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
         when(valueOperations.get(RedisKeyConstants.buildNoteAccessKey(11L)))
                 .thenReturn("{\"creatorId\":1,\"visible\":0,\"revision\":1}");
         when(valueOperations.get(RedisKeyConstants.buildNoteDetailKey(11L)))
-                .thenReturn("{\"id\":11,\"revision\":1,\"type\":0,\"title\":\"t\",\"likeTotal\":7,\"collectTotal\":8,\"commentTotal\":9}");
+                .thenReturn("{\"id\":11,\"revision\":1,\"type\":0,\"title\":\"t\"}");
+        when(hashOperations.multiGet("count:note:11", List.of("likeTotal", "collectTotal", "commentTotal")))
+                .thenReturn(List.of("7", "8", "9"));
 
         FindNoteDetailReqVO request = new FindNoteDetailReqVO();
         request.setId(11L);
@@ -181,13 +188,15 @@ class NoteServiceImplAccessTest {
     }
 
     @Test
-    void shouldBackfillCountsFromRpcWhenDetailCacheLacksCounts() {
+    void shouldBackfillCountsFromRpcWhenRedisHashLacksCounts() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
         when(valueOperations.get(RedisKeyConstants.buildNoteAccessKey(11L)))
                 .thenReturn("{\"creatorId\":1,\"visible\":0,\"revision\":1}");
-        // 旧格式缓存：计数未内嵌
         when(valueOperations.get(RedisKeyConstants.buildNoteDetailKey(11L)))
                 .thenReturn("{\"id\":11,\"revision\":1,\"type\":0,\"title\":\"t\"}");
+        when(hashOperations.multiGet("count:note:11", List.of("likeTotal", "collectTotal", "commentTotal")))
+                .thenReturn(Collections.emptyList());
         when(countClient.findByNoteIds(List.of(11L))).thenReturn(List.of(
                 FindNoteCountsByIdRspDTO.builder().noteId(11L).likeTotal(5L).collectTotal(6L).commentTotal(7L).build()));
 

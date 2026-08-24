@@ -53,6 +53,8 @@ class CommentChangedLocalHandlerTest {
     @Mock
     private CommentHeatAggregator commentHeatAggregator;
     @Mock
+    private CommentLikeRealtimeService commentLikeRealtimeService;
+    @Mock
     private ZSetOperations<String, String> zSetOperations;
     @Mock
     private ValueOperations<String, String> valueOperations;

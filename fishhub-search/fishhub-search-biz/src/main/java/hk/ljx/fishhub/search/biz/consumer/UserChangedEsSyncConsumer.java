@@ -15,7 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 用户资料变更事件 → 用户索引 + 该用户全部笔记索引同步（笔记文档内嵌昵称/头像）。
+ * 用户资料变更事件 → 用户索引同步。
+ * 笔记索引不再冗余用户昵称/头像（由搜索接口通过 UserClient 毫秒级本地缓存动态回填），彻底消灭写放大！
  */
 @Component
 @RocketMQMessageListener(consumerGroup = "fishhub_group_search_es_user_changed",
@@ -25,7 +26,6 @@ import java.util.Map;
 public class UserChangedEsSyncConsumer implements RocketMQListener<String> {
 
     private final EsIndexSyncAggregator esIndexSyncAggregator;
-    private final SelectMapper selectMapper;
 
     @Override
     public void onMessage(String body) {
@@ -34,13 +34,5 @@ public class UserChangedEsSyncConsumer implements RocketMQListener<String> {
         }
         Long userId = Long.valueOf(body.trim());
         esIndexSyncAggregator.submitUser(userId);
-
-        // 笔记文档冗余了用户昵称/头像，资料变更需重建该用户全部笔记文档
-        List<Map<String, Object>> notes = selectMapper.selectEsNoteIndexData(null, userId);
-        if (notes != null && !notes.isEmpty()) {
-            esIndexSyncAggregator.submitNoteIds(notes.stream()
-                    .map(row -> Long.valueOf(String.valueOf(row.get(NoteIndex.FIELD_NOTE_ID))))
-                    .toList());
-        }
     }
 }

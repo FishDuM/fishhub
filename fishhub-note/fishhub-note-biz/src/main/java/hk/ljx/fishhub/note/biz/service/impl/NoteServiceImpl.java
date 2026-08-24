@@ -15,6 +15,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.framework.common.util.NumberUtils;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
@@ -36,7 +37,7 @@ import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.model.bo.NoteAccessSnapshot;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.count.client.CountClient;
-import hk.ljx.fishhub.kv.client.KeyValueClient;
+import hk.ljx.fishhub.note.biz.kv.KeyValueClient;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.client.UserClient;
@@ -361,8 +362,7 @@ public class NoteServiceImpl implements NoteService {
 
         Long userId = LoginUserContextHolder.getUserId();
 
-        // 缓存只保存详情快照；访问权限和版本以 MySQL 中的最小事实字段为准。
-        // 因而可见性变更/删除无需等待跨节点缓存失效消息，即不会继续暴露旧公开快照。
+        // 缓存只保存元数据快照（不含正文长文本防 BigKey，不含动态计数保实时）
         String findNoteDetailRspVOStrLocalCache = LOCAL_CACHE.getIfPresent(noteId);
         if (StringUtils.isNotBlank(findNoteDetailRspVOStrLocalCache)) {
             if ("null".equals(findNoteDetailRspVOStrLocalCache)) {
@@ -370,7 +370,7 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
             if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                fillNoteCounts(findNoteDetailRspVO);
+                loadContentAndCounts(findNoteDetailRspVO);
                 return Response.success(findNoteDetailRspVO);
             }
             LOCAL_CACHE.invalidate(noteId);
@@ -389,7 +389,7 @@ public class NoteServiceImpl implements NoteService {
             } else {
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
-                fillNoteCounts(findNoteDetailRspVO);
+                loadContentAndCounts(findNoteDetailRspVO);
                 return Response.success(findNoteDetailRspVO);
             }
         }
@@ -410,16 +410,8 @@ public class NoteServiceImpl implements NoteService {
 
         checkNoteVisible(noteDO.getVisible(), userId, noteDO.getCreatorId());
 
-        // 并发异步查询作者信息与笔记正文
-        CompletableFuture<FindUserByIdRspDTO> userFuture = CompletableFuture
-                .supplyAsync(() -> userClient.findById(noteDO.getCreatorId()), threadPoolTaskExecutor);
-
-        CompletableFuture<String> contentFuture = Boolean.FALSE.equals(noteDO.getIsContentEmpty())
-                ? CompletableFuture.supplyAsync(() -> keyValueClient.findNoteContent(noteDO.getContentUuid()), threadPoolTaskExecutor)
-                : CompletableFuture.completedFuture(null);
-
-        FindUserByIdRspDTO author = userFuture.get();
-        String content = contentFuture.get();
+        // 查询作者信息
+        FindUserByIdRspDTO author = userClient.findById(noteDO.getCreatorId());
 
         Integer noteType = noteDO.getType();
         String imgUrisStr = noteDO.getImgUris();
@@ -433,7 +425,8 @@ public class NoteServiceImpl implements NoteService {
                 .revision(noteDO.getRevision())
                 .type(noteDO.getType())
                 .title(noteDO.getTitle())
-                .content(content)
+                .contentUuid(noteDO.getContentUuid())
+                .isContentEmpty(noteDO.getIsContentEmpty())
                 .imgUris(imgUris)
                 .topicId(noteDO.getTopicId())
                 .topicName(noteDO.getTopicName())
@@ -445,23 +438,19 @@ public class NoteServiceImpl implements NoteService {
                 .visible(noteDO.getVisible())
                 .build();
 
-        // 计数随详情 JSON 一起缓存，命中路径免 count Feign（TTL 缩至 30~90s 保新鲜）。
-        fillNoteCounts(findNoteDetailRspVO);
-
+        // 异步写回轻量元数据快照（绝不写入 content 大长文与动态计数，体积仅 100~200 字节，防 BigKey）
         threadPoolTaskExecutor.submit(() -> {
             try {
-                // 如果笔记包含正文但正文尚未异步落库完毕（content == null），不写入详情缓存，避免产生长达一分钟的正文空白缓存污染
-                if (Objects.equals(noteDO.getIsContentEmpty(), Boolean.FALSE) && StringUtils.isBlank(findNoteDetailRspVO.getContent())) {
-                    log.warn("笔记正文尚未就绪，跳过详情缓存写入, noteId={}", noteId);
-                    return;
-                }
                 String freshNoteDetailJson = JsonUtils.toJsonString(findNoteDetailRspVO);
-                long expireSeconds = CacheTtl.basePlusRandom(30, 60);
+                long expireSeconds = CacheTtl.hours(1, 2);
                 stringRedisTemplate.opsForValue().set(noteDetailRedisKey, freshNoteDetailJson, expireSeconds, TimeUnit.SECONDS);
+                LOCAL_CACHE.put(noteId, freshNoteDetailJson);
             } catch (Exception e) {
-                log.warn("Redis 不可用，笔记详情缓存写入失败，响应将继续返回，noteId={}", noteId, e);
+                log.warn("Redis 不可用，笔记详情元数据缓存写入失败，响应将继续返回，noteId={}", noteId, e);
             }
         });
+
+        loadContentAndCounts(findNoteDetailRspVO);
 
         return Response.success(findNoteDetailRspVO);
     }
@@ -1233,29 +1222,46 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
-    private boolean needsCountRefresh(FindNoteDetailRspVO noteDetail) {
-        return noteDetail == null || noteDetail.getLikeTotal() == null
-                || noteDetail.getCollectTotal() == null || noteDetail.getCommentTotal() == null;
+    private void loadContentAndCounts(FindNoteDetailRspVO findNoteDetailRspVO) {
+        if (findNoteDetailRspVO == null) {
+            return;
+        }
+        // 1. 正文专职从 Cassandra 点查（~1ms），彻底消除 Redis BigKey
+        if (Boolean.FALSE.equals(findNoteDetailRspVO.getIsContentEmpty()) && StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
+            findNoteDetailRspVO.setContent(keyValueClient.findNoteContent(findNoteDetailRspVO.getContentUuid()));
+        }
+        // 2. 动态计数从 Redis Hash 实时覆盖
+        fillNoteCounts(findNoteDetailRspVO);
     }
 
     private void fillNoteCounts(FindNoteDetailRspVO noteDetail) {
         if (noteDetail == null || noteDetail.getId() == null) {
             return;
         }
-        if (!needsCountRefresh(noteDetail)) {
-            return;
-        }
         Long noteId = noteDetail.getId();
         try {
-            String countKey = "count:note:" + noteId;
+            String countKey = CountKeyConstants.buildCountNoteKey(noteId);
             List<Object> hashValues = stringRedisTemplate.opsForHash().multiGet(countKey,
-                    List.of("likeTotal", "collectTotal", "commentTotal"));
-            if (CollUtil.isNotEmpty(hashValues) && hashValues.size() >= 3
-                    && hashValues.get(0) != null && hashValues.get(1) != null && hashValues.get(2) != null) {
-                noteDetail.setLikeTotal(Long.parseLong(String.valueOf(hashValues.get(0))));
-                noteDetail.setCollectTotal(Long.parseLong(String.valueOf(hashValues.get(1))));
-                noteDetail.setCommentTotal(Long.parseLong(String.valueOf(hashValues.get(2))));
-                return;
+                    List.of(CountKeyConstants.FIELD_LIKE_TOTAL,
+                            CountKeyConstants.FIELD_COLLECT_TOTAL,
+                            CountKeyConstants.FIELD_COMMENT_TOTAL));
+            if (CollUtil.isNotEmpty(hashValues) && hashValues.size() >= 3) {
+                boolean hasValidCount = false;
+                if (hashValues.get(0) != null) {
+                    noteDetail.setLikeTotal(Long.parseLong(String.valueOf(hashValues.get(0))));
+                    hasValidCount = true;
+                }
+                if (hashValues.get(1) != null) {
+                    noteDetail.setCollectTotal(Long.parseLong(String.valueOf(hashValues.get(1))));
+                    hasValidCount = true;
+                }
+                if (hashValues.get(2) != null) {
+                    noteDetail.setCommentTotal(Long.parseLong(String.valueOf(hashValues.get(2))));
+                    hasValidCount = true;
+                }
+                if (hasValidCount) {
+                    return;
+                }
             }
         } catch (Exception e) {
             log.warn("从 Redis 读取笔记计数失败，降级调用 count RPC, noteId={}", noteId, e);

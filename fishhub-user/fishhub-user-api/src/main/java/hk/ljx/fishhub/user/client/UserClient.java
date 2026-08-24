@@ -25,13 +25,29 @@ public class UserClient {
     private final UserFeignApi userFeignApi;
 
     /**
-     * 用户资料本地缓存
+     * 用户资料本地缓存（兜底 10 秒失效，优先由 RocketMQ 广播毫秒级主动失效）
      */
     private static final Cache<Long, FindUserByIdRspDTO> USER_RPC_LOCAL_CACHE = Caffeine.newBuilder()
             .initialCapacity(1000)
             .maximumSize(5000)
-            .expireAfterWrite(60, TimeUnit.SECONDS)
+            .expireAfterWrite(10, TimeUnit.SECONDS)
             .build();
+
+    /**
+     * 主动失效指定用户的本地内存缓存（由 MQ 广播消费触发）
+     */
+    public static void invalidate(Long userId) {
+        if (userId != null) {
+            USER_RPC_LOCAL_CACHE.invalidate(userId);
+        }
+    }
+
+    /**
+     * 清空全部本地用户缓存
+     */
+    public static void invalidateAll() {
+        USER_RPC_LOCAL_CACHE.invalidateAll();
+    }
 
     /**
      * 查询用户信息

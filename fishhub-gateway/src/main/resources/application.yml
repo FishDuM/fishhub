@@ -4,6 +4,8 @@ server:
   # 真实 IP 由 AddUserId2HeaderFilter 统一解析清洗后写入 X-Real-IP
   forward-headers-strategy: none
 spring:
+  codec:
+    max-in-memory-size: 50MB
   cloud:
     gateway:
       httpclient:
@@ -29,7 +31,7 @@ spring:
           filters:
             - StripPrefix=1
         - id: user-relation
-          uri: lb://fishhub-user-relation
+          uri: lb://fishhub-user
           predicates:
             - Path=/relation/**
           filters:
@@ -41,7 +43,7 @@ spring:
           filters:
             - StripPrefix=1
         - id: oss
-          uri: lb://fishhub-oss
+          uri: lb://fishhub-user
           predicates:
             - Path=/oss/**
           filters:

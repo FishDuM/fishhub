@@ -37,16 +37,6 @@ public class NoteIndex {
     public static final String FIELD_NOTE_TOPIC = "topic";
 
     /**
-     * 发布者昵称
-     */
-    public static final String FIELD_NOTE_NICKNAME = "nickname";
-
-    /**
-     * 发布者头像
-     */
-    public static final String FIELD_NOTE_AVATAR = "avatar";
-
-    /**
      * 笔记类型
      */
     public static final String FIELD_NOTE_TYPE = "type";

@@ -3,12 +3,12 @@ package hk.ljx.fishhub.comment.biz.rpc;
 import com.google.common.collect.Lists;
 import hk.ljx.framework.common.constant.DateConstants;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
-import hk.ljx.fishhub.kv.client.KeyValueClient;
-import hk.ljx.fishhub.kv.dto.req.BatchAddCommentContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.CommentContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.DeleteCommentContentReqDTO;
-import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
-import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
+import hk.ljx.fishhub.comment.biz.kv.client.KeyValueClient;
+import hk.ljx.fishhub.comment.biz.kv.dto.req.BatchAddCommentContentReqDTO;
+import hk.ljx.fishhub.comment.biz.kv.dto.req.CommentContentReqDTO;
+import hk.ljx.fishhub.comment.biz.kv.dto.req.DeleteCommentContentReqDTO;
+import hk.ljx.fishhub.comment.biz.kv.dto.req.FindCommentContentReqDTO;
+import hk.ljx.fishhub.comment.biz.kv.dto.rsp.FindCommentContentRspDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

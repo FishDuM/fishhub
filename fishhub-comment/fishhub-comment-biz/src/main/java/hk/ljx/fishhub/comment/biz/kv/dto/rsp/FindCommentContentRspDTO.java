@@ -1,0 +1,15 @@
+package hk.ljx.fishhub.comment.biz.kv.dto.rsp;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class FindCommentContentRspDTO {
+    private String contentId;
+    private String content;
+}

@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import java.util.List;
 
 
-@FeignClient(name = ApiConstants.SERVICE_NAME)
+@FeignClient(name = ApiConstants.SERVICE_NAME, contextId = "userFeignApi")
 public interface UserFeignApi {
 
     String PREFIX = "/user";

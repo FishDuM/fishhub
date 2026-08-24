@@ -29,6 +29,10 @@ public class FindNoteDetailRspVO {
 
     private String content;
 
+    private String contentUuid;
+
+    private Boolean isContentEmpty;
+
     private List<String> imgUris;
 
     private Long topicId;

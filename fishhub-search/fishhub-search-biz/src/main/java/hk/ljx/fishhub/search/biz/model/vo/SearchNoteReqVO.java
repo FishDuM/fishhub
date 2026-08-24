@@ -9,10 +9,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
 public class SearchNoteReqVO {
 
     @NotBlank(message = "搜索关键词不能为空")
@@ -20,7 +16,6 @@ public class SearchNoteReqVO {
 
     @Min(value = 1, message = "页码不能小于 1")
     @Max(value = 100, message = "由于性能限制，最多仅支持查询前 100 页")
-    @Builder.Default
     private Integer pageNo = 1; // 默认值为第一页
 
     /**
@@ -38,4 +33,95 @@ public class SearchNoteReqVO {
      */
     private Integer publishTimeRange;
 
+    public SearchNoteReqVO() {
+    }
+
+    public SearchNoteReqVO(String keyword, Integer pageNo, Integer type, Integer sort, Integer publishTimeRange) {
+        this.keyword = keyword;
+        this.pageNo = pageNo != null ? pageNo : 1;
+        this.type = type;
+        this.sort = sort;
+        this.publishTimeRange = publishTimeRange;
+    }
+
+    public String getKeyword() {
+        return keyword;
+    }
+
+    public void setKeyword(String keyword) {
+        this.keyword = keyword;
+    }
+
+    public Integer getPageNo() {
+        return pageNo;
+    }
+
+    public void setPageNo(Integer pageNo) {
+        this.pageNo = pageNo;
+    }
+
+    public Integer getType() {
+        return type;
+    }
+
+    public void setType(Integer type) {
+        this.type = type;
+    }
+
+    public Integer getSort() {
+        return sort;
+    }
+
+    public void setSort(Integer sort) {
+        this.sort = sort;
+    }
+
+    public Integer getPublishTimeRange() {
+        return publishTimeRange;
+    }
+
+    public void setPublishTimeRange(Integer publishTimeRange) {
+        this.publishTimeRange = publishTimeRange;
+    }
+
+    public static SearchNoteReqVOBuilder builder() {
+        return new SearchNoteReqVOBuilder();
+    }
+
+    public static class SearchNoteReqVOBuilder {
+        private String keyword;
+        private Integer pageNo = 1;
+        private Integer type;
+        private Integer sort;
+        private Integer publishTimeRange;
+
+        public SearchNoteReqVOBuilder keyword(String keyword) {
+            this.keyword = keyword;
+            return this;
+        }
+
+        public SearchNoteReqVOBuilder pageNo(Integer pageNo) {
+            this.pageNo = pageNo;
+            return this;
+        }
+
+        public SearchNoteReqVOBuilder type(Integer type) {
+            this.type = type;
+            return this;
+        }
+
+        public SearchNoteReqVOBuilder sort(Integer sort) {
+            this.sort = sort;
+            return this;
+        }
+
+        public SearchNoteReqVOBuilder publishTimeRange(Integer publishTimeRange) {
+            this.publishTimeRange = publishTimeRange;
+            return this;
+        }
+
+        public SearchNoteReqVO build() {
+            return new SearchNoteReqVO(keyword, pageNo, type, sort, publishTimeRange);
+        }
+    }
 }

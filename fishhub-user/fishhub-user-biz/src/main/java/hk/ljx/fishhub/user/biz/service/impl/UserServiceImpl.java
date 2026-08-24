@@ -617,8 +617,8 @@ public class UserServiceImpl implements UserService {
 
         if (StringUtils.isNotBlank(userProfileJson)) {
             FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
-            // 如果是作者本人查看，保证计数的实时性
-            authorGetActualCountData(userId, findUserProfileRspVO);
+            // 无论是作者本人还是访客查看，均统一覆盖最新的实时动态计数（~0.3ms，直查计数服务 Redis Hash）
+            rpcCountServiceAndSetData(userId, findUserProfileRspVO);
 
             return Response.success(findUserProfileRspVO);
         }
@@ -642,11 +642,10 @@ public class UserServiceImpl implements UserService {
         LocalDate birthday = userDO.getBirthday();
         findUserProfileRspVO.setAge(Objects.isNull(birthday) ? null : DateUtils.calculateAge(birthday));
 
-        // RPC: Feign 调用计数服务
-        // 关注数、粉丝数、收藏与点赞总数；获得的点赞数、收藏数
-        rpcCountServiceAndSetData(userId, findUserProfileRspVO);
-
         syncUserProfile2Redis(userProfileRedisKey, findUserProfileRspVO);
+
+        // 动态覆盖计数
+        rpcCountServiceAndSetData(userId, findUserProfileRspVO);
 
         return Response.success(findUserProfileRspVO);
     }
@@ -657,35 +656,28 @@ public class UserServiceImpl implements UserService {
      * @param findUserProfileRspVO
      */
     private void rpcCountServiceAndSetData(Long userId, FindUserProfileRspVO findUserProfileRspVO) {
-        FindUserCountsByIdRspDTO findUserCountsByIdRspDTO = countClient.findUserCountById(userId);
+        try {
+            FindUserCountsByIdRspDTO findUserCountsByIdRspDTO = countClient.findUserCountById(userId);
 
-        if (Objects.nonNull(findUserCountsByIdRspDTO)) {
-            Long fansTotal = findUserCountsByIdRspDTO.getFansTotal();
-            Long followingTotal = findUserCountsByIdRspDTO.getFollowingTotal();
-            Long likeTotal = findUserCountsByIdRspDTO.getLikeTotal();
-            Long collectTotal = findUserCountsByIdRspDTO.getCollectTotal();
-            Long noteTotal = findUserCountsByIdRspDTO.getNoteTotal();
+            if (Objects.nonNull(findUserCountsByIdRspDTO)) {
+                Long fansTotal = findUserCountsByIdRspDTO.getFansTotal();
+                Long followingTotal = findUserCountsByIdRspDTO.getFollowingTotal();
+                Long likeTotal = findUserCountsByIdRspDTO.getLikeTotal();
+                Long collectTotal = findUserCountsByIdRspDTO.getCollectTotal();
+                Long noteTotal = findUserCountsByIdRspDTO.getNoteTotal();
 
-            long safeLike = likeTotal == null ? 0L : likeTotal;
-            long safeCollect = collectTotal == null ? 0L : collectTotal;
+                long safeLike = likeTotal == null ? 0L : likeTotal;
+                long safeCollect = collectTotal == null ? 0L : collectTotal;
 
-            findUserProfileRspVO.setFansTotal(NumberUtils.formatNumberString(fansTotal == null ? 0L : fansTotal));
-            findUserProfileRspVO.setFollowingTotal(NumberUtils.formatNumberString(followingTotal == null ? 0L : followingTotal));
-            findUserProfileRspVO.setLikeAndCollectTotal(NumberUtils.formatNumberString(safeLike + safeCollect));
-            findUserProfileRspVO.setNoteTotal(NumberUtils.formatNumberString(noteTotal == null ? 0L : noteTotal));
-            findUserProfileRspVO.setLikeTotal(NumberUtils.formatNumberString(safeLike));
-            findUserProfileRspVO.setCollectTotal(NumberUtils.formatNumberString(safeCollect));
-        }
-    }
-
-    /**
-     * 作者本人获取真实的计数数据（保证实时性）
-     * @param userId
-     * @param findUserProfileRspVO
-     */
-    private void authorGetActualCountData(Long userId, FindUserProfileRspVO findUserProfileRspVO) {
-        if (Objects.equals(userId, LoginUserContextHolder.getUserId())) {
-            rpcCountServiceAndSetData(userId, findUserProfileRspVO);
+                findUserProfileRspVO.setFansTotal(NumberUtils.formatNumberString(fansTotal == null ? 0L : fansTotal));
+                findUserProfileRspVO.setFollowingTotal(NumberUtils.formatNumberString(followingTotal == null ? 0L : followingTotal));
+                findUserProfileRspVO.setLikeAndCollectTotal(NumberUtils.formatNumberString(safeLike + safeCollect));
+                findUserProfileRspVO.setNoteTotal(NumberUtils.formatNumberString(noteTotal == null ? 0L : noteTotal));
+                findUserProfileRspVO.setLikeTotal(NumberUtils.formatNumberString(safeLike));
+                findUserProfileRspVO.setCollectTotal(NumberUtils.formatNumberString(safeCollect));
+            }
+        } catch (Exception e) {
+            log.warn("RPC 调用计数服务获取用户计数失败，保留兜底计数, userId={}", userId, e);
         }
     }
 

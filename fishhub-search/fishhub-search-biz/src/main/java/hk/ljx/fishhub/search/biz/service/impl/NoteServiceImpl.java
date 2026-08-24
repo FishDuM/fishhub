@@ -34,22 +34,34 @@ import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.elasticsearch.search.sort.FieldSortBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import hk.ljx.fishhub.user.client.UserClient;
+import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
-@Slf4j
-@RequiredArgsConstructor
 public class NoteServiceImpl implements NoteService {
 
+    private static final Logger log = LoggerFactory.getLogger(NoteServiceImpl.class);
     private final RestHighLevelClient restHighLevelClient;
+    private final UserClient userClient;
+
+    public NoteServiceImpl(RestHighLevelClient restHighLevelClient, UserClient userClient) {
+        this.restHighLevelClient = restHighLevelClient;
+        this.userClient = userClient;
+    }
 
     /**
      * 搜索笔记
@@ -166,9 +178,26 @@ public class NoteServiceImpl implements NoteService {
             log.debug("==> 命中文档总数, hits: {}", total);
 
             SearchHits hits = searchResponse.getHits();
+            List<Long> creatorIds = Lists.newArrayList();
+            for (SearchHit hit : hits) {
+                Map<String, Object> map = hit.getSourceAsMap();
+                if (map != null && map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n) {
+                    creatorIds.add(n.longValue());
+                }
+            }
+
+            Map<Long, FindUserByIdRspDTO> userMap = Collections.emptyMap();
+            if (CollUtil.isNotEmpty(creatorIds)) {
+                List<FindUserByIdRspDTO> userDTOs = userClient.findByIds(creatorIds.stream().distinct().toList());
+                if (CollUtil.isNotEmpty(userDTOs)) {
+                    userMap = userDTOs.stream()
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toMap(FindUserByIdRspDTO::getId, Function.identity(), (a, b) -> a));
+                }
+            }
 
             for (SearchHit hit : hits) {
-                searchNoteRspVOS.add(buildSearchNoteRspVO(hit));
+                searchNoteRspVOS.add(buildSearchNoteRspVO(hit, userMap));
             }
         } catch (IOException e) {
             log.error("==> 查询 Elasticsearch 异常: ", e);
@@ -178,7 +207,7 @@ public class NoteServiceImpl implements NoteService {
         return PageResponse.success(searchNoteRspVOS, pageNo, total);
     }
 
-    private static SearchNoteRspVO buildSearchNoteRspVO(SearchHit hit) {
+    private static SearchNoteRspVO buildSearchNoteRspVO(SearchHit hit, Map<Long, FindUserByIdRspDTO> userMap) {
         Map<String, Object> map = hit.getSourceAsMap();
         String updateTimeStr = (String) map.get(NoteIndex.FIELD_NOTE_UPDATE_TIME);
         LocalDateTime updateTime = parseUpdateTime(updateTimeStr);
@@ -195,6 +224,10 @@ public class NoteServiceImpl implements NoteService {
         Long creatorId = map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n ? n.longValue() : null;
         Integer noteType = map.get(NoteIndex.FIELD_NOTE_TYPE) instanceof Number n ? n.intValue() : null;
 
+        FindUserByIdRspDTO author = creatorId != null ? userMap.get(creatorId) : null;
+        String avatar = author != null ? author.getAvatar() : null;
+        String nickname = author != null ? author.getNickName() : null;
+
         return SearchNoteRspVO.builder()
                 .noteId(noteId)
                 .creatorId(creatorId)
@@ -203,8 +236,8 @@ public class NoteServiceImpl implements NoteService {
                 .videoUri((String) map.get(NoteIndex.FIELD_NOTE_VIDEO_URI))
                 .title((String) map.get(NoteIndex.FIELD_NOTE_TITLE))
                 .highlightTitle(highlightedTitle)
-                .avatar((String) map.get(NoteIndex.FIELD_NOTE_AVATAR))
-                .nickname((String) map.get(NoteIndex.FIELD_NOTE_NICKNAME))
+                .avatar(avatar)
+                .nickname(nickname)
                 .updateTime(DateUtils.formatRelativeTime(updateTime))
                 .likeTotal(NumberUtils.formatNumberString(likeTotal))
                 .commentTotal(NumberUtils.formatNumberString(commentTotal))

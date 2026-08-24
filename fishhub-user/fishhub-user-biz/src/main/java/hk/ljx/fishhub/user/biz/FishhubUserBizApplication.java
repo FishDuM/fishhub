@@ -7,9 +7,9 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.ComponentScan;
 
 @SpringBootApplication
-@MapperScan("hk.ljx.fishhub.user.biz.domain.mapper")
+@MapperScan({"hk.ljx.fishhub.user.biz.domain.mapper", "hk.ljx.fishhub.user.relation.biz.domain.mapper"})
 @EnableFeignClients(basePackages = "hk.ljx.fishhub")
-@ComponentScan({"hk.ljx.fishhub.user.biz", "hk.ljx.fishhub.count"}) //  多模块扫描
+@ComponentScan({"hk.ljx.fishhub.user", "hk.ljx.fishhub.oss", "hk.ljx.fishhub.count"})
 public class FishhubUserBizApplication {
 
     public static void main(String[] args) {

@@ -6,8 +6,6 @@ import lombok.Getter;
 import java.util.Objects;
 
 
-@Getter
-@AllArgsConstructor
 public enum NotePublishTimeRangeEnum {
 
     // 一天内
@@ -19,6 +17,14 @@ public enum NotePublishTimeRangeEnum {
     ;
 
     private final Integer code;
+
+    NotePublishTimeRangeEnum(Integer code) {
+        this.code = code;
+    }
+
+    public Integer getCode() {
+        return code;
+    }
 
     /**
      * 根据类型 code 获取对应的枚举

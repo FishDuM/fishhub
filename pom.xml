@@ -22,18 +22,10 @@
         <module>fishhub-framework</module>
         <!-- Gateway 网关服务 -->
         <module>fishhub-gateway</module>
-        <!-- 对象存储服务 -->
-        <module>fishhub-oss</module>
-        <!-- 用户服务 -->
+        <!-- 用户服务 (包含用户/关系/文件存储) -->
         <module>fishhub-user</module>
-        <!-- KV 键值存储服务 -->
-        <module>fishhub-kv</module>
-        <!-- 分布式 ID 生成服务 -->
-        <module>fishhub-distributed-id-generator</module>
-        <!-- 笔记服务 -->
+        <!-- 笔记服务 (包含 Cassandra 正文存储) -->
         <module>fishhub-note</module>
-        <!-- 用户关系服务 -->
-        <module>fishhub-user-relation</module>
         <!-- 计数服务 -->
         <module>fishhub-count</module>
         <!-- 搜索服务 -->
@@ -80,7 +72,6 @@
         <activation.version>1.1.1</activation.version>
         <jaxb-runtime.version>2.3.3</jaxb-runtime.version>
         <feign-form.version>3.8.0</feign-form.version>
-        <feign-hc5.version>13.2.1</feign-hc5.version>
         <caffeine.version>3.1.8</caffeine.version>
 
         <rocketmq.version>2.3.6</rocketmq.version>
@@ -102,12 +93,6 @@
 
             <dependency>
                 <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-oss-api</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-user-api</artifactId>
                 <version>${revision}</version>
             </dependency>
@@ -120,19 +105,7 @@
 
             <dependency>
                 <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-kv-api</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-count-api</artifactId>
-                <version>${revision}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>hk.ljx</groupId>
-                <artifactId>fishhub-distributed-id-generator-api</artifactId>
                 <version>${revision}</version>
             </dependency>
 
@@ -155,6 +128,13 @@
             <dependency>
                 <groupId>hk.ljx</groupId>
                 <artifactId>fishhub-spring-boot-starter-biz-redisson</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 分布式发号 Starter 组件 -->
+            <dependency>
+                <groupId>hk.ljx</groupId>
+                <artifactId>fishhub-spring-boot-starter-biz-id</artifactId>
                 <version>${revision}</version>
             </dependency>
 
@@ -348,13 +328,6 @@
                 <version>${feign-form.version}</version>
             </dependency>
 
-            <!-- Feign Apache HttpClient 5 连接池 -->
-            <dependency>
-                <groupId>io.github.openfeign</groupId>
-                <artifactId>feign-hc5</artifactId>
-                <version>${feign-hc5.version}</version>
-            </dependency>
-
 
             <!-- Caffeine 本地缓存 -->
 
@@ -456,6 +429,7 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
                     <configuration>
+                        <fork>true</fork>
                         <source>${java.version}</source>
                         <target>${java.version}</target>
                         <encoding>${project.build.sourceEncoding}</encoding>
@@ -498,6 +472,10 @@
         </pluginManagement>
 
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
             <!-- 统一 revision 版本, 解决子模块打包无法解析 ${revision} 版本号问题 -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>

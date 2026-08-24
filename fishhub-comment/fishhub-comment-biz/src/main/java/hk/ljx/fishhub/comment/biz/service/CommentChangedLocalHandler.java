@@ -48,13 +48,14 @@ public class CommentChangedLocalHandler {
     private final CommentDetailCache commentDetailCache;
     private final CommentDOMapper commentDOMapper;
     private final CommentHeatAggregator commentHeatAggregator;
+    private final CommentLikeRealtimeService commentLikeRealtimeService;
 
     /**
      * 评论发布落库后调用。
      */
     public void handlePublish(CommentChangedEventMqDTO event) {
         handleCacheInvalidation(event, false);
-        submitHeat(event);
+        submitHeat(event, false);
         handleFirstReply(event);
     }
 
@@ -63,7 +64,7 @@ public class CommentChangedLocalHandler {
      */
     public void handleDelete(CommentChangedEventMqDTO event) {
         handleCacheInvalidation(event, true);
-        submitHeat(event);
+        submitHeat(event, true);
     }
 
     // —— 列表/详情缓存维护（原 CommentChangedCacheInvalidateConsumer）——
@@ -194,8 +195,15 @@ public class CommentChangedLocalHandler {
 
     // —— 热度聚合（原 CommentChangedHeatConsumer）——
 
-    private void submitHeat(CommentChangedEventMqDTO event) {
-        // 二级评论的变动会影响其父评论的热度
+    private void submitHeat(CommentChangedEventMqDTO event, boolean isDelete) {
+        // 1. 二级评论的变动即时通过 ZSet 调分（毫秒级 0 延迟）
+        double delta = isDelete ? -2.0 : 2.0;
+        event.getItems().stream()
+                .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
+                .filter(item -> item.getParentId() != null && item.getNoteId() != null)
+                .forEach(item -> commentLikeRealtimeService.incrementCommentHeat(item.getNoteId(), item.getParentId(), delta));
+
+        // 2. 二级评论的变动提交到聚合器异步批量持久化与校准
         Set<Long> commentIds = Sets.newHashSet();
         event.getItems().stream()
                 .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))

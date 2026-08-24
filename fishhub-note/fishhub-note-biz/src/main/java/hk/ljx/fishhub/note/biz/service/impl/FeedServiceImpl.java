@@ -153,8 +153,6 @@ public class FeedServiceImpl implements FeedService {
         List<NoteDO> page = CollUtil.sub(result, 0, (int) PAGE_SIZE);
         List<NoteItemRspVO> notes = toNoteItems(page);
         notes.forEach(note -> note.setIsLiked(false));
-        // 重建时把计数随快照一起缓存，命中路径免 count Feign。
-        fillCountsIntoNoteItems(notes);
         Long nextCursor = hasMore && !notes.isEmpty() ? notes.get(notes.size() - 1).getNoteId() : null;
         return new DiscoverPageSnapshot(notes, nextCursor);
     }
@@ -217,9 +215,9 @@ public class FeedServiceImpl implements FeedService {
         if (CollUtil.isEmpty(notes)) {
             return;
         }
-        if (notes.stream().anyMatch(note -> note.getLikeTotal() == null)) {
-            fillCountsIntoNoteItems(notes);
-        }
+        // 实时覆盖点赞数（无论快照命中与否，均通过 Redis Pipeline 注入最新点赞数）
+        fillCountsIntoNoteItems(notes);
+        // 实时覆盖用户红心点赞状态
         setLikedState(notes);
     }
 

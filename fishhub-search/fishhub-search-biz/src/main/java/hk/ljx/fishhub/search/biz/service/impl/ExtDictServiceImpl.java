@@ -1,7 +1,8 @@
 package hk.ljx.fishhub.search.biz.service.impl;
 
 import hk.ljx.fishhub.search.biz.service.ExtDictService;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpHeaders;
@@ -19,8 +20,9 @@ import java.nio.file.Paths;
 
 
 @Service
-@Slf4j
 public class ExtDictServiceImpl implements ExtDictService {
+
+    private static final Logger log = LoggerFactory.getLogger(ExtDictServiceImpl.class);
 
     /**
      * 热更新词典路径

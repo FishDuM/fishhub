@@ -68,6 +68,31 @@ public class CommentLikeRealtimeService {
     }
 
     /**
+     * 即时增减一级评论在 Redis ZSet 中的热度分值（毫秒级 0 延迟调分）
+     *
+     * @param noteId 笔记 ID
+     * @param commentId 一级评论 ID
+     * @param delta 热度增量（如点赞 +1.0，取消点赞 -1.0，子回复 +2.0，删除回复 -2.0）
+     */
+    public void incrementCommentHeat(Long noteId, Long commentId, double delta) {
+        if (noteId == null || commentId == null) {
+            return;
+        }
+        try {
+            String key = RedisKeyConstants.buildCommentListKey(noteId);
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                Double currentScore = stringRedisTemplate.opsForZSet().score(key, String.valueOf(commentId));
+                if (currentScore != null) {
+                    double newScore = Math.max(0.0, currentScore + delta);
+                    stringRedisTemplate.opsForZSet().add(key, String.valueOf(commentId), newScore);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Redis ZSet 评论热度即时调分异常, noteId={}, commentId={}, delta={}", noteId, commentId, delta, e);
+        }
+    }
+
+    /**
      * 清空点赞状态与计数缓存。
      */
     public void evictLikeState(Long userId, Long commentId) {

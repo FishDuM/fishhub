@@ -75,14 +75,14 @@ FishHub 网关（`fishhub-gateway`）已集成 Sentinel 网关限流并支持通
 |---|---|---|
 | NACOS_ADDR | Nacos 注册/配置中心地址（所有 bootstrap.yml 已参数化） | 127.0.0.1:8848 |
 | SENTINEL_DASHBOARD | Sentinel 控制台地址（业务服务 8060 / 网关 8858） | 127.0.0.1:8060 或 :8858 |
-| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（各服务库名固定：fishhub_user/note/comment/relation/count，search 用 fishhub） | localhost / 3306 / root / 3057433102 |
+| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（各服务库名：fishhub_user/fishhub_note/fishhub_comment/fishhub_count） | localhost / 3306 / root / 3057433102 |
 | REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE | Redis | localhost / 6379 / 3057433102 / 0 |
 | ROCKETMQ_NAMESRV | RocketMQ NameServer | localhost:9876 |
 | ELASTICSEARCH_ADDRESS | ES 地址（search） | localhost:9200 |
-| CASSANDRA_HOST / CASSANDRA_PORT / CASSANDRA_KEYSPACE / CASSANDRA_DC | Cassandra（kv） | 127.0.0.1 / 9042 / fishhub / datacenter1 |
-| MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY | MinIO（oss） | http://localhost:9000 / fishhub / fish1234 |
-| ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET | 短信（user） | 开发值 |
-| ALIYUN_OSS_* | 阿里云 OSS 备用存储（oss） | 开发值 |
+| CASSANDRA_HOST / CASSANDRA_PORT / CASSANDRA_KEYSPACE / CASSANDRA_DATACENTER | Cassandra（note / comment 正文直存） | 127.0.0.1 / 9042 / fishhub / datacenter1 |
+| MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY | MinIO 对象存储（user） | http://localhost:9000 / fishhub / fish1234 |
+| ALIYUN_ACCESS_KEY_ID / ALIYUN_ACCESS_KEY_SECRET | 阿里云短信（user） | 开发值 |
+| ALIYUN_OSS_* | 阿里云 OSS 备用存储（user） | 开发值 |
 | fishhub.auth.cookie-secure | 登录会话 Cookie 是否加 Secure（HTTPS 生产环境置 true） | false（prod 默认 true） |
 
 启动示例（Linux 容器）：
@@ -94,12 +94,10 @@ SPRING_PROFILES_ACTIVE=prod NACOS_ADDR=10.0.0.5:8848 MYSQL_HOST=10.0.0.6 REDIS_H
 
 ---
 
-## 五、Leaf Snowflake 的 ZK 命名空间（leaf.name 修复后）
+## 五、分布式发号组件（`starter-biz-id` 本地嵌入发号）
 
-- 修复后 workerId 分配路径为 `/snowflake/fishhub`；旧的 `/snowflake/null`（BOM bug 时期）与 `/snowflake/com.sankuai.leaf.opensource.test`（官方样例）已清理。
-- workerId 本地缓存：`${java.io.tmpdir}/fishhub/leafconf/{port}/workerID.properties`。容器部署务必保证每实例独立 tmp（勿打进镜像），否则 ZK 不可用时两个实例可能复用同一 workerId。
-- ZK forever 节点按 ip:port 累积：IP 每次变化都会新增节点，workerId=节点序号，超过 1023 启动失败。生产建议固定实例 IP，或改用 Redis 分配 workerId。
-- 滚动升级：旧/新命名空间实例同跑时 workerId 可能撞号，先停旧再起新。
+- 系统采用自研高性能嵌入式雪花发号组件 `fishhub-spring-boot-starter-biz-id`，直接嵌入在 `user`、`note`、`comment` 微服务中在内存中纳秒级生成全局唯一 ID。
+- 具备自动基于 IP 计算 `workerId`、毫秒内起始序列号随机抖动防倾斜、以及时钟回拨保护机制（<=5ms 自动自旋等待追平），彻底消除了跨网络 RPC 发号的网络 RTT 延迟。
 
 ---
 
@@ -109,7 +107,7 @@ SPRING_PROFILES_ACTIVE=prod NACOS_ADDR=10.0.0.5:8848 MYSQL_HOST=10.0.0.6 REDIS_H
 
 - `/note/note/like`、`/note/note/publish`（note 服务）
 - `/note/discover/note/list`、`/note/channel/...`、`/note/topic/...`（发现页/频道/话题都在 /note 路由下）
-- `/comment/comment/publish`、`/relation/relation/follow`、`/user/user/...`、`/oss/file/...`、`/search/search/...`
+- `/comment/comment/publish`、`/user/relation/follow`、`/user/user/...`、`/oss/file/...`（由 user 服务承接）、`/search/search/...`
 - `/auth/login`（auth 控制器在根路径，单前缀）
 
 网关 `StripPrefix=1` 与此约定一致，**无需修改**；直连服务内部调试时才用服务自身路径（如 `:8086/note/like`）。

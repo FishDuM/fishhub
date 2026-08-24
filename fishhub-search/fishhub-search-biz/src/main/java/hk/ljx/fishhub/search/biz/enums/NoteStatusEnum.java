@@ -4,8 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 
-@Getter
-@AllArgsConstructor
 public enum NoteStatusEnum {
 
     BE_EXAMINE(0), // 待审核
@@ -15,5 +13,13 @@ public enum NoteStatusEnum {
     ;
 
     private final Integer code;
+
+    NoteStatusEnum(Integer code) {
+        this.code = code;
+    }
+
+    public Integer getCode() {
+        return code;
+    }
 
 }

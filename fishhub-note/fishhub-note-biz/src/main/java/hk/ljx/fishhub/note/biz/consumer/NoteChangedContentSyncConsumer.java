@@ -10,7 +10,7 @@ import hk.ljx.fishhub.note.biz.enums.NoteContentTaskTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteOperateEnum;
 import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
-import hk.ljx.fishhub.kv.client.KeyValueClient;
+import hk.ljx.fishhub.note.biz.kv.KeyValueClient;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import cn.hutool.core.collection.CollUtil;

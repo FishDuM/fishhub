@@ -6,8 +6,6 @@ import lombok.Getter;
 import java.util.Objects;
 
 
-@Getter
-@AllArgsConstructor
 public enum NoteSortTypeEnum {
 
     // 最新
@@ -21,6 +19,14 @@ public enum NoteSortTypeEnum {
     ;
 
     private final Integer code;
+
+    NoteSortTypeEnum(Integer code) {
+        this.code = code;
+    }
+
+    public Integer getCode() {
+        return code;
+    }
 
     /**
      * 根据类型 code 获取对应的枚举

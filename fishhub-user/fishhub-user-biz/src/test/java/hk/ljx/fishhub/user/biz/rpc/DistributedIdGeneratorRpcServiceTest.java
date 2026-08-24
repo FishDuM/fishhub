@@ -1,7 +1,7 @@
 package hk.ljx.fishhub.user.biz.rpc;
 
-import hk.ljx.fishhub.distributed.id.generator.client.DistributedIdGeneratorClient;
-import hk.ljx.fishhub.distributed.id.generator.constant.ApiConstants;
+import hk.ljx.framework.id.client.DistributedIdGeneratorClient;
+import hk.ljx.framework.id.constant.ApiConstants;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

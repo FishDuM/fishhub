@@ -5,8 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 
-@Getter
-@AllArgsConstructor
 public enum ResponseCodeEnum implements BaseExceptionInterface {
 
     // ----------- 通用异常状态码 -----------
@@ -20,5 +18,20 @@ public enum ResponseCodeEnum implements BaseExceptionInterface {
     private final String errorCode;
     // 错误信息
     private final String errorMessage;
+
+    ResponseCodeEnum(String errorCode, String errorMessage) {
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage;
+    }
+
+    @Override
+    public String getErrorCode() {
+        return errorCode;
+    }
+
+    @Override
+    public String getErrorMessage() {
+        return errorMessage;
+    }
 
 }

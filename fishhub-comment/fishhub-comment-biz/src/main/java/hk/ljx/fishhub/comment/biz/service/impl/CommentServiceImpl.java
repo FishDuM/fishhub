@@ -33,8 +33,8 @@ import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
-import hk.ljx.fishhub.kv.dto.req.FindCommentContentReqDTO;
-import hk.ljx.fishhub.kv.dto.rsp.FindCommentContentRspDTO;
+import hk.ljx.fishhub.comment.biz.kv.dto.req.FindCommentContentReqDTO;
+import hk.ljx.fishhub.comment.biz.kv.dto.rsp.FindCommentContentRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
@@ -191,10 +191,6 @@ public class CommentServiceImpl implements CommentService {
                     }
                 }
 
-                if (CollUtil.isNotEmpty(detailMap)) {
-                    setCommentCountData(new ArrayList<>(detailMap.values()), expiredCommentIds);
-                }
-
                 if (CollUtil.isNotEmpty(expiredCommentIds)) {
                     List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredCommentIds);
                     List<FindCommentItemRspVO> dbFetchedVOs = Lists.newArrayList();
@@ -204,6 +200,10 @@ public class CommentServiceImpl implements CommentService {
                             detailMap.put(vo.getCommentId(), vo);
                         }
                     }
+                }
+
+                if (CollUtil.isNotEmpty(detailMap)) {
+                    setCommentCountData(new ArrayList<>(detailMap.values()), expiredCommentIds);
                 }
 
                 for (Long commentId : commentIdList) {
@@ -219,6 +219,9 @@ public class CommentServiceImpl implements CommentService {
 
         List<CommentDO> oneLevelCommentDOS = commentDOMapper.selectPageList(noteId, offset, pageSize);
         getCommentDataAndSync2Redis(oneLevelCommentDOS, noteId, commentRspVOS);
+        if (CollUtil.isNotEmpty(commentRspVOS)) {
+            setCommentCountData(commentRspVOS, Collections.emptyList());
+        }
 
         return PageResponse.success(commentRspVOS, pageNo, count, pageSize);
     }
@@ -312,13 +315,13 @@ public class CommentServiceImpl implements CommentService {
                         }
                     }
 
-                    if (CollUtil.isNotEmpty(childCommentRspVOS)) {
-                        setChildCommentCountData(childCommentRspVOS, expiredChildCommentIds);
-                    }
-
                     if (CollUtil.isNotEmpty(expiredChildCommentIds)) {
                         List<CommentDO> commentDOS = commentDOMapper.selectByCommentIds(expiredChildCommentIds);
                         getChildCommentDataAndSync2Redis(commentDOS, childCommentRspVOS);
+                    }
+
+                    if (CollUtil.isNotEmpty(childCommentRspVOS)) {
+                        setChildCommentCountData(childCommentRspVOS, expiredChildCommentIds);
                     }
 
                     childCommentRspVOS = childCommentRspVOS.stream()
@@ -333,6 +336,9 @@ public class CommentServiceImpl implements CommentService {
         List<CommentDO> childCommentDOS = commentDOMapper.selectChildPageList(parentCommentId, offset, pageSize);
 
         getChildCommentDataAndSync2Redis(childCommentDOS, childCommentRspVOS);
+        if (CollUtil.isNotEmpty(childCommentRspVOS)) {
+            setChildCommentCountData(childCommentRspVOS, Collections.emptyList());
+        }
 
         return PageResponse.success(childCommentRspVOS, pageNo, count, pageSize);
     }
@@ -378,6 +384,9 @@ public class CommentServiceImpl implements CommentService {
 
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markLiked(userId, commentId);
+        if (Objects.equals(commentDO.getLevel(), CommentLevelEnum.ONE.getCode())) {
+            commentLikeRealtimeService.incrementCommentHeat(commentDO.getNoteId(), commentId, 1.0);
+        }
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "评论点赞");

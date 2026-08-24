@@ -21,9 +21,10 @@
             <artifactId>fishhub-common</artifactId>
         </dependency>
 
+        <!-- Cassandra 存储 -->
         <dependency>
-            <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-kv-api</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-cassandra</artifactId>
         </dependency>
 
         <dependency>
@@ -37,7 +38,7 @@
 
         <dependency>
             <groupId>hk.ljx</groupId>
-            <artifactId>fishhub-distributed-id-generator-api</artifactId>
+            <artifactId>fishhub-spring-boot-starter-biz-id</artifactId>
         </dependency>
 
         <dependency>

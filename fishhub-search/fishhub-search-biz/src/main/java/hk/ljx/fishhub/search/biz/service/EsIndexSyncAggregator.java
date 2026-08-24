@@ -5,8 +5,8 @@ import com.google.common.collect.Lists;
 import hk.ljx.fishhub.search.biz.domain.mapper.SelectMapper;
 import hk.ljx.fishhub.search.biz.index.NoteIndex;
 import hk.ljx.fishhub.search.biz.index.UserIndex;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkRequest;
@@ -34,9 +34,9 @@ import java.util.stream.Collectors;
  * ES 索引同步聚合器：合并短窗口内的多次计数变更，批量提交至 Elasticsearch。
  */
 @Component
-@Slf4j
-@RequiredArgsConstructor
 public class EsIndexSyncAggregator {
+
+    private static final Logger log = LoggerFactory.getLogger(EsIndexSyncAggregator.class);
 
     private static final long WINDOW_MS = 5000;
     /** 积压达到该量即立即冲刷，防止内存积压过大 */
@@ -52,6 +52,12 @@ public class EsIndexSyncAggregator {
     private final RestHighLevelClient restHighLevelClient;
     private final SelectMapper selectMapper;
     private final StringRedisTemplate stringRedisTemplate;
+
+    public EsIndexSyncAggregator(RestHighLevelClient restHighLevelClient, SelectMapper selectMapper, StringRedisTemplate stringRedisTemplate) {
+        this.restHighLevelClient = restHighLevelClient;
+        this.selectMapper = selectMapper;
+        this.stringRedisTemplate = stringRedisTemplate;
+    }
 
     private final Set<Long> pendingNoteIds = new HashSet<>();
     private final Set<Long> pendingUserIds = new HashSet<>();
