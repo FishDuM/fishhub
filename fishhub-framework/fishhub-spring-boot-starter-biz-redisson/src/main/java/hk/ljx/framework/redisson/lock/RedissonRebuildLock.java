@@ -16,7 +16,6 @@ public class RedissonRebuildLock implements RebuildLock {
     private final RedissonClient redissonClient;
     private final String lockKey;
     private final long leaseTimeSeconds;
-    private RLock rLock;
 
     public RedissonRebuildLock(RedissonClient redissonClient, String lockKey, long leaseTimeSeconds) {
         this.redissonClient = redissonClient;
@@ -27,8 +26,11 @@ public class RedissonRebuildLock implements RebuildLock {
     @Override
     public boolean tryLock() {
         try {
-            this.rLock = redissonClient.getLock(lockKey);
-            return rLock.tryLock(0, leaseTimeSeconds, TimeUnit.SECONDS);
+            RLock lock = redissonClient.getLock(lockKey);
+            if (lock == null) {
+                return false;
+            }
+            return lock.tryLock(0, leaseTimeSeconds, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.warn("获取 Redisson 重建锁被中断，lockKey={}", lockKey, e);
@@ -41,14 +43,13 @@ public class RedissonRebuildLock implements RebuildLock {
 
     @Override
     public void unlock() {
-        if (rLock != null) {
-            try {
-                if (rLock.isHeldByCurrentThread()) {
-                    rLock.unlock();
-                }
-            } catch (Exception e) {
-                log.warn("释放 Redisson 重建锁异常，lockKey={}", lockKey, e);
+        try {
+            RLock lock = redissonClient.getLock(lockKey);
+            if (lock != null && lock.isHeldByCurrentThread()) {
+                lock.unlock();
             }
+        } catch (Exception e) {
+            log.warn("释放 Redisson 重建锁异常，lockKey={}", lockKey, e);
         }
     }
 }

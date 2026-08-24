@@ -4,6 +4,7 @@ import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,15 +30,15 @@ class RocketMqHelperTest {
     }
 
     @Test
-    void syncSendShouldUnwrapSpringMessagePayload() {
+    void syncSendShouldPassSpringMessageDirectly() {
         RocketMQTemplate template = mock(RocketMQTemplate.class);
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        Message<String> message = MessageBuilder.withPayload("payload").setHeader("KEYS", "k1").build();
 
-        RocketMqHelper.syncSend(template, "topic:tag",
-                MessageBuilder.withPayload("payload").build(), "biz");
+        RocketMqHelper.syncSend(template, "topic:tag", message, "biz");
 
         verify(template).syncSend(eq("topic:tag"), payloadCaptor.capture());
-        assertEquals("payload", payloadCaptor.getValue());
+        assertEquals(message, payloadCaptor.getValue());
     }
 
     @Test
@@ -61,15 +62,15 @@ class RocketMqHelperTest {
     }
 
     @Test
-    void syncSendOrderlyShouldUnwrapSpringMessagePayload() {
+    void syncSendOrderlyShouldPassSpringMessageDirectly() {
         RocketMQTemplate template = mock(RocketMQTemplate.class);
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        Message<String> message = MessageBuilder.withPayload("payload").setHeader("KEYS", "k1").build();
 
-        RocketMqHelper.syncSendOrderly(template, "topic:tag",
-                MessageBuilder.withPayload("payload").build(), "hash", "biz");
+        RocketMqHelper.syncSendOrderly(template, "topic:tag", message, "hash", "biz");
 
         verify(template).syncSendOrderly(eq("topic:tag"), payloadCaptor.capture(), eq("hash"));
-        assertEquals("payload", payloadCaptor.getValue());
+        assertEquals(message, payloadCaptor.getValue());
     }
 
     @Test
@@ -83,14 +84,14 @@ class RocketMqHelperTest {
     }
 
     @Test
-    void asyncSendShouldSendSpringMessagePayload() {
+    void asyncSendShouldPassSpringMessageDirectly() {
         RocketMQTemplate template = mock(RocketMQTemplate.class);
         ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
+        Message<String> message = MessageBuilder.withPayload("payload").setHeader("KEYS", "k1").build();
 
-        RocketMqHelper.asyncSend(template, "topic:tag",
-                MessageBuilder.withPayload("payload").build(), "biz");
+        RocketMqHelper.asyncSend(template, "topic:tag", message, "biz");
 
         verify(template).asyncSend(eq("topic:tag"), payloadCaptor.capture(), any(SendCallback.class));
-        assertEquals("payload", payloadCaptor.getValue());
+        assertEquals(message, payloadCaptor.getValue());
     }
 }

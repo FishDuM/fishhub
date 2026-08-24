@@ -125,8 +125,19 @@ public class CollectUnCollectNoteConsumer {
 
         String batchKey = DigestUtil.sha256Hex(String.join("|", bodys));
         String payload = JsonUtils.toJsonString(validEvents);
+
+        Map<String, NoteCollectionDO> deduplicateMap = new java.util.LinkedHashMap<>();
+        for (NoteCollectionDO item : noteCollections) {
+            String key = item.getUserId() + ":" + item.getNoteId();
+            NoteCollectionDO existing = deduplicateMap.get(key);
+            if (existing == null || item.getCreateTime().isAfter(existing.getCreateTime())) {
+                deduplicateMap.put(key, item);
+            }
+        }
+        List<NoteCollectionDO> finalNoteCollections = new ArrayList<>(deduplicateMap.values());
+
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_COLLECT, payload,
-                txId -> persistenceService.saveNoteCollectBatch(noteCollections, CONSUME_GROUP, batchKey, txId));
+                txId -> persistenceService.saveNoteCollectBatch(finalNoteCollections, CONSUME_GROUP, batchKey, txId));
     }
 
     private boolean isWritable(NoteDO note, Long userId) {

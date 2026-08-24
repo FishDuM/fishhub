@@ -52,9 +52,20 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
         // 关注数：关注 +1， 取关 -1
         int delta = Objects.equals(type, FollowUnfollowTypeEnum.FOLLOW.getCode()) ? 1 : -1;
 
+        Long userId = event.getUserId();
+        Long targetUserId = event.getTargetUserId();
+
         boolean applied = mqIdempotentExecutor.execute("count-following-2db", body, () -> {
-            userCountDOMapper.insertOrUpdateFollowingTotalByUserId(delta, event.getUserId());
-            userCountDOMapper.insertOrUpdateFansTotalByUserId(delta, event.getTargetUserId());
+            // 比较两个用户的 ID 大小，按 ID 升序执行更新以避免 MySQL 行锁交叉死锁
+            if (userId < targetUserId) {
+                // 如果操作者 ID 比较小（比如 100 关注 200）：
+                userCountDOMapper.insertOrUpdateFollowingTotalByUserId(delta, userId);       // 先更新/锁住 100
+                userCountDOMapper.insertOrUpdateFansTotalByUserId(delta, targetUserId);      // 后更新/锁住 200
+            } else {
+                // 如果操作者 ID 比较大（比如 200 关注 100）：
+                userCountDOMapper.insertOrUpdateFansTotalByUserId(delta, targetUserId);      // 先更新/锁住 100
+                userCountDOMapper.insertOrUpdateFollowingTotalByUserId(delta, userId);       // 后更新/锁住 200
+            }
         });
 
         // 无论是否重复投递，都推进版本，确保旧缓存快照不再被读取。

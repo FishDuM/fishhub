@@ -125,8 +125,19 @@ public class LikeUnlikeNoteConsumer {
 
         String batchKey = DigestUtil.sha256Hex(String.join("|", bodys));
         String payload = JsonUtils.toJsonString(validEvents);
+
+        Map<String, NoteLikeDO> deduplicateMap = new java.util.LinkedHashMap<>();
+        for (NoteLikeDO item : noteLikes) {
+            String key = item.getUserId() + ":" + item.getNoteId();
+            NoteLikeDO existing = deduplicateMap.get(key);
+            if (existing == null || item.getCreateTime().isAfter(existing.getCreateTime())) {
+                deduplicateMap.put(key, item);
+            }
+        }
+        List<NoteLikeDO> finalNoteLikes = new ArrayList<>(deduplicateMap.values());
+
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_LIKE, payload,
-                txId -> persistenceService.saveNoteLikeBatch(noteLikes, CONSUME_GROUP, batchKey, txId));
+                txId -> persistenceService.saveNoteLikeBatch(finalNoteLikes, CONSUME_GROUP, batchKey, txId));
     }
 
     private boolean isWritable(NoteDO note, Long userId) {

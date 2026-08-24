@@ -64,9 +64,8 @@ public class MqIdempotentExecutor {
             }
             int inserted = store.insertIgnoreBatch(consumerGroup, freshKeys);
             if (inserted != freshKeys.size()) {
-                // 并发窗口内部分键被其他实例写入：回滚整批，消息重投后收敛
-                status.setRollbackOnly();
-                return false;
+                // 并发窗口内部分键被其他实例写入：抛出异常触发事务回滚，并驱动 MQ 稍后重投收敛
+                throw new IllegalStateException("批量幂等插入并发冲突 (expected " + freshKeys.size() + ", inserted " + inserted + ")，回滚触发 MQ 重投");
             }
             return Boolean.TRUE.equals(freshAction.apply(freshKeys));
         }));

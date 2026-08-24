@@ -54,7 +54,7 @@ public class SnowflakeZookeeperHolder {
                 //不存在根节点,机器第一次启动,创建/snowflake/ip:port-000000000,并上传数据
                 zk_AddressNode = createNode(curator);
                 String[] nodeKey = zk_AddressNode.split("-");
-                workerID = Integer.parseInt(nodeKey[1]);
+                workerID = Integer.parseInt(nodeKey[nodeKey.length - 1]) % 1024;
                 updateLocalWorkerID(workerID);
                 //定时上报本机时间给forever节点
                 ScheduledUploadData(curator, zk_AddressNode);
@@ -67,7 +67,7 @@ public class SnowflakeZookeeperHolder {
                 for (String key : keys) {
                     String[] nodeKey = key.split("-");
                     realNode.put(nodeKey[0], key);
-                    nodeMap.put(nodeKey[0], Integer.parseInt(nodeKey[1]));
+                    nodeMap.put(nodeKey[0], Integer.parseInt(nodeKey[nodeKey.length - 1]) % 1024);
                 }
                 Integer workerid = nodeMap.get(listenAddress);
                 if (workerid != null) {
@@ -86,7 +86,7 @@ public class SnowflakeZookeeperHolder {
                     String newNode = createNode(curator);
                     zk_AddressNode = newNode;
                     String[] nodeKey = newNode.split("-");
-                    workerID = Integer.parseInt(nodeKey[1]);
+                    workerID = Integer.parseInt(nodeKey[nodeKey.length - 1]) % 1024;
                     doService(curator);
                     updateLocalWorkerID(workerID);
                     LOGGER.info("[New NODE]can not find node on forever node that endpoint ip-{} port-{} workid-{},create own node on forever node and start SUCCESS ", ip, port, workerID);

@@ -989,7 +989,8 @@ public class CommentServiceImpl implements CommentService {
                     Long firstCommentId = firstCommentVO.getCommentId();
                     Map<String, String> firstCommentHash = commentIdAndCountMap.get(firstCommentId);
                     if (CollUtil.isNotEmpty(firstCommentHash)) {
-                        Long firstCommentLikeTotal = Long.valueOf(firstCommentHash.get(CountKeyConstants.FIELD_LIKE_TOTAL));
+                        String firstLikeTotalObj = firstCommentHash.get(CountKeyConstants.FIELD_LIKE_TOTAL);
+                        Long firstCommentLikeTotal = Objects.isNull(firstLikeTotalObj) ? 0 : Long.parseLong(firstLikeTotalObj);
                         firstCommentVO.setLikeTotal(firstCommentLikeTotal);
                     }
                 }

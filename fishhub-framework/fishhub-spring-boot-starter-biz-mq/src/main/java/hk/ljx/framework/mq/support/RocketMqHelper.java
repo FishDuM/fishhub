@@ -20,9 +20,8 @@ public class RocketMqHelper {
      * 同步发送消息，失败抛出异常（由调用方决定回滚与响应，保证"接口成功即消息已入 broker"）。
      */
     public static void syncSend(RocketMQTemplate template, String destination, Object message, String bizDesc) {
-        Object sendMessage = resolvePayload(message);
         try {
-            template.syncSend(destination, sendMessage);
+            template.syncSend(destination, message);
         } catch (Exception e) {
             throw new IllegalStateException(bizDesc + " MQ 消息发送失败, destination=" + destination, e);
         }
@@ -32,27 +31,18 @@ public class RocketMqHelper {
      * 同步顺序发送消息，失败抛出异常（由调用方决定回滚与响应）。
      */
     public static void syncSendOrderly(RocketMQTemplate template, String destination, Object message, String hashKey, String bizDesc) {
-        Object sendMessage = resolvePayload(message);
         try {
-            template.syncSendOrderly(destination, sendMessage, hashKey);
+            template.syncSendOrderly(destination, message, hashKey);
         } catch (Exception e) {
             throw new IllegalStateException(bizDesc + " MQ 顺序消息发送失败, destination=" + destination + ", hashKey=" + hashKey, e);
         }
-    }
-
-    private static Object resolvePayload(Object message) {
-        if (message instanceof Message<?> springMessage) {
-            return springMessage.getPayload();
-        }
-        return message;
     }
 
     /**
      * 异步单向广播/清理消息（仅记录告警日志）
      */
     public static void asyncSend(RocketMQTemplate template, String destination, Object message, String bizDesc) {
-        Object sendMessage = resolvePayload(message);
-        template.asyncSend(destination, sendMessage, new SendCallback() {
+        template.asyncSend(destination, message, new SendCallback() {
             @Override
             public void onSuccess(SendResult sendResult) {
             }

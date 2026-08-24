@@ -57,6 +57,6 @@ public class RedisKeyConstants {
      * @return
      */
     public static String buildCaptchaKey(String captchaKey) {
-        return CAPTCHA_KEY_PREFIX + captchaKey;
+        return CAPTCHA_KEY_PREFIX + "{" + captchaKey + "}";
     }
 }
