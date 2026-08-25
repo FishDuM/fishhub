@@ -31,6 +31,7 @@ instance.interceptors.response.use(
     return data
   },
   (error) => {
+    const config = error.config || {}
     const status = error.response?.status
     const data = error.response?.data
     if (status === 401 || (data && (data.errorCode === '401' || data.errorCode === 'UNAUTHORIZED' || data.errorCode === 'AUTH-10001'))) {
@@ -40,7 +41,7 @@ instance.interceptors.response.use(
         userStore.openLoginModal()
         message.warning('登录已过期，请重新登录')
       }
-    } else {
+    } else if (!config.silent && !config.silentError) {
       const errorMsg = data?.message || data?.errorMessage || data?.msg || error.message || '网络连接或服务异常'
       message.error(errorMsg)
     }

@@ -738,7 +738,7 @@ const findParentComment = (commentId, commentsList) => {
 
 const handlePublishComment = () => {
   if (!commentContent.value.trim() && !commentImage.value) {
-    message.show('请输入评论内容或上传图片')
+    message.warning('请输入评论内容或上传图片')
     return
   }
 
@@ -749,7 +749,7 @@ const handlePublishComment = () => {
     imageUrl: commentImage.value
   }).then(res => {
     if (res.success) {
-      message.show('评论成功')
+      message.success('评论成功')
 
       let commentId = res.data || null
 

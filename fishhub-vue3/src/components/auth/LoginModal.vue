@@ -116,10 +116,15 @@
           <!-- 提交按钮 -->
           <button
             class="w-full bg-[var(--color-primary)] text-[var(--color-primary-contrast)] rounded-full h-[48px] text-[16px] cursor-pointer
-            font-bold hover:bg-opacity-90 mt-2 transition-opacity"
+            font-bold hover:bg-opacity-90 mt-2 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            :disabled="isSubmitting"
             @click="handleSubmit"
           >
-            {{ loginMode === 'login' ? '登录' : '注册并登录' }}
+            <svg v-if="isSubmitting" class="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span>{{ isSubmitting ? (loginMode === 'login' ? '登录中...' : '注册中...') : (loginMode === 'login' ? '登录' : '注册并登录') }}</span>
           </button>
 
           <!-- 协议勾选 -->
@@ -187,8 +192,10 @@ const agreeTerms = ref(false)
 
 const modalRef = ref(null)
 const showTermsConfirm = ref(false)
+const isSubmitting = ref(false)
 
 const onClose = () => {
+  isSubmitting.value = false
   emit('update:visible', false)
 }
 
@@ -228,6 +235,7 @@ watch(() => props.visible, (val) => {
 })
 
 const handleSubmit = () => {
+  if (isSubmitting.value) return
   if (!agreeTerms.value) {
     showTermsConfirm.value = true
     return
@@ -236,35 +244,37 @@ const handleSubmit = () => {
 }
 
 const handleConfirmTerms = () => {
+  if (isSubmitting.value) return
   agreeTerms.value = true
   doSubmit()
 }
 
-const doSubmit = () => {
+const doSubmit = async () => {
+  if (isSubmitting.value) return
   if (!isPhoneValid.value) {
-    message.show('请输入正确的11位手机号')
+    message.warning('请输入正确的11位手机号')
     return
   }
 
   if (!password.value || password.value.length < 6) {
-    message.show('密码长度不能少于6位')
+    message.warning('密码长度不能少于6位')
     return
   }
 
   if (loginMode.value === 'register') {
     if (password.value !== confirmPassword.value) {
-      message.show('两次输入的密码不一致')
+      message.warning('两次输入的密码不一致')
       return
     }
   }
 
   if (!captchaCode.value || captchaCode.value.length !== 4) {
-    message.show('请输入4位图形验证码')
+    message.warning('请输入4位图形验证码')
     return
   }
 
   if (!captchaKey.value) {
-    message.show('验证码已失效，请重新获取')
+    message.warning('验证码已失效，请重新获取')
     fetchCaptcha()
     return
   }
@@ -281,54 +291,64 @@ const doSubmit = () => {
     }
   }
 
-  if (loginMode.value === 'register') {
-    register({
-      phone: phone.value,
-      password: password.value,
-      captchaKey: captchaKey.value,
-      captchaCode: captchaCode.value
-    }).then(res => {
+  isSubmitting.value = true
+
+  try {
+    if (loginMode.value === 'register') {
+      const res = await register({
+        phone: phone.value,
+        password: password.value,
+        captchaKey: captchaKey.value,
+        captchaCode: captchaCode.value
+      })
+
       if (!res.success) {
         handleAuthError(res, '注册失败')
         return
       }
 
       userStore.setToken(res.data)
-      getUserProfile().then(profileRes => {
-        if (profileRes.success) {
+      try {
+        const profileRes = await getUserProfile()
+        if (profileRes && profileRes.success && profileRes.data) {
           userStore.setProfile(profileRes.data)
         }
+      } catch (e) {
+        console.warn('获取用户资料失败:', e)
+      }
+
+      message.success('注册成功并已登录')
+      onClose()
+    } else {
+      const res = await login({
+        phone: phone.value,
+        password: password.value,
+        captchaKey: captchaKey.value,
+        captchaCode: captchaCode.value
       })
 
-      message.show('注册成功并已登录')
-      onClose()
-    }).catch(err => {
-      handleAuthError(err?.response?.data, '注册请求失败')
-    })
-  } else {
-    login({
-      phone: phone.value,
-      password: password.value,
-      captchaKey: captchaKey.value,
-      captchaCode: captchaCode.value
-    }).then(res => {
       if (!res.success) {
         handleAuthError(res, '手机号或密码错误')
         return
       }
 
       userStore.setToken(res.data)
-      getUserProfile().then(profileRes => {
-        if (profileRes.success) {
+      try {
+        const profileRes = await getUserProfile()
+        if (profileRes && profileRes.success && profileRes.data) {
           userStore.setProfile(profileRes.data)
         }
-      })
+      } catch (e) {
+        console.warn('获取用户资料失败:', e)
+      }
 
-      message.show('登录成功')
+      message.success('登录成功')
       onClose()
-    }).catch(err => {
-      handleAuthError(err?.response?.data, '登录请求失败')
-    })
+    }
+  } catch (err) {
+    handleAuthError(err?.response?.data, loginMode.value === 'register' ? '注册请求失败' : '登录请求失败')
+  } finally {
+    isSubmitting.value = false
   }
 }
 

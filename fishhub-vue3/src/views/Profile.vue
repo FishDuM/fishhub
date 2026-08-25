@@ -389,14 +389,14 @@ const handleFollow = async () => {
       ? unfollowUser(profile.value.userId)
       : followUser(profile.value.userId))
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || (wasFollowing ? '取消关注失败' : '关注失败'))
       return
     }
     isFollowing.value = !wasFollowing
-    message.show(wasFollowing ? '已取消关注' : '关注成功')
+    message.success(wasFollowing ? '已取消关注' : '关注成功')
   } catch (error) {
     console.error(wasFollowing ? '取消关注失败:' : '关注失败:', error)
-    message.show(wasFollowing ? '取消关注失败' : '关注失败')
+    message.error(wasFollowing ? '取消关注失败' : '关注失败')
   }
 }
 

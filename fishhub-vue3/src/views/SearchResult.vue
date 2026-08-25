@@ -411,14 +411,14 @@ const handleFollowUser = (userId) => {
   const request = isFollowed ? unfollowUser(userId) : followUser(userId)
   request.then(res => {
     if (!res.success) {
-      message.show(res.message || (isFollowed ? '取消关注失败' : '关注失败'))
+      message.error(res.message || (isFollowed ? '取消关注失败' : '关注失败'))
       return
     }
     user.isFollowed = !isFollowed
-    message.show(isFollowed ? '已取消关注' : '关注成功')
+    message.success(isFollowed ? '已取消关注' : '关注成功')
   }).catch(error => {
     console.error(isFollowed ? '取消关注失败:' : '关注失败:', error)
-    message.show(isFollowed ? '取消关注失败' : '关注失败')
+    message.error(isFollowed ? '取消关注失败' : '关注失败')
   })
 }
 

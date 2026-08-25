@@ -106,7 +106,7 @@ const handleLogout = () => {
   logout().then(res => {
     if (res.success) {
       userStore.logout() // 使用 store 的 logout 方法
-      message.show('退出登录成功')
+      message.success('退出登录成功')
       onClose()
       // 跳转首页
       router.push('/')

@@ -202,8 +202,10 @@ public class UserServiceImpl implements UserService {
     private void deleteUserRedisCache(Long userId) {
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
+        String userRolePermissionKey = RedisKeyConstants.buildUserRolePermissionKey(userId);
 
-        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
+        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey, userRolePermissionKey));
+        activeUserLocalCache.invalidate(userId);
     }
 
     /**

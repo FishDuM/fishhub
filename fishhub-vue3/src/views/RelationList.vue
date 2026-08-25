@@ -159,18 +159,20 @@ const handleFollowUser = (followUserId) => {
 
   request.then(res => {
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || (isFollowing ? '取消关注失败' : '关注失败'))
       return
     }
 
     if (activeTab.value === 'following' && isFollowing) {
       users.value.splice(userIndex, 1)
-      message.show('取消关注成功')
+      message.success('取消关注成功')
       return
     }
 
     user.isFollowed = !isFollowing
-    message.show(user.isFollowed ? '关注成功' : '取消关注成功')
+    message.success(user.isFollowed ? '关注成功' : '取消关注成功')
+  }).catch(err => {
+    message.error(err?.response?.data?.message || (isFollowing ? '取消关注失败' : '关注失败'))
   })
 }
 
