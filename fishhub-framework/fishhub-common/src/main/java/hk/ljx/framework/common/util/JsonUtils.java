@@ -33,6 +33,10 @@ public class JsonUtils {
         OBJECT_MAPPER = objectMapper;
     }
 
+    public static ObjectMapper getObjectMapper() {
+        return OBJECT_MAPPER;
+    }
+
     /**
      *  将对象转换为 JSON 字符串
      * @param obj

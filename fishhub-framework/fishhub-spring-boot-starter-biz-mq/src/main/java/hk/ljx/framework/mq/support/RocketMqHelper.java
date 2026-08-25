@@ -16,12 +16,16 @@ public class RocketMqHelper {
     private RocketMqHelper() {
     }
 
+    private static Object extractPayload(Object message) {
+        return (message instanceof Message<?> msg) ? msg.getPayload() : message;
+    }
+
     /**
      * 同步发送消息，失败抛出异常（由调用方决定回滚与响应，保证"接口成功即消息已入 broker"）。
      */
     public static void syncSend(RocketMQTemplate template, String destination, Object message, String bizDesc) {
         try {
-            template.syncSend(destination, message);
+            template.syncSend(destination, extractPayload(message));
         } catch (Exception e) {
             throw new IllegalStateException(bizDesc + " MQ 消息发送失败, destination=" + destination, e);
         }
@@ -32,7 +36,7 @@ public class RocketMqHelper {
      */
     public static void syncSendOrderly(RocketMQTemplate template, String destination, Object message, String hashKey, String bizDesc) {
         try {
-            template.syncSendOrderly(destination, message, hashKey);
+            template.syncSendOrderly(destination, extractPayload(message), hashKey);
         } catch (Exception e) {
             throw new IllegalStateException(bizDesc + " MQ 顺序消息发送失败, destination=" + destination + ", hashKey=" + hashKey, e);
         }
@@ -42,7 +46,7 @@ public class RocketMqHelper {
      * 异步单向广播/清理消息（仅记录告警日志）
      */
     public static void asyncSend(RocketMQTemplate template, String destination, Object message, String bizDesc) {
-        template.asyncSend(destination, message, new SendCallback() {
+        template.asyncSend(destination, extractPayload(message), new SendCallback() {
             @Override
             public void onSuccess(SendResult sendResult) {
             }

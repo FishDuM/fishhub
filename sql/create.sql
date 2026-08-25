@@ -74,6 +74,17 @@ CREATE TABLE IF NOT EXISTS `t_user_role_rel`  (
   UNIQUE KEY `uk_user_role` (`user_id`, `role_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 17 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户角色表' ROW_FORMAT = DYNAMIC;
 
+CREATE TABLE IF NOT EXISTS `t_following`  (
+  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户ID',
+  `following_user_id` bigint UNSIGNED NOT NULL COMMENT '关注用户ID',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_id_following_user_id`(`user_id` ASC, `following_user_id` ASC) USING BTREE,
+  INDEX `idx_following_user_id_id`(`user_id` ASC, `id` DESC) USING BTREE,
+  INDEX `idx_following_target_id`(`following_user_id` ASC, `id` DESC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 91309 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户关注列表（粉丝由 following_user_id 反向查询）' ROW_FORMAT = DYNAMIC;
+
 -- 消费幂等记录（各服务自持一份）
 CREATE TABLE IF NOT EXISTS `t_mq_consume_record` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,

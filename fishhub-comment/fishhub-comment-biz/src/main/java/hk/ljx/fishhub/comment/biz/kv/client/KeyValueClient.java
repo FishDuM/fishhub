@@ -16,7 +16,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 评论正文存储本地组件（直连 Cassandra，消除跨进程 RPC 开销）
@@ -56,22 +58,30 @@ public class KeyValueClient {
             return Collections.emptyList();
         }
         try {
-            List<CommentContentPrimaryKey> primaryKeys = Lists.newArrayList();
-            findCommentContentReqDTOS.forEach(req -> {
-                primaryKeys.add(CommentContentPrimaryKey.builder()
-                        .noteId(noteId)
-                        .yearMonth(req.getYearMonth())
-                        .contentId(UUID.fromString(req.getContentId()))
-                        .build());
-            });
-            Iterable<CommentContentDO> contentDOS = commentContentRepository.findAllById(primaryKeys);
+            Map<String, List<UUID>> contentIdsByYearMonth = findCommentContentReqDTOS.stream()
+                    .filter(req -> req != null && req.getContentId() != null && req.getYearMonth() != null)
+                    .collect(Collectors.groupingBy(
+                            FindCommentContentReqDTO::getYearMonth,
+                            Collectors.mapping(req -> UUID.fromString(req.getContentId()), Collectors.toList())
+                    ));
+
             List<FindCommentContentRspDTO> rspList = Lists.newArrayList();
-            if (contentDOS != null) {
-                contentDOS.forEach(c -> rspList.add(FindCommentContentRspDTO.builder()
-                        .contentId(c.getPrimaryKey().getContentId().toString())
-                        .content(c.getContent())
-                        .build()));
-            }
+            contentIdsByYearMonth.forEach((yearMonth, contentIds) -> {
+                if (CollUtil.isNotEmpty(contentIds)) {
+                    List<CommentContentDO> contentDOS = commentContentRepository
+                            .findByNoteIdAndYearMonthAndContentIdIn(noteId, yearMonth, contentIds);
+                    if (CollUtil.isNotEmpty(contentDOS)) {
+                        contentDOS.forEach(c -> {
+                            if (c != null && c.getPrimaryKey() != null && c.getPrimaryKey().getContentId() != null) {
+                                rspList.add(FindCommentContentRspDTO.builder()
+                                        .contentId(c.getPrimaryKey().getContentId().toString())
+                                        .content(c.getContent())
+                                        .build());
+                            }
+                        });
+                    }
+                }
+            });
             return rspList;
         } catch (Exception e) {
             log.error("Cassandra 批量查询评论内容异常, noteId={}", noteId, e);
