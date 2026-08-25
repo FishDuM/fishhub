@@ -11,13 +11,11 @@ import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
-import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.exception.MQClientException;
@@ -43,7 +41,6 @@ public class Comment2DBConsumer {
     private final TransactionTemplate transactionTemplate;
     private final TransactionalMqSender transactionalMqSender;
     private final TxJournalStore txJournalStore;
-    private final NoteRpcService noteRpcService;
     private final CommentChangedLocalHandler commentChangedLocalHandler;
     private final BatchPushConsumer batchPushConsumer;
 
@@ -51,14 +48,12 @@ public class Comment2DBConsumer {
                               TransactionTemplate transactionTemplate,
                               TransactionalMqSender transactionalMqSender,
                               TxJournalStore txJournalStore,
-                              NoteRpcService noteRpcService,
                               CommentChangedLocalHandler commentChangedLocalHandler,
                               BatchConsumerFactory batchConsumerFactory) throws MQClientException {
         this.commentDOMapper = commentDOMapper;
         this.transactionTemplate = transactionTemplate;
         this.transactionalMqSender = transactionalMqSender;
         this.txJournalStore = txJournalStore;
-        this.noteRpcService = noteRpcService;
         this.commentChangedLocalHandler = commentChangedLocalHandler;
         this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
                 "fishhub_group_" + MQConstants.TOPIC_PUBLISH_COMMENT,
@@ -119,38 +114,6 @@ public class Comment2DBConsumer {
                 return true;
             }
 
-            // 校验笔记写入权限
-            Set<NoteWriteAccessCheckReqDTO> checkReqs = publishCommentMqDTOS.stream()
-                    .map(comment -> NoteWriteAccessCheckReqDTO.builder()
-                            .noteId(comment.getNoteId())
-                            .userId(comment.getCreatorId())
-                            .build())
-                    .collect(Collectors.toSet());
-            Set<NoteWriteAccessCheckReqDTO> writableAccesses = new HashSet<>(
-                    noteRpcService.findWritableNoteAccesses(new ArrayList<>(checkReqs)));
-
-            List<PublishCommentMqDTO> validComments = new ArrayList<>();
-            List<Long> nonWritableIds = new ArrayList<>();
-            for (PublishCommentMqDTO comment : publishCommentMqDTOS) {
-                NoteWriteAccessCheckReqDTO req = NoteWriteAccessCheckReqDTO.builder()
-                        .noteId(comment.getNoteId())
-                        .userId(comment.getCreatorId())
-                        .build();
-                if (writableAccesses.contains(req)) {
-                    validComments.add(comment);
-                } else {
-                    nonWritableIds.add(comment.getCommentId());
-                }
-            }
-
-            if (CollUtil.isNotEmpty(nonWritableIds)) {
-                log.warn("消费端检测到不可写笔记上的评论发布（并发或已被删除），丢弃消息, commentIds={}", nonWritableIds);
-            }
-            publishCommentMqDTOS = validComments;
-            if (CollUtil.isEmpty(publishCommentMqDTOS)) {
-                return true;
-            }
-
             // 提取所有不为空的回复评论 ID
             List<Long> replyCommentIds = publishCommentMqDTOS.stream()
                     .filter(publishCommentMqDTO -> Objects.nonNull(publishCommentMqDTO.getReplyCommentId()))
@@ -191,7 +154,6 @@ public class Comment2DBConsumer {
                         .createTime(publishCommentMqDTO.getCreateTime())
                         .updateTime(publishCommentMqDTO.getCreateTime())
                         .isTop(false)
-                        .replyTotal(0L)
                         .likeTotal(0L)
                         .replyCommentId(0L)
                         .replyUserId(0L)

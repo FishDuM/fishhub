@@ -9,10 +9,8 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
-import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import lombok.extern.slf4j.Slf4j;
@@ -48,20 +46,17 @@ public class LikeUnlikeComment2DBConsumer {
 
     private final CommentLikePersistenceService persistenceService;
     private final CommentDOMapper commentDOMapper;
-    private final NoteRpcService noteRpcService;
     private final CommentLikeRealtimeService commentLikeRealtimeService;
     private final RocketMQTemplate rocketMQTemplate;
     private final BatchPushConsumer batchPushConsumer;
 
     public LikeUnlikeComment2DBConsumer(CommentLikePersistenceService persistenceService,
                                         CommentDOMapper commentDOMapper,
-                                        NoteRpcService noteRpcService,
                                         CommentLikeRealtimeService commentLikeRealtimeService,
                                         RocketMQTemplate rocketMQTemplate,
                                         BatchConsumerFactory batchConsumerFactory) throws MQClientException {
         this.persistenceService = persistenceService;
         this.commentDOMapper = commentDOMapper;
-        this.noteRpcService = noteRpcService;
         this.commentLikeRealtimeService = commentLikeRealtimeService;
         this.rocketMQTemplate = rocketMQTemplate;
         this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
@@ -131,20 +126,6 @@ public class LikeUnlikeComment2DBConsumer {
                                     .toList())
                     .stream()
                     .collect(Collectors.toMap(CommentDO::getId, Function.identity(), (left, right) -> left));
-            List<NoteWriteAccessCheckReqDTO> writeChecks = finalLikeUnlikeCommentMqDTOS.stream()
-                    .filter(operation -> Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode()))
-                    .map(operation -> {
-                        CommentDO comment = comments.get(operation.getCommentId());
-                        return comment == null ? null : NoteWriteAccessCheckReqDTO.builder()
-                                .noteId(comment.getNoteId())
-                                .userId(operation.getUserId())
-                                .build();
-                    })
-                    .filter(Objects::nonNull)
-                    .toList();
-            Set<NoteWriteAccessCheckReqDTO> writableAccesses = new HashSet<>(
-                    noteRpcService.findWritableNoteAccesses(writeChecks));
-
             Set<Long> appliedCommentIds = new LinkedHashSet<>();
             List<LikeUnlikeCommentMqDTO> persistOps = Lists.newArrayList();
             for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
@@ -159,18 +140,6 @@ public class LikeUnlikeComment2DBConsumer {
                         if (commentLikeRealtimeService != null) {
                             commentLikeRealtimeService.markUnliked(operation.getUserId(), operation.getCommentId());
                         }
-                    }
-                    continue;
-                }
-                if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.LIKE.getCode())
-                        && !writableAccesses.contains(NoteWriteAccessCheckReqDTO.builder()
-                        .noteId(comment.getNoteId())
-                        .userId(operation.getUserId())
-                        .build())) {
-                    log.warn("丢弃不可写笔记上的评论点赞并回滚实时缓存，commentId={}, userId={}",
-                            operation.getCommentId(), operation.getUserId());
-                    if (commentLikeRealtimeService != null) {
-                        commentLikeRealtimeService.markUnliked(operation.getUserId(), operation.getCommentId());
                     }
                     continue;
                 }

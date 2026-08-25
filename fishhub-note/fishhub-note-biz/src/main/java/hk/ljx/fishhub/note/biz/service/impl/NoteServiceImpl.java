@@ -321,6 +321,8 @@ public class NoteServiceImpl implements NoteService {
                     RedisKeyConstants.buildNoteDetailKey(noteId),
                     RedisKeyConstants.buildNoteAccessKey(noteId),
                     RedisKeyConstants.buildPublishedNoteListKey(creatorId)));
+            LOCAL_CACHE.invalidate(noteId);
+            CountClient.invalidate(noteId);
             Set<Long> channels = new LinkedHashSet<>();
             channels.add(0L);
             if (channelIds != null) {
@@ -834,6 +836,7 @@ public class NoteServiceImpl implements NoteService {
         try {
             // 同步顺序发送（hashKey=userId 保持同用户操作有序），失败回滚缓存后抛出，避免假成功
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记点赞");
+            CountClient.invalidate(noteId);
         } catch (Exception e) {
             noteInteractionCacheService.evictLikeCaches(userId);
             throw e;
@@ -875,6 +878,7 @@ public class NoteServiceImpl implements NoteService {
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记取消点赞");
+            CountClient.invalidate(noteId);
         } catch (Exception e) {
             noteInteractionCacheService.evictLikeCaches(userId);
             throw e;
@@ -917,6 +921,7 @@ public class NoteServiceImpl implements NoteService {
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记收藏");
+            CountClient.invalidate(noteId);
         } catch (Exception e) {
             noteInteractionCacheService.evictCollectCaches(userId);
             throw e;
@@ -958,6 +963,7 @@ public class NoteServiceImpl implements NoteService {
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记取消收藏");
+            CountClient.invalidate(noteId);
         } catch (Exception e) {
             noteInteractionCacheService.evictCollectCaches(userId);
             throw e;

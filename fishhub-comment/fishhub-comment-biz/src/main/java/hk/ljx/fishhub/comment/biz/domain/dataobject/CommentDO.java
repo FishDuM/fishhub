@@ -26,8 +26,6 @@ public class CommentDO {
 
     private Integer level;
 
-    private Long replyTotal;
-
     private Long likeTotal;
 
     private Long parentId;

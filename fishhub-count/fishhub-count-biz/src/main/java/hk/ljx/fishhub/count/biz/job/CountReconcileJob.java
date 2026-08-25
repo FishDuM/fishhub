@@ -77,8 +77,8 @@ public class CountReconcileJob {
                        COALESCE(lk.cnt, 0),
                        COALESCE(cl.cnt, 0)
                 FROM fishhub_user.t_user u
-                LEFT JOIN (SELECT following_user_id AS uid, COUNT(*) AS cnt FROM fishhub_relation.t_following WHERE following_user_id >= ? AND following_user_id < ? GROUP BY following_user_id) fans ON fans.uid = u.id
-                LEFT JOIN (SELECT user_id AS uid, COUNT(*) AS cnt FROM fishhub_relation.t_following WHERE user_id >= ? AND user_id < ? GROUP BY user_id) fl ON fl.uid = u.id
+                LEFT JOIN (SELECT following_user_id AS uid, COUNT(*) AS cnt FROM fishhub_user.t_following WHERE following_user_id >= ? AND following_user_id < ? GROUP BY following_user_id) fans ON fans.uid = u.id
+                LEFT JOIN (SELECT user_id AS uid, COUNT(*) AS cnt FROM fishhub_user.t_following WHERE user_id >= ? AND user_id < ? GROUP BY user_id) fl ON fl.uid = u.id
                 LEFT JOIN (SELECT creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note WHERE creator_id >= ? AND creator_id < ? AND status = 1 GROUP BY creator_id) nt ON nt.uid = u.id
                 LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_like l JOIN fishhub_note.t_note n ON l.note_id = n.id WHERE n.creator_id >= ? AND n.creator_id < ? AND l.status = 1 AND n.status = 1 GROUP BY n.creator_id) lk ON lk.uid = u.id
                 LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_collection c JOIN fishhub_note.t_note n ON c.note_id = n.id WHERE n.creator_id >= ? AND n.creator_id < ? AND c.status = 1 AND n.status = 1 GROUP BY n.creator_id) cl ON cl.uid = u.id

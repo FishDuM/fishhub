@@ -35,7 +35,7 @@ public class RedisKeyConstants {
     /**
      * 用户已赞评论 Set 的初始化哨兵：用于区分「未初始化」与「空集合」；与笔记侧约定一致
      */
-    public static final String COMMENT_LIKE_SET_INITIALIZED = "__initialized__";
+    public static final String COMMENT_LIKE_SET_INITIALIZED = "__empty__";
 
     /**
      * Key 前缀：评论分页 ZSET

@@ -65,8 +65,8 @@ class NoteInteractionCacheServiceTest {
 
         org.junit.jupiter.api.Assertions.assertTrue(liked);
         verify(noteLikeDOMapper, times(1)).selectByUserId(1L);
-        // 初始化 Set 写入（__initialized__ 成员 + 过期时间）
-        verify(setOperations).add(LIKE_KEY, "__initialized__");
+        // 初始化 Set 写入（__empty__ 成员 + 过期时间）
+        verify(setOperations).add(LIKE_KEY, "__empty__");
         verify(stringRedisTemplate).expire(eq(LIKE_KEY), anyLong(), any(TimeUnit.class));
         verify(rebuildLock).unlock();
     }

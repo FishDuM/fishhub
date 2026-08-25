@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 public class NoteInteractionCacheService {
 
-    private static final String INITIALIZED_MEMBER = "__initialized__";
+    private static final String INITIALIZED_MEMBER = "__empty__";
     private static final long BASE_EXPIRE_SECONDS = 24 * 60 * 60L;
 
     private static final int CACHE_REBUILD_RETRY_TIMES = 3;
