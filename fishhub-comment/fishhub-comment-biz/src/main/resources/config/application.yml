@@ -4,6 +4,9 @@ server:
 spring:
   profiles:
     active: dev # 默认激活 dev 本地开发环境
+  threads:
+    virtual:
+      enabled: true # 开启 JDK 21 虚拟线程支持（Tomcat 与 Async 线程池）
 
 mybatis:
   # MyBatis xml 配置文件路径

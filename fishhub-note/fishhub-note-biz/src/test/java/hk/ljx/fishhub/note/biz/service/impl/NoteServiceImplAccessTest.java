@@ -73,6 +73,15 @@ class NoteServiceImplAccessTest {
         if (localCache != null) {
             localCache.invalidateAll();
         }
+        if (threadPoolTaskExecutor != null) {
+            org.mockito.Mockito.lenient().doAnswer(invocation -> {
+                Runnable runnable = invocation.getArgument(0);
+                if (runnable != null) {
+                    runnable.run();
+                }
+                return null;
+            }).when(threadPoolTaskExecutor).execute(any(Runnable.class));
+        }
     }
 
     @Test

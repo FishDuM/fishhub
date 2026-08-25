@@ -412,9 +412,6 @@ public class NoteServiceImpl implements NoteService {
 
         checkNoteVisible(noteDO.getVisible(), userId, noteDO.getCreatorId());
 
-        // 查询作者信息
-        FindUserByIdRspDTO author = userClient.findById(noteDO.getCreatorId());
-
         Integer noteType = noteDO.getType();
         String imgUrisStr = noteDO.getImgUris();
         List<String> imgUris = null;
@@ -433,12 +430,48 @@ public class NoteServiceImpl implements NoteService {
                 .topicId(noteDO.getTopicId())
                 .topicName(noteDO.getTopicName())
                 .creatorId(noteDO.getCreatorId())
-                .creatorName(author != null ? author.getNickName() : null)
-                .avatar(author != null ? author.getAvatar() : null)
                 .videoUri(noteDO.getVideoUri())
                 .updateTime(noteDO.getUpdateTime())
                 .visible(noteDO.getVisible())
                 .build();
+
+        // 3 个子任务并发并行聚合（作者信息、Cassandra 正文、Redis/RPC 计数）
+        CompletableFuture<FindUserByIdRspDTO> authorFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return userClient.findById(noteDO.getCreatorId());
+            } catch (Exception e) {
+                log.warn("并行查询笔记作者信息异常, creatorId={}", noteDO.getCreatorId(), e);
+                return null;
+            }
+        }, threadPoolTaskExecutor);
+
+        CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
+            if (Boolean.FALSE.equals(noteDO.getIsContentEmpty()) && StringUtils.isNotBlank(noteDO.getContentUuid())) {
+                try {
+                    return keyValueClient.findNoteContent(noteDO.getContentUuid());
+                } catch (Exception e) {
+                    log.warn("并行查询 Cassandra 笔记正文异常, uuid={}", noteDO.getContentUuid(), e);
+                }
+            }
+            return "";
+        }, threadPoolTaskExecutor);
+
+        CompletableFuture<Void> countFuture = CompletableFuture.runAsync(() -> {
+            fillNoteCounts(findNoteDetailRspVO);
+        }, threadPoolTaskExecutor);
+
+        try {
+            CompletableFuture.allOf(authorFuture, contentFuture, countFuture)
+                    .orTimeout(800, TimeUnit.MILLISECONDS)
+                    .join();
+        } catch (Exception e) {
+            log.warn("并发聚合笔记详情部分子任务超时, noteId={}", noteId, e);
+        }
+
+        FindUserByIdRspDTO author = authorFuture.getNow(null);
+        findNoteDetailRspVO.setCreatorName(author != null ? author.getNickName() : null);
+        findNoteDetailRspVO.setAvatar(author != null ? author.getAvatar() : null);
+        findNoteDetailRspVO.setContent(contentFuture.getNow(""));
 
         // 异步写回轻量元数据快照（绝不写入 content 大长文与动态计数，体积仅 100~200 字节，防 BigKey）
         threadPoolTaskExecutor.submit(() -> {
@@ -451,8 +484,6 @@ public class NoteServiceImpl implements NoteService {
                 log.warn("Redis 不可用，笔记详情元数据缓存写入失败，响应将继续返回，noteId={}", noteId, e);
             }
         });
-
-        loadContentAndCounts(findNoteDetailRspVO);
 
         return Response.success(findNoteDetailRspVO);
     }
@@ -1232,12 +1263,29 @@ public class NoteServiceImpl implements NoteService {
         if (findNoteDetailRspVO == null) {
             return;
         }
-        // 1. 正文专职从 Cassandra 点查（~1ms），彻底消除 Redis BigKey
-        if (Boolean.FALSE.equals(findNoteDetailRspVO.getIsContentEmpty()) && StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
-            findNoteDetailRspVO.setContent(keyValueClient.findNoteContent(findNoteDetailRspVO.getContentUuid()));
+        // 并行加载：1. Cassandra 正文  2. 动态计数
+        CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
+            if (Boolean.FALSE.equals(findNoteDetailRspVO.getIsContentEmpty()) && StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
+                try {
+                    return keyValueClient.findNoteContent(findNoteDetailRspVO.getContentUuid());
+                } catch (Exception e) {
+                    log.warn("Cassandra 查询笔记正文异常, uuid={}", findNoteDetailRspVO.getContentUuid(), e);
+                }
+            }
+            return "";
+        }, threadPoolTaskExecutor);
+
+        CompletableFuture<Void> countFuture = CompletableFuture.runAsync(() -> {
+            fillNoteCounts(findNoteDetailRspVO);
+        }, threadPoolTaskExecutor);
+
+        try {
+            CompletableFuture.allOf(contentFuture, countFuture).orTimeout(500, TimeUnit.MILLISECONDS).join();
+            findNoteDetailRspVO.setContent(contentFuture.join());
+        } catch (Exception e) {
+            log.warn("并发加载笔记正文与计数部分超时, noteId={}", findNoteDetailRspVO.getId(), e);
+            findNoteDetailRspVO.setContent(contentFuture.getNow(""));
         }
-        // 2. 动态计数从 Redis Hash 实时覆盖
-        fillNoteCounts(findNoteDetailRspVO);
     }
 
     private void fillNoteCounts(FindNoteDetailRspVO noteDetail) {

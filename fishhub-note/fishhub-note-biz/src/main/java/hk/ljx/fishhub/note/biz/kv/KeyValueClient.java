@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * 笔记正文存储本地组件（直连 Cassandra，消除跨进程 RPC 开销）
+ * 笔记正文存储本地组件
  */
 @Component
 @Slf4j
@@ -18,13 +18,28 @@ public class KeyValueClient {
 
     private final NoteContentRepository noteContentRepository;
 
+    private UUID parseUuid(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(uuid);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     /**
      * 保存笔记内容
      */
     public boolean saveNoteContent(String uuid, String content) {
+        UUID parsedUuid = parseUuid(uuid);
+        if (parsedUuid == null) {
+            return false;
+        }
         try {
             NoteContentDO noteContentDO = NoteContentDO.builder()
-                    .id(UUID.fromString(uuid))
+                    .id(parsedUuid)
                     .content(content)
                     .build();
             noteContentRepository.save(noteContentDO);
@@ -39,8 +54,12 @@ public class KeyValueClient {
      * 删除笔记内容
      */
     public boolean deleteNoteContent(String uuid) {
+        UUID parsedUuid = parseUuid(uuid);
+        if (parsedUuid == null) {
+            return false;
+        }
         try {
-            noteContentRepository.deleteById(UUID.fromString(uuid));
+            noteContentRepository.deleteById(parsedUuid);
             return true;
         } catch (Exception e) {
             log.error("Cassandra 删除笔记正文异常, uuid={}", uuid, e);
@@ -52,8 +71,12 @@ public class KeyValueClient {
      * 查询笔记内容
      */
     public String findNoteContent(String uuid) {
+        UUID parsedUuid = parseUuid(uuid);
+        if (parsedUuid == null) {
+            return null;
+        }
         try {
-            return noteContentRepository.findById(UUID.fromString(uuid))
+            return noteContentRepository.findById(parsedUuid)
                     .map(NoteContentDO::getContent)
                     .orElse(null);
         } catch (Exception e) {
