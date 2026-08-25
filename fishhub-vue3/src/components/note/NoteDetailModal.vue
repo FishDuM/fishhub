@@ -82,7 +82,7 @@
                   <li v-for="(topic, index) in currNote.topics" :key="index" class="cursor-pointer">#{{topic.name}}</li>
                 </ul>
                 <div class="text-gray-500 text-[14px] mt-[12px]">
-                  编辑于 {{ currNote.updateTime }}
+                  编辑于 {{ formatRelativeTime(currNote.updateTime) }}
                 </div>
               </div>
 
@@ -322,6 +322,7 @@ import { followUser, unfollowUser, checkFollowing } from '@/api/relation'
 import { useUserStore } from '@/stores/user'
 import { message } from '@/utils/message'
 import { uploadFile } from '@/api/file'
+import { formatRelativeTime } from '@/utils/date'
 
 const userStore = useUserStore()
 
@@ -471,14 +472,15 @@ const handleVisibilityToggle = async () => {
   try {
     const res = await updateNoteVisibility(currNoteId.value, visible)
     if (!res.success) {
-      message.show(res.message || '修改可见性失败')
+      message.error(res.message || res.errorMessage || '修改可见性失败')
       return
     }
     currNote.value.visible = visible
-    message.show(visible === 1 ? '已设为仅自己可见' : '已公开笔记')
+    message.success(visible === 1 ? '已设为仅自己可见' : '已公开笔记')
   } catch (error) {
     console.error('修改笔记可见性失败:', error)
-    message.show('修改可见性失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || error.message || '修改可见性失败')
   }
 }
 
@@ -758,7 +760,7 @@ const handlePublishComment = () => {
         commentId: commentId,
         userId: userStore.profile.userId,
         content: commentContent.value,
-        createTime: '刚刚',
+        createTime: new Date().toISOString(),
         nickname: userStore.profile.nickname,
         avatar: userStore.profile.avatar,
         likeTotal: 0,
@@ -819,7 +821,13 @@ const handlePublishComment = () => {
           replyTo.value = null
         }
       })
+    } else {
+      message.error(res.message || res.errorMessage || '评论发布失败')
     }
+  }).catch(err => {
+    console.error('评论发布失败:', err)
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || err.message || '评论发布失败')
   })
 }
 
@@ -898,10 +906,11 @@ const handleNoteLike = () => {
         isNoteLiked.value = true
         updateInteractionTotal('likeTotal', 1)
       } else {
-        message.show(res.message)
+        message.error(res.message || res.errorMessage || '点赞失败')
       }
-    }).catch(() => {
-      message.show('点赞失败，请稍后重试')
+    }).catch(err => {
+      const errData = err?.response?.data
+      message.error(errData?.message || errData?.errorMessage || '点赞失败，请稍后重试')
     }).finally(() => {
       isNoteLikeSubmitting.value = false
     })
@@ -913,10 +922,11 @@ const handleNoteLike = () => {
       isNoteLiked.value = false
       updateInteractionTotal('likeTotal', -1)
     } else {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || '取消点赞失败')
     }
-  }).catch(() => {
-    message.show('取消点赞失败，请稍后重试')
+  }).catch(err => {
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || '取消点赞失败，请稍后重试')
   }).finally(() => {
     isNoteLikeSubmitting.value = false
   })
@@ -932,7 +942,7 @@ const handleCommentLike = async ({ comment, liked }) => {
   try {
     const res = await (liked ? likeComment(comment.commentId) : unlikeComment(comment.commentId))
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || (liked ? '评论点赞失败' : '取消评论点赞失败'))
       return
     }
     comment.isLiked = liked
@@ -940,7 +950,8 @@ const handleCommentLike = async ({ comment, liked }) => {
     comment.likeTotal = Math.max(0, total + (liked ? 1 : -1))
   } catch (error) {
     console.error(liked ? '评论点赞失败:' : '取消评论点赞失败:', error)
-    message.show(liked ? '评论点赞失败' : '取消评论点赞失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || (liked ? '评论点赞失败' : '取消评论点赞失败'))
   } finally {
     comment.likeSubmitting = false
   }
@@ -950,7 +961,7 @@ const handleDeleteComment = async (comment) => {
   try {
     const res = await deleteComment(comment.commentId)
     if (!res.success) {
-      message.show(res.message || '删除失败')
+      message.error(res.message || res.errorMessage || '删除失败')
       return
     }
     const located = findParentComment(comment.commentId, comments.value)
@@ -966,11 +977,12 @@ const handleDeleteComment = async (comment) => {
       commentTotal.value = Math.max(0, Number(commentTotal.value || 0) - removedTotal)
     }
     currNote.value.commentTotal = commentTotal.value
-    message.show('删除成功')
+    message.success('删除成功')
 
   } catch (error) {
     console.error('删除评论失败:', error)
-    message.show('删除评论失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || '删除评论失败')
   }
 }
 
@@ -990,10 +1002,11 @@ const handleNoteCollect = () => {
         isNoteCollected.value = true
         updateInteractionTotal('collectTotal', 1)
       } else {
-        message.show(res.message)
+        message.error(res.message || res.errorMessage || '收藏失败')
       }
-    }).catch(() => {
-      message.show('收藏失败，请稍后重试')
+    }).catch(err => {
+      const errData = err?.response?.data
+      message.error(errData?.message || errData?.errorMessage || '收藏失败，请稍后重试')
     }).finally(() => {
       isNoteCollectSubmitting.value = false
     })
@@ -1005,10 +1018,11 @@ const handleNoteCollect = () => {
       isNoteCollected.value = false
       updateInteractionTotal('collectTotal', -1)
     } else {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || '取消收藏失败')
     }
-  }).catch(() => {
-    message.show('取消收藏失败，请稍后重试')
+  }).catch(err => {
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || '取消收藏失败，请稍后重试')
   }).finally(() => {
     isNoteCollectSubmitting.value = false
   })
@@ -1025,14 +1039,15 @@ const handleFollow = async () => {
       ? unfollowUser(currNote.value.creatorId)
       : followUser(currNote.value.creatorId))
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || (wasFollowing ? '取消关注失败' : '关注失败'))
       return
     }
     isCreatorFollowed.value = !wasFollowing
-    message.show(wasFollowing ? '已取消关注' : '关注成功')
+    message.success(wasFollowing ? '已取消关注' : '关注成功')
   } catch (error) {
     console.error(wasFollowing ? '取消关注失败:' : '关注失败:', error)
-    message.show(wasFollowing ? '取消关注失败' : '关注失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || (wasFollowing ? '取消关注失败' : '关注失败'))
   }
 }
 </script>

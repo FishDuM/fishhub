@@ -516,7 +516,7 @@ public class CommentServiceImpl implements CommentService {
                     .nickname(author != null ? author.getNickName() : null)
                     .content(content)
                     .imageUrl(comment.getImageUrl())
-                    .likeTime(DateUtils.formatRelativeTime(comment.getCreateTime()))
+                    .likeTime(DateUtils.localDateTime2String(comment.getCreateTime()))
                     .likeTotal(comment.getLikeTotal())
                     .build();
         }).toList();
@@ -758,7 +758,7 @@ public class CommentServiceImpl implements CommentService {
                     .userId(userId)
                     .commentId(childCommentDO.getId())
                     .imageUrl(childCommentDO.getImageUrl())
-                    .createTime(DateUtils.formatRelativeTime(childCommentDO.getCreateTime()))
+                    .createTime(DateUtils.localDateTime2String(childCommentDO.getCreateTime()))
                     .likeTotal(childCommentDO.getLikeTotal())
                     .build();
 
@@ -1145,7 +1145,7 @@ public class CommentServiceImpl implements CommentService {
                 .userId(commentDO.getUserId())
                 .commentId(commentDO.getId())
                 .imageUrl(commentDO.getImageUrl())
-                .createTime(DateUtils.formatRelativeTime(commentDO.getCreateTime()))
+                .createTime(DateUtils.localDateTime2String(commentDO.getCreateTime()))
                 .likeTotal(commentDO.getLikeTotal())
                 .childCommentTotal(commentDO.getChildCommentTotal())
                 .heat(commentDO.getHeat())

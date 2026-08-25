@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # 1. MySQL 8.0 数据库（自动挂载并执行 sql/create.sql 初始化 4 个业务库及初始数据）
+  # -------------------------------------------------------------
+  mysql:
+    image: mysql:8.0.36
+    container_name: fishhub-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root}
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - ../sql/create.sql:/docker-entrypoint-initdb.d/01_create.sql:ro
+      - mysql_data:/var/lib/mysql
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=1000
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # -------------------------------------------------------------
+  # 2. Redis 缓存中间件
+  # -------------------------------------------------------------
+  redis:
+    image: redis:7.2-alpine
+    container_name: fishhub-redis
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:-123456} --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-123456}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # -------------------------------------------------------------
+  # 3. Nacos 2.3.2 注册中心与配置中心 (单机模式)
+  # -------------------------------------------------------------
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: fishhub-nacos
+    restart: always
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 512m
+      TZ: Asia/Shanghai
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
+
+  # 自动为 Nacos 创建 fishhub 命名空间
+  nacos-init:
+    image: curlimages/curl:latest
+    container_name: fishhub-nacos-init
+    depends_on:
+      - nacos
+    command: >
+      sh -c "sleep 8;
+      curl -s -X POST 'http://nacos:8848/nacos/v1/console/namespaces' -d 'customNamespaceId=fishhub&namespaceName=fishhub&namespaceDesc=fishhub_namespace' || true;
+      echo 'Nacos fishhub namespace ready.'"
+    restart: "no"
+
+  # -------------------------------------------------------------
+  # 4. RocketMQ NameServer
+  # -------------------------------------------------------------
+  rocketmq-namesrv:
+    image: apache/rocketmq:5.1.4
+    container_name: fishhub-rocketmq-namesrv
+    restart: always
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+      TZ: Asia/Shanghai
+    ports:
+      - "9876:9876"
+    command: sh mqnamesrv
+
+  # -------------------------------------------------------------
+  # 5. RocketMQ Broker（自动开启 Topic 创建）
+  # -------------------------------------------------------------
+  rocketmq-broker:
+    image: apache/rocketmq:5.1.4
+    container_name: fishhub-rocketmq-broker
+    restart: always
+    depends_on:
+      - rocketmq-namesrv
+    environment:
+      NAMESRV_ADDR: "rocketmq-namesrv:9876"
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m"
+      TZ: Asia/Shanghai
+    ports:
+      - "10909:10909"
+      - "10911:10911"
+    command: sh mqbroker -n rocketmq-namesrv:9876 autoCreateTopicEnable=true
+
+  # -------------------------------------------------------------
+  # 6. Apache Cassandra（笔记与评论正文大文本分离存储）
+  # -------------------------------------------------------------
+  cassandra:
+    image: cassandra:4.1
+    container_name: fishhub-cassandra
+    restart: always
+    environment:
+      CASSANDRA_CLUSTER_NAME: "fishhub-cluster"
+      CASSANDRA_DC: "datacenter1"
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "128M"
+      TZ: Asia/Shanghai
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+
+  # -------------------------------------------------------------
+  # 7. Elasticsearch 7.17.18（全站全文检索引擎）
+  # -------------------------------------------------------------
+  elasticsearch:
+    image: elasticsearch:7.17.18
+    container_name: fishhub-elasticsearch
+    restart: always
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      xpack.security.enabled: "false"
+      TZ: Asia/Shanghai
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  # -------------------------------------------------------------
+  # 8. MinIO（本地对象存储服务，微服务启动自动初始化 fishhub bucket）
+  # -------------------------------------------------------------
+  minio:
+    image: minio/minio:RELEASE.2023-09-04T19-57-37Z
+    container_name: fishhub-minio
+    restart: always
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-fishhub}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-fish1234}
+      TZ: Asia/Shanghai
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  # -------------------------------------------------------------
+  # 9. Sentinel 控制台 (Dashboard)
+  # -------------------------------------------------------------
+  sentinel-dashboard:
+    image: bladex/sentinel-dashboard:1.8.6
+    container_name: fishhub-sentinel-dashboard
+    restart: always
+    environment:
+      JAVA_OPTS: "-Dserver.port=8858 -Dsentinel.dashboard.auth.username=sentinel -Dsentinel.dashboard.auth.password=sentinel"
+      TZ: Asia/Shanghai
+    ports:
+      - "8858:8858"
+
+volumes:
+  mysql_data:
+  redis_data:
+  cassandra_data:
+  es_data:
+  minio_data:

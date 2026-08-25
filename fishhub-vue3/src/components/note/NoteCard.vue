@@ -143,14 +143,15 @@ const toggleLike = () => {
 
   request.then(res => {
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || (wasLiked ? '取消点赞失败' : '点赞失败'))
       return
     }
 
     const likeTotal = formatLikeTotal(Math.max(0, parseLikeTotal(likeCount.value) + (wasLiked ? -1 : 1)))
     emit('like-change', { noteId, isLiked: !wasLiked, likeTotal })
-  }).catch(() => {
-    message.show(wasLiked ? '取消点赞失败，请稍后重试' : '点赞失败，请稍后重试')
+  }).catch(err => {
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || (wasLiked ? '取消点赞失败，请稍后重试' : '点赞失败，请稍后重试'))
   }).finally(() => {
     isLikeSubmitting.value = false
   })

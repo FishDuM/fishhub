@@ -58,63 +58,68 @@ fishhub
 | 服务名称 | 端口 | 模块架构 | 核心职责 | 持久化 / 存储组件 |
 | :--- | :---: | :---: | :--- | :--- |
 | **Gateway** | **8000** | 单层 | 统一接入网关（流量路由、Sa-Token 鉴权、Sentinel 限流、IP 透传） | Redis（Token 会话） |
-| **User** | **8082** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub_user`) + Redis + MinIO/OSS |
-| **Note** | **8086** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub_note`) + **Cassandra (`fishhub`)** + Redis |
-| **Comment** | **8093** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub_comment`) + **Cassandra (`fishhub`)** + Redis |
-| **Count** | **8090** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub_count`) + Redis Hash + RocketMQ |
-| **Search** | **8092** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL |
+| **User** | **8001** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub_user`) + Redis + MinIO/OSS |
+| **Note** | **8002** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub_note`) + **Cassandra (`fishhub`)** + Redis |
+| **Count** | **8003** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub_count`) + Redis Hash + RocketMQ |
+| **Search** | **8004** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL |
+| **Comment** | **8005** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub_comment`) + **Cassandra (`fishhub`)** + Redis |
+| **Frontend** | **8006** | `fishhub-vue3` | Vue 3 前端开发工程 | Vite + Pinia + TailwindCSS |
 
-> **安全说明**：除 Gateway（8000）对外开放外，其余微服务均为内网 RPC 服务，跨服务调用一律走 OpenFeign 或 RocketMQ 异步通知。
+> **安全说明**：除 Gateway（8000）与 Frontend（8006）外，其余微服务均为内网 RPC 服务，跨服务调用一律走 OpenFeign 或 RocketMQ 异步通知。
 
 ---
 
-## 🚀 快速上手与本地启动
+## 🚀 快速上手与本地启动（开箱即用）
 
 ### 1. 环境准备
 - **JDK**：21（Java 21 LTS）
 - **Maven**：3.8+
 - **Node.js**：18+
-- **基础中间件**：
-  - MySQL 8.0+
-  - Redis 6.0+（支持基础 Hash / Set / ZSet 操作）
-  - Nacos 2.x（默认连接配置见各模块 `bootstrap.yml`）
-  - RocketMQ 4.x / 5.x
-  - Elasticsearch 7.x / 8.x
-  - MinIO（对象存储）
-  - Cassandra（KV 存储）
+- **Docker & Docker Compose**（推荐，一键搞定全套中间件）
 
-### 2. 初始化数据库
-执行 `sql/create.sql` 单文件全量脚本（自动创建各独立业务库及表结构）：
+---
+
+### 2. 一键启动全套基础中间件与数据库
+项目提供了一键容器化编排，会自动拉起 MySQL（**自动执行建表建库脚本**）、Redis、Nacos（**自动创建 fishhub 命名空间**）、RocketMQ、Cassandra、ES、MinIO 及 Sentinel 控制台：
+
 ```bash
-mysql -h 127.0.0.1 -u root -p < sql/create.sql
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-### 3. 编译后端工程
+> **可选：初始化 Cassandra 存储**（若需本地持久化正文数据）：
+> ```bash
+> docker exec -i fishhub-cassandra cqlsh < sql/cassandra_init.cql
+> ```
+
+---
+
+### 3. 一键初始化本地开发配置
+首次克隆项目后，执行以下脚本即可一键将开发配置模板分发至各微服务模块：
+
+- **Windows 批处理**：`scripts\init-configs.bat`
+- **PowerShell**：`.\scripts\init-configs.ps1`
+- **Python / 跨平台**：`python scripts/init_configs.py`
+
+---
+
+### 4. 编译后端工程
 ```bash
 mvn clean package -DskipTests
 ```
 
-### 4. 启动微服务
+---
 
-可以通过提供的脚本一键拉起或由 IDE 启动各 Application：
-
-- **Windows 批处理启动**：
-  ```cmd
-  scripts\start-all.bat
+### 5. 启动微服务与前端
+- **一键拉起后端所有微服务**：
+  - Windows: `scripts\start-all.bat` 或 `python scripts/launch_services.py`
+  - PowerShell: `.\scripts\start-services.ps1`
+- **启动前端 Vue 3 工程**：
+  ```bash
+  cd fishhub-vue3
+  npm install
+  npm run dev
   ```
-- **PowerShell 启动**：
-  ```powershell
-  .\scripts\start-services.ps1
-  ```
-- **IDE 启动**：直接在 IntelliJ IDEA 或 VS Code 中运行各微服务的 `*Application.java`。
-
-### 5. 启动前端应用
-```bash
-cd fishhub-vue3
-npm install
-npm run dev
-```
-启动成功后访问：`http://localhost:5173`。
+  启动成功后访问：`http://localhost:8006`。
 
 ---
 

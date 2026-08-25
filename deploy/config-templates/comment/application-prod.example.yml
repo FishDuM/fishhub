@@ -1,0 +1,68 @@
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${MYSQL_URL:jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/fishhub_comment?useUnicode=true&characterEncoding=utf-8&autoReconnect=true&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true&cachePrepStmts=true&prepStmtCacheSize=250&prepStmtCacheSqlLimit=2048}
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:123456}
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      initial-size: ${DRUID_INITIAL:20}
+      min-idle: ${DRUID_MIN_IDLE:20}
+      max-active: ${DRUID_MAX_ACTIVE:100}
+      max-wait: ${DRUID_MAX_WAIT:10000}
+      keep-alive: true
+      test-while-idle: true
+      time-between-eviction-runs-millis: 30000
+      min-evictable-idle-time-millis: 180000
+      max-evictable-idle-time-millis: 600000
+      validation-query: SELECT 1 FROM DUAL
+      test-on-borrow: false
+      test-on-return: false
+      pool-prepared-statements: true
+      max-pool-prepared-statement-per-connection-size: 20
+      web-stat-filter:
+        enabled: false
+      stat-view-servlet:
+        enabled: false
+      filter:
+        stat:
+          enabled: true
+          log-slow-sql: true
+          slow-sql-millis: 1000
+          merge-sql: true
+        wall:
+          config:
+            multi-statement-allow: true
+
+  data:
+    redis:
+      database: ${REDIS_DATABASE:0}
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      timeout: ${REDIS_TIMEOUT:3s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:3s}
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:200}
+          max-wait: ${REDIS_POOL_MAX_WAIT:2000}
+          min-idle: ${REDIS_POOL_MIN_IDLE:10}
+          max-idle: ${REDIS_POOL_MAX_IDLE:50}
+
+  cassandra:
+    contact-points: ${CASSANDRA_HOST:127.0.0.1}
+    port: ${CASSANDRA_PORT:9042}
+    keyspace-name: ${CASSANDRA_KEYSPACE:fishhub}
+    local-datacenter: ${CASSANDRA_DATACENTER:datacenter1}
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAMESRV:localhost:9876}
+  producer:
+    group: fishhub_producer_comment
+    send-message-timeout: 3000
+    retry-times-when-send-failed: 3
+    retry-times-when-send-async-failed: 3
+    max-message-size: 4194304
+  consumer:
+    group: fishhub_group
+    pull-batch-size: 100

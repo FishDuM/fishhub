@@ -45,7 +45,7 @@
         :images="[comment.imageUrl]"
       />
 
-      <div class="info my-[8px]">{{ comment.createTime }}</div>
+      <div class="info my-[8px]">{{ formatRelativeTime(comment.createTime) }}</div>
 
       <!-- 评论底部操作区 -->
       <div class="flex items-center gap-2 text-gray-500 text-[12px] interactions">
@@ -122,6 +122,7 @@ import ImagePreview from '@/components/common/ImagePreview.vue'
 import LikeIcon from '@/components/common/LikeIcon.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useUserStore } from '@/stores/user'
+import { formatRelativeTime } from '@/utils/date'
 
 const userStore = useUserStore()
 

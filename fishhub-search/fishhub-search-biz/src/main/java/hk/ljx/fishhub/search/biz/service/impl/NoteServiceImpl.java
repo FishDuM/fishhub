@@ -238,7 +238,7 @@ public class NoteServiceImpl implements NoteService {
                 .highlightTitle(highlightedTitle)
                 .avatar(avatar)
                 .nickname(nickname)
-                .updateTime(DateUtils.formatRelativeTime(updateTime))
+                .updateTime(DateUtils.localDateTime2String(updateTime))
                 .likeTotal(NumberUtils.formatNumberString(likeTotal))
                 .commentTotal(NumberUtils.formatNumberString(commentTotal))
                 .collectTotal(NumberUtils.formatNumberString(collectTotal))

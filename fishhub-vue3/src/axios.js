@@ -25,7 +25,7 @@ instance.interceptors.response.use(
       if (!userStore.showLoginModal) {
         userStore.logout()
         userStore.openLoginModal()
-        message.show('登录已过期，请重新登录')
+        message.warning('登录已过期，请重新登录')
       }
     }
     return data
@@ -38,10 +38,11 @@ instance.interceptors.response.use(
       if (!userStore.showLoginModal) {
         userStore.logout()
         userStore.openLoginModal()
-        message.show('登录已过期，请重新登录')
+        message.warning('登录已过期，请重新登录')
       }
     } else {
-      message.show(data?.message || error.response?.data?.errorMessage || error.message || '请求失败')
+      const errorMsg = data?.message || data?.errorMessage || data?.msg || error.message || '网络连接或服务异常'
+      message.error(errorMsg)
     }
     return Promise.reject(error)
   }

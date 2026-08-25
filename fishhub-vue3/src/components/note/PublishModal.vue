@@ -834,7 +834,7 @@ const handlePublish = async () => {
     const res = await publishNote(noteData)
 
     if (res.success) {
-      message.show('发布成功')
+      message.success('发布成功')
       onClose()
       const targetChannelId = selectedChannel.value?.id ? String(selectedChannel.value.id) : '0'
       if (route.path === '/discover') {
@@ -843,11 +843,12 @@ const handlePublish = async () => {
         router.push({ path: '/discover', query: { channelId: targetChannelId } })
       }
     } else {
-      message.show(res.message || '未知错误')
+      message.error(res.message || res.errorMessage || '发布失败')
     }
   } catch (error) {
     console.error('发布笔记出错:', error)
-    message.show('发布失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || error.message || '发布失败')
   }
 }
 

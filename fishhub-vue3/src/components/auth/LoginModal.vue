@@ -270,7 +270,8 @@ const doSubmit = () => {
   }
 
   const handleAuthError = (res, defaultMsg) => {
-    message.show(res?.message || defaultMsg)
+    const errorMsg = res?.message || res?.errorMessage || res?.msg || defaultMsg
+    message.error(errorMsg)
     // 只有当验证码过期(AUTH-20000)或输错达到10次上限已自动失效(AUTH-20002)时，才刷新更换验证码
     if (res?.errorCode === 'AUTH-20000' || res?.errorCode === 'AUTH-20002') {
       fetchCaptcha()
