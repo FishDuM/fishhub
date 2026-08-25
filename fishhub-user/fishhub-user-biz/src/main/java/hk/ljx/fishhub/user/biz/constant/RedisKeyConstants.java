@@ -43,7 +43,7 @@ public class RedisKeyConstants {
     }
 
     public static String buildUserActiveKey(Long userId) {
-        return USER_ACTIVE_KEY_PREFIX + userId;
+        return buildUserInfoKey(userId);
     }
 
     /**

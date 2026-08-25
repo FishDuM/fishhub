@@ -217,12 +217,12 @@ public class NoteServiceImpl implements NoteService {
             highlightedTitle = hit.getHighlightFields().get(NoteIndex.FIELD_NOTE_TITLE).fragments()[0].string();
         }
 
-        long likeTotal = map.get(NoteIndex.FIELD_NOTE_LIKE_TOTAL) instanceof Number n ? n.longValue() : 0L;
-        long commentTotal = map.get(NoteIndex.FIELD_NOTE_COMMENT_TOTAL) instanceof Number n ? n.longValue() : 0L;
-        long collectTotal = map.get(NoteIndex.FIELD_NOTE_COLLECT_TOTAL) instanceof Number n ? n.longValue() : 0L;
-        Long noteId = map.get(NoteIndex.FIELD_NOTE_ID) instanceof Number n ? n.longValue() : null;
-        Long creatorId = map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n ? n.longValue() : null;
-        Integer noteType = map.get(NoteIndex.FIELD_NOTE_TYPE) instanceof Number n ? n.intValue() : null;
+        long likeTotal = getLongValue(map, NoteIndex.FIELD_NOTE_LIKE_TOTAL);
+        long commentTotal = getLongValue(map, NoteIndex.FIELD_NOTE_COMMENT_TOTAL);
+        long collectTotal = getLongValue(map, NoteIndex.FIELD_NOTE_COLLECT_TOTAL);
+        Long noteId = getLong(map, NoteIndex.FIELD_NOTE_ID);
+        Long creatorId = getLong(map, NoteIndex.FIELD_NOTE_CREATOR_ID);
+        Integer noteType = getInteger(map, NoteIndex.FIELD_NOTE_TYPE);
 
         FindUserByIdRspDTO author = creatorId != null ? userMap.get(creatorId) : null;
         String avatar = author != null ? author.getAvatar() : null;
@@ -262,6 +262,21 @@ public class NoteServiceImpl implements NoteService {
         } catch (Exception ignored) {
         }
         return LocalDateTime.now();
+    }
+
+    private static Long getLong(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        return val instanceof Number n ? n.longValue() : null;
+    }
+
+    private static long getLongValue(Map<String, Object> map, String key) {
+        Long val = getLong(map, key);
+        return val != null ? val : 0L;
+    }
+
+    private static Integer getInteger(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        return val instanceof Number n ? n.intValue() : null;
     }
 
 }

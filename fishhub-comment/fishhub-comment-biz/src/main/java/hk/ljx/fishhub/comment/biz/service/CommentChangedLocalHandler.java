@@ -196,14 +196,14 @@ public class CommentChangedLocalHandler {
     // —— 热度聚合（原 CommentChangedHeatConsumer）——
 
     private void submitHeat(CommentChangedEventMqDTO event, boolean isDelete) {
-        // 1. 二级评论的变动即时通过 ZSet 调分（毫秒级 0 延迟）
+        // 二级评论变动即时通过 ZSet 调分
         double delta = isDelete ? -2.0 : 2.0;
         event.getItems().stream()
                 .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))
                 .filter(item -> item.getParentId() != null && item.getNoteId() != null)
                 .forEach(item -> commentLikeRealtimeService.incrementCommentHeat(item.getNoteId(), item.getParentId(), delta));
 
-        // 2. 二级评论的变动提交到聚合器异步批量持久化与校准
+        // 二级评论变动提交到聚合器异步批量持久化与校准
         Set<Long> commentIds = Sets.newHashSet();
         event.getItems().stream()
                 .filter(item -> Objects.equals(item.getLevel(), CommentLevelEnum.TWO.getCode()))

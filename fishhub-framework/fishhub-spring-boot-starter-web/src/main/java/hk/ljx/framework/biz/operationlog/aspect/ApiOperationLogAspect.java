@@ -15,7 +15,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Aspect
@@ -46,7 +45,8 @@ public class ApiOperationLogAspect {
         String className = joinPoint.getTarget().getClass().getSimpleName();
         String methodName = joinPoint.getSignature().getName();
         Object[] args = joinPoint.getArgs();
-        String argsJsonStr = Arrays.stream(args).map(toJsonStr().andThen(ApiOperationLogAspect::truncate))
+        String argsJsonStr = Arrays.stream(args)
+                .map(ApiOperationLogAspect::formatArg)
                 .collect(Collectors.joining(", "));
         String description = getApiOperationLogDescription(joinPoint);
         log.info("====== 请求开始: [{}], 入参: {}, 请求类: {}, 请求方法: {} =================================== ",
@@ -82,30 +82,24 @@ public class ApiOperationLogAspect {
         return s.substring(0, MAX_LOG_LENGTH) + "...(truncated " + (s.length() - MAX_LOG_LENGTH) + " chars)";
     }
 
-    /**
-     * 转 JSON 字符串
-     * @return
-     */
-    private Function<Object, String> toJsonStr() {
-        return arg -> {
-            if (arg == null) {
-                return "null";
-            }
-            if (arg instanceof MultipartFile) {
-                return "MultipartFile";
-            }
-            if (arg instanceof HttpServletRequest) {
-                return "HttpServletRequest";
-            }
-            if (arg instanceof HttpServletResponse) {
-                return "HttpServletResponse";
-            }
-            try {
-                return JsonUtils.toJsonString(arg);
-            } catch (Exception e) {
-                return "UnserializableObject";
-            }
-        };
+    private static String formatArg(Object arg) {
+        if (arg == null) {
+            return "null";
+        }
+        if (arg instanceof MultipartFile) {
+            return "MultipartFile";
+        }
+        if (arg instanceof HttpServletRequest) {
+            return "HttpServletRequest";
+        }
+        if (arg instanceof HttpServletResponse) {
+            return "HttpServletResponse";
+        }
+        try {
+            return truncate(JsonUtils.toJsonString(arg));
+        } catch (Exception e) {
+            return "UnserializableObject";
+        }
     }
 
 }

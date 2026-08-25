@@ -316,7 +316,7 @@ import ImageCarousel from '@/components/common/ImageCarousel.vue'
 import VideoPlayer from '@/components/common/VideoPlayer.vue'
 import LikeIcon from '@/components/common/LikeIcon.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
-import { getNoteDetail, getNoteInteractionState, likeNote, unlikeNote, collectNote, uncollectNote, updateNoteVisibility } from '@/api/note'
+import { getNoteDetail, likeNote, unlikeNote, collectNote, uncollectNote, updateNoteVisibility } from '@/api/note'
 import { getCommentList, publishComment, getChildCommentList, likeComment, unlikeComment, getLikedCommentIds, deleteComment } from '@/api/comment'
 import { followUser, unfollowUser, checkFollowing } from '@/api/relation'
 import { useUserStore } from '@/stores/user'
@@ -584,16 +584,7 @@ watch(() => props.visible, (newVisible) => {
         if (res.data.commentTotal != null) {
           commentTotal.value = Number(res.data.commentTotal) || 0
         }
-      }
-    })
-
-    if (isLoggedIn.value) {
-      checkFollowing(props.note.creatorId).then(res => {
-        if (res.success) isCreatorFollowed.value = Boolean(res.data)
-      }).catch(error => console.error('查询关注状态失败:', error))
-
-      getNoteInteractionState(props.note.id).then(res => {
-        if (res.success && res.data) {
+        if (isLoggedIn.value && res.data.isLiked != null) {
           isNoteLiked.value = Boolean(res.data.isLiked)
           isNoteCollected.value = Boolean(res.data.isCollected)
           emit('interaction-change', {
@@ -604,7 +595,13 @@ watch(() => props.visible, (newVisible) => {
             isCollected: isNoteCollected.value
           })
         }
-      })
+      }
+    })
+
+    if (isLoggedIn.value) {
+      checkFollowing(props.note.creatorId).then(res => {
+        if (res.success) isCreatorFollowed.value = Boolean(res.data)
+      }).catch(error => console.error('查询关注状态失败:', error))
     }
 
     getCommentList(props.note.id, 1).then(res => {

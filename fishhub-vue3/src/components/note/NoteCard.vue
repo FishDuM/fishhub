@@ -32,20 +32,16 @@
       <h3 class="note-title" v-if="note.highlightTitle" v-html="note.highlightTitle"></h3>
       <h3 class="note-title" v-else>{{ note.title }}</h3>
       <div class="flex items-center">
-        <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
+        <component
+          :is="note.creatorId ? 'router-link' : 'div'"
+          :to="note.creatorId ? `/user/profile/${note.creatorId}` : undefined"
+        >
           <UserAvatar
             :src="note.avatar"
             :alt="`${note.nickname || '用户'}的头像`"
             class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 object-cover"
           />
-        </router-link>
-        <div v-else>
-          <UserAvatar
-            :src="note.avatar"
-            :alt="`${note.nickname || '用户'}的头像`"
-            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 object-cover"
-          />
-        </div>
+        </component>
         <span class="text-[12px] text-gray-600 hover:text-gray-800 flex-1 truncate">
           <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
             {{ note.nickname }}

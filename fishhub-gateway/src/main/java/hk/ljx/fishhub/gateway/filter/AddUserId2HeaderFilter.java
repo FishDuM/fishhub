@@ -60,7 +60,7 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
     }
 
     private Object resolveLoginIdFromRequest(ServerHttpRequest request) {
-        // 1. Header 提取
+        // Header 提取
         HttpHeaders headers = request.getHeaders();
         if (headers != null) {
             String authorization = headers.getFirst(AUTHORIZATION);
@@ -73,7 +73,7 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
             }
         }
 
-        // 2. Cookie 提取（HttpOnly 会话）
+        // Cookie 提取 (HttpOnly 会话)
         HttpCookie authCookie = request.getCookies().getFirst(AUTHORIZATION);
         if (authCookie != null && StringUtils.isNotBlank(authCookie.getValue())) {
             return StpUtil.getLoginIdByToken(authCookie.getValue().trim());

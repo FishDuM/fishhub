@@ -18,11 +18,12 @@ import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.time.ZoneId;
+import hk.ljx.framework.common.util.DateUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -199,37 +200,29 @@ public class CommentLikeRealtimeService {
         }
     }
 
-    /**
-     * 冷缓存重建：Set（哨兵 + 全部已赞评论 ID）+ ZSet（score=点赞时间）一次性回源。
-     */
     private void rebuildFromDatabase(String setKey, String zsetKey, List<CommentLikeDO> allLikes) {
         try {
             stringRedisTemplate.opsForSet().add(setKey, RedisKeyConstants.COMMENT_LIKE_SET_INITIALIZED);
             if (CollUtil.isNotEmpty(allLikes)) {
-                List<String> members = allLikes.stream()
-                        .map(CommentLikeDO::getCommentId)
-                        .filter(Objects::nonNull)
-                        .map(String::valueOf)
-                        .toList();
+                List<String> members = new ArrayList<>(allLikes.size());
+                Set<ZSetOperations.TypedTuple<String>> tuples = new HashSet<>(allLikes.size());
+                for (CommentLikeDO like : allLikes) {
+                    if (like != null && like.getCommentId() != null) {
+                        String member = String.valueOf(like.getCommentId());
+                        members.add(member);
+                        double score = like.getCreateTime() != null ? DateUtils.localDateTime2Timestamp(like.getCreateTime()) : 0.0;
+                        tuples.add(new DefaultTypedTuple<>(member, score));
+                    }
+                }
                 if (!members.isEmpty()) {
                     stringRedisTemplate.opsForSet().add(setKey, members.toArray(String[]::new));
-                }
-                Set<ZSetOperations.TypedTuple<String>> tuples = allLikes.stream()
-                        .filter(like -> like.getCommentId() != null)
-                        .map(like -> {
-                            double score = like.getCreateTime() == null ? 0D
-                                    : like.getCreateTime().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                            return (ZSetOperations.TypedTuple<String>) new DefaultTypedTuple<>(String.valueOf(like.getCommentId()), score);
-                        })
-                        .collect(Collectors.toSet());
-                if (!tuples.isEmpty()) {
                     stringRedisTemplate.opsForZSet().add(zsetKey, tuples);
                 }
             }
             stringRedisTemplate.expire(setKey, FOOTPRINT_TTL_SECONDS, TimeUnit.SECONDS);
             stringRedisTemplate.expire(zsetKey, FOOTPRINT_TTL_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
-            log.warn("Redis 不可用，点赞缓存重建失败（下次读会回源数据库）, setKey={}", setKey, e);
+            log.warn("Redis 不可用，点赞缓存重建失败, setKey={}", setKey, e);
         }
     }
 

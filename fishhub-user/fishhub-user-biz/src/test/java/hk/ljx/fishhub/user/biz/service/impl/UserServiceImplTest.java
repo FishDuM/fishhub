@@ -113,7 +113,7 @@ class UserServiceImplTest {
                 .nickName("fish2")
                 .build();
         when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOperations);
-        when(stringValueOperations.get("user:active:2")).thenReturn(JsonUtils.toJsonString(cachedUser));
+        when(stringValueOperations.get("user:info:2")).thenReturn(JsonUtils.toJsonString(cachedUser));
 
         FindUserByIdReqDTO request = new FindUserByIdReqDTO();
         request.setId(2L);
@@ -129,7 +129,7 @@ class UserServiceImplTest {
     @Test
     void findActiveByIdShouldQueryActiveUserOnCacheMiss() {
         when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOperations);
-        when(stringValueOperations.get("user:active:1")).thenReturn(null);
+        when(stringValueOperations.get("user:info:1")).thenReturn(null);
         when(userDOMapper.selectActiveById(1L)).thenReturn(null);
 
         FindUserByIdReqDTO request = new FindUserByIdReqDTO();
@@ -139,7 +139,7 @@ class UserServiceImplTest {
 
         assertTrue(response.isSuccess());
         assertNull(response.getData());
-        verify(stringValueOperations).set("user:active:1", "null", 3L, TimeUnit.SECONDS);
+        verify(stringValueOperations).set("user:info:1", "null", 3L, TimeUnit.SECONDS);
     }
 
     @Test

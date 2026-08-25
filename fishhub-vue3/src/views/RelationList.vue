@@ -32,14 +32,14 @@
     <div class="container mx-auto py-4">
       <LoadingSpinner :active="loading && !loadingMore" />
       
-      <div v-if="shouldShowEmptyState()" class="text-center py-10 text-gray-500 flex flex-col items-center ">
+      <div v-if="shouldShowEmptyState" class="text-center py-10 text-gray-500 flex flex-col items-center ">
           <EmptyStateIllustration variant="relation" class="mt-10" />
         <div class="empty-text">{{ activeTab === 'following' ? '暂未关注其他用户' : '暂无粉丝' }}</div>
       </div>
       
       <div v-else-if="!loading">
         <div v-for="user in users" :key="user.userId" class="mb-2">
-          <UserCard :user="user" @follow="handleFollowUser" @login-required="handleLoginRequired" :type="listType()" />
+          <UserCard :user="user" @follow="handleFollowUser" @login-required="handleLoginRequired" :type="listType" />
         </div>
         
         <div v-if="hasMore" class="text-center py-4">
@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, onUnmounted, inject } from 'vue'
+import { ref, computed, onMounted, watch, onUnmounted, inject } from 'vue'
 import { useRoute } from 'vue-router'
 import UserCard from '@/components/user/UserCard.vue'
 import { getFollowingList, getFansList, followUser, unfollowUser } from '@/api/relation'
@@ -87,13 +87,13 @@ const nextCursor = ref(0)
 const isLoading = ref(false)
 const { begin: beginRequest, isCurrent: isCurrentRequest } = useLatestRequest()
 
-const listType = () => activeTab.value === 'following' ? 'following' : 'fans'
+const listType = computed(() => activeTab.value === 'following' ? 'following' : 'fans')
 
-const shouldShowEmptyState = () => shouldShowEmptyRelationState({
+const shouldShowEmptyState = computed(() => shouldShowEmptyRelationState({
   loading: loading.value,
   userCount: users.value.length,
   hasMore: hasMore.value
-})
+}))
 
 const loadRelationList = async (isLoadMore = false) => {
   if (isLoadMore && isLoading.value) return

@@ -34,6 +34,11 @@ public class NoteChangedEventMqDTO {
     private Integer changeType;
 
     /**
+     * 可见性：0 - 仅自己可见 (Private)； 1 - 公开 (Public)
+     */
+    private Integer visible;
+
+    /**
      * 正文写入/删除任务，可为空。任务随笔记事务原子提交，消费者幂等同步到 KV。
      */
     private List<NoteContentTaskMqDTO> contentTasks;

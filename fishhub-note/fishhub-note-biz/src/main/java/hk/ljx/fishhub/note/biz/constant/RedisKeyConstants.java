@@ -36,16 +36,6 @@ public class RedisKeyConstants {
     private static final String PUBLISHED_NOTE_LIST_KEY = "note:published:list:";
 
     /**
-     * 用户笔记点赞状态 Set 前缀
-     */
-    private static final String USER_NOTE_LIKE_SET_KEY = "set:note:likes:";
-
-    /**
-     * 用户笔记收藏状态 Set 前缀
-     */
-    private static final String USER_NOTE_COLLECT_SET_KEY = "set:note:collects:";
-
-    /**
      * 用户笔记点赞列表 ZSet 前缀
      */
     public static final String USER_NOTE_LIKE_ZSET_KEY = "user:note:likes:";
@@ -109,11 +99,11 @@ public class RedisKeyConstants {
 
 
     public static String buildUserNoteLikeSetKey(Long userId) {
-        return USER_NOTE_LIKE_SET_KEY + userId;
+        return buildUserNoteLikeZSetKey(userId);
     }
 
     public static String buildUserNoteCollectSetKey(Long userId) {
-        return USER_NOTE_COLLECT_SET_KEY + userId;
+        return buildUserNoteCollectZSetKey(userId);
     }
 
     /**

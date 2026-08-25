@@ -85,14 +85,11 @@ public class AuthServiceImpl implements AuthService {
         String captchaKey = userRegisterReqVO.getCaptchaKey();
         String captchaCode = userRegisterReqVO.getCaptchaCode();
 
-        // 1. 校验并消费图形验证码（5分钟有效，错误超10次自动失效）
         verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
-        // 2. 密码加密并在数据库中创建用户（内置手机号查重与防并发插入机制）
         String encodePassword = passwordEncoder.encode(password);
         Long userId = userRpcService.registerUser(phone, encodePassword);
 
-        // 3. 注册成功后自动执行登录
         return performLogin(userId);
     }
 
@@ -109,16 +106,13 @@ public class AuthServiceImpl implements AuthService {
         String captchaKey = userLoginReqVO.getCaptchaKey();
         String captchaCode = userLoginReqVO.getCaptchaCode();
 
-        // 1. 校验并消费图形验证码（5分钟有效，错误超10次自动失效）
         verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
-        // 2. 查询用户
         FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
         if (Objects.isNull(findUserByPhoneRspDTO)) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        // 3. 校验密码
         String encodePassword = findUserByPhoneRspDTO.getPassword();
         boolean isPasswordCorrect = StringUtils.isNotBlank(encodePassword)
                 && passwordEncoder.matches(password, encodePassword);
@@ -127,8 +121,6 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Long userId = findUserByPhoneRspDTO.getId();
-
-        // 4. 执行登录
         return performLogin(userId);
     }
 

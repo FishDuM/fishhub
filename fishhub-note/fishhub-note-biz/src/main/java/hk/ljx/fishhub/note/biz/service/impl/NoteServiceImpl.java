@@ -293,6 +293,7 @@ public class NoteServiceImpl implements NoteService {
                 .creatorId(creatorId)
                 .noteId(noteDO.getId())
                 .changeType(NoteOperateEnum.PUBLISH.getCode())
+                .visible(noteDO.getVisible())
                 .contentTasks(contentTasks)
                 .build();
 
@@ -372,7 +373,7 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
             if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                loadContentAndCounts(findNoteDetailRspVO);
+                loadContentAndCounts(findNoteDetailRspVO, userId);
                 return Response.success(findNoteDetailRspVO);
             }
             LOCAL_CACHE.invalidate(noteId);
@@ -391,7 +392,7 @@ public class NoteServiceImpl implements NoteService {
             } else {
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
-                loadContentAndCounts(findNoteDetailRspVO);
+                loadContentAndCounts(findNoteDetailRspVO, userId);
                 return Response.success(findNoteDetailRspVO);
             }
         }
@@ -473,17 +474,46 @@ public class NoteServiceImpl implements NoteService {
         findNoteDetailRspVO.setAvatar(author != null ? author.getAvatar() : null);
         findNoteDetailRspVO.setContent(contentFuture.getNow(""));
 
-        // 异步写回轻量元数据快照（绝不写入 content 大长文与动态计数，体积仅 100~200 字节，防 BigKey）
-        threadPoolTaskExecutor.submit(() -> {
+        // 仅公开笔记写回 Redis 缓存，私密笔记直接读库，节省缓存空间并杜绝越权泄露
+        if (Objects.equals(findNoteDetailRspVO.getVisible(), NoteVisibleEnum.PUBLIC.getCode())) {
+            threadPoolTaskExecutor.submit(() -> {
+                try {
+                    FindNoteDetailRspVO cacheSnapshot = FindNoteDetailRspVO.builder()
+                            .id(findNoteDetailRspVO.getId())
+                            .type(findNoteDetailRspVO.getType())
+                            .title(findNoteDetailRspVO.getTitle())
+                            .content("")
+                            .imgUris(findNoteDetailRspVO.getImgUris())
+                            .topicId(findNoteDetailRspVO.getTopicId())
+                            .topicName(findNoteDetailRspVO.getTopicName())
+                            .creatorId(findNoteDetailRspVO.getCreatorId())
+                            .creatorName(findNoteDetailRspVO.getCreatorName())
+                            .avatar(findNoteDetailRspVO.getAvatar())
+                            .videoUri(findNoteDetailRspVO.getVideoUri())
+                            .updateTime(findNoteDetailRspVO.getUpdateTime())
+                            .likeTotal(findNoteDetailRspVO.getLikeTotal())
+                            .collectTotal(findNoteDetailRspVO.getCollectTotal())
+                            .commentTotal(findNoteDetailRspVO.getCommentTotal())
+                            .visible(findNoteDetailRspVO.getVisible())
+                            .build();
+                    String freshNoteDetailJson = JsonUtils.toJsonString(cacheSnapshot);
+                    long expireSeconds = CacheTtl.hours(1, 2);
+                    stringRedisTemplate.opsForValue().set(noteDetailRedisKey, freshNoteDetailJson, expireSeconds, TimeUnit.SECONDS);
+                    LOCAL_CACHE.put(noteId, freshNoteDetailJson);
+                } catch (Exception e) {
+                    log.warn("Redis 不可用，笔记详情元数据缓存写入失败，响应将继续返回，noteId={}", noteId, e);
+                }
+            });
+        }
+
+        if (userId != null) {
             try {
-                String freshNoteDetailJson = JsonUtils.toJsonString(findNoteDetailRspVO);
-                long expireSeconds = CacheTtl.hours(1, 2);
-                stringRedisTemplate.opsForValue().set(noteDetailRedisKey, freshNoteDetailJson, expireSeconds, TimeUnit.SECONDS);
-                LOCAL_CACHE.put(noteId, freshNoteDetailJson);
+                findNoteDetailRspVO.setIsLiked(noteInteractionCacheService.isLiked(userId, noteId) ? 1 : 0);
+                findNoteDetailRspVO.setIsCollected(noteInteractionCacheService.isCollected(userId, noteId) ? 1 : 0);
             } catch (Exception e) {
-                log.warn("Redis 不可用，笔记详情元数据缓存写入失败，响应将继续返回，noteId={}", noteId, e);
+                log.warn("填充用户笔记互动状态异常, userId={}, noteId={}", userId, noteId, e);
             }
-        });
+        }
 
         return Response.success(findNoteDetailRspVO);
     }
@@ -553,6 +583,7 @@ public class NoteServiceImpl implements NoteService {
                 .creatorId(selectNoteDO.getCreatorId())
                 .noteId(noteId)
                 .changeType(NoteOperateEnum.UPDATE.getCode())
+                .visible(selectNoteDO.getVisible())
                 .contentTasks(contentTasks)
                 .build();
 
@@ -687,6 +718,7 @@ public class NoteServiceImpl implements NoteService {
                 .creatorId(selectNoteDO.getCreatorId())
                 .noteId(noteId)
                 .changeType(NoteOperateEnum.DELETE.getCode()) // 删除笔记
+                .visible(NoteVisibleEnum.PRIVATE.getCode())
                 .contentTasks(contentTasks)
                 .build();
 
@@ -768,6 +800,7 @@ public class NoteServiceImpl implements NoteService {
                 .creatorId(selectNoteDO.getCreatorId())
                 .noteId(noteId)
                 .changeType(NoteOperateEnum.UPDATE.getCode())
+                .visible(visible)
                 .contentTasks(List.of())
                 .build();
 
@@ -1096,10 +1129,7 @@ public class NoteServiceImpl implements NoteService {
                     }).toList();
 
             CompletableFuture<FindUserByIdRspDTO> userFuture = CompletableFuture
-                    .supplyAsync(() -> {
-                        Optional<Long> creatorIdOptional = noteDOS.stream().map(NoteDO::getCreatorId).findAny();
-                        return userClient.findById(creatorIdOptional.get());
-                    }, threadPoolTaskExecutor);
+                    .supplyAsync(() -> userClient.findById(userId), threadPoolTaskExecutor);
 
             CompletableFuture<List<FindNoteCountsByIdRspDTO>> noteCountFuture = CompletableFuture
                     .supplyAsync(() -> {
@@ -1259,11 +1289,12 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
-    private void loadContentAndCounts(FindNoteDetailRspVO findNoteDetailRspVO) {
+    private void loadContentAndCounts(FindNoteDetailRspVO findNoteDetailRspVO, Long userId) {
         if (findNoteDetailRspVO == null) {
             return;
         }
-        // 并行加载：1. Cassandra 正文  2. 动态计数
+        Long noteId = findNoteDetailRspVO.getId();
+        // 并行加载正文、计数与用户互动状态
         CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
             if (Boolean.FALSE.equals(findNoteDetailRspVO.getIsContentEmpty()) && StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
                 try {
@@ -1279,11 +1310,22 @@ public class NoteServiceImpl implements NoteService {
             fillNoteCounts(findNoteDetailRspVO);
         }, threadPoolTaskExecutor);
 
+        CompletableFuture<Void> interactionFuture = CompletableFuture.runAsync(() -> {
+            if (userId != null && noteId != null) {
+                try {
+                    findNoteDetailRspVO.setIsLiked(noteInteractionCacheService.isLiked(userId, noteId) ? 1 : 0);
+                    findNoteDetailRspVO.setIsCollected(noteInteractionCacheService.isCollected(userId, noteId) ? 1 : 0);
+                } catch (Exception e) {
+                    log.warn("填充用户笔记互动状态异常, userId={}, noteId={}", userId, noteId, e);
+                }
+            }
+        }, threadPoolTaskExecutor);
+
         try {
-            CompletableFuture.allOf(contentFuture, countFuture).orTimeout(500, TimeUnit.MILLISECONDS).join();
+            CompletableFuture.allOf(contentFuture, countFuture, interactionFuture).orTimeout(500, TimeUnit.MILLISECONDS).join();
             findNoteDetailRspVO.setContent(contentFuture.join());
         } catch (Exception e) {
-            log.warn("并发加载笔记正文与计数部分超时, noteId={}", findNoteDetailRspVO.getId(), e);
+            log.warn("并发加载笔记正文、计数与互动状态部分超时, noteId={}", findNoteDetailRspVO.getId(), e);
             findNoteDetailRspVO.setContent(contentFuture.getNow(""));
         }
     }

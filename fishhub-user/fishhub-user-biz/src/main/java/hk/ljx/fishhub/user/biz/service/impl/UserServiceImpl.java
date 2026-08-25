@@ -202,9 +202,8 @@ public class UserServiceImpl implements UserService {
     private void deleteUserRedisCache(Long userId) {
         String userInfoRedisKey = RedisKeyConstants.buildUserInfoKey(userId);
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
-        String userActiveRedisKey = RedisKeyConstants.buildUserActiveKey(userId);
 
-        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey, userActiveRedisKey));
+        stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey));
     }
 
     /**
@@ -272,7 +271,6 @@ public class UserServiceImpl implements UserService {
     public Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(ResolveLoginableUserReqDTO request) {
         String phone = request.getPhone();
 
-        // 1. 无事务快速无锁查询已有用户（老用户登录直接返回，不霸占 DB 连接与行锁）
         UserDO existingUser = userDOMapper.selectByPhone(phone);
         log.info("手机号查询完成，found={}", existingUser != null);
 
@@ -280,7 +278,6 @@ public class UserServiceImpl implements UserService {
             return resolvedLoginableUserResponse(existingUser);
         }
 
-        // 2. 在事务外部执行远程网络 RPC，避免网络 IO 产生长事务拖垮数据库连接池
         String fishhubId = distributedIdGeneratorRpcService.getFishhubId();
         String userIdStr = distributedIdGeneratorRpcService.getUserId();
         Long userId = Long.valueOf(userIdStr);
@@ -290,18 +287,16 @@ public class UserServiceImpl implements UserService {
         UserDO newUser = UserDO.builder()
                 .id(userId)
                 .phone(phone)
-                .fishhubId(fishhubId) // 自动生成小鱼号 ID
-                .nickname(defaultNickname) // 自动生成昵称, 如：小鱼_123456
-                .status(StatusEnum.ENABLE.getValue()) // 状态为启用
+                .fishhubId(fishhubId)
+                .nickname(defaultNickname)
+                .status(StatusEnum.ENABLE.getValue())
                 .createTime(LocalDateTime.now())
                 .updateTime(LocalDateTime.now())
-                .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
+                .isDeleted(DeletedEnum.NO.getValue())
                 .build();
 
-        // 3. 使用细粒度本地短事务保证：用户插入 + 默认角色绑定 的原子性
         UserDO finalUser = transactionTemplate.execute(status -> {
             if (userDOMapper.insertIfAbsent(newUser) == 0) {
-                // 并发注册冲突时，查询已由另一线程成功创建的账号
                 UserDO concurrentUser = userDOMapper.selectByPhone(phone);
                 if (concurrentUser == null) {
                     throw new IllegalStateException("手机号账号创建后未找到");
@@ -309,7 +304,6 @@ public class UserServiceImpl implements UserService {
                 return concurrentUser;
             }
 
-            // 给该用户分配一个默认角色
             UserRoleDO userRoleDO = UserRoleDO.builder()
                     .userId(userId)
                     .roleId(RoleConstants.COMMON_USER_ROLE_ID)
@@ -321,7 +315,6 @@ public class UserServiceImpl implements UserService {
             return newUser;
         });
 
-        // 4. 事务成功提交后失效旧快照
         if (finalUser != null) {
             rolePermissionService.evict(finalUser.getId());
         }
