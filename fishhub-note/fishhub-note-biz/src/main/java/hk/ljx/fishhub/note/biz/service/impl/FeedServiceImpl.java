@@ -8,6 +8,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.framework.common.util.SafeRedisUtil;
 import hk.ljx.fishhub.note.biz.constant.RedisKeyConstants;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
@@ -69,6 +70,7 @@ public class FeedServiceImpl implements FeedService {
     private final UserClient userClient;
     private final CountClient countClient;
     private final StringRedisTemplate stringRedisTemplate;
+    private final SafeRedisUtil safeRedisUtil;
     private final RedissonClient redissonClient;
 
     @Override
@@ -78,24 +80,12 @@ public class FeedServiceImpl implements FeedService {
         if (local != null) {
             return Response.success(local);
         }
-        Object cached = getRedisValue(key, "频道快照");
-        List<FindChannelRspVO> channels;
-        if (cached instanceof String cachedJson) {
-            try {
-                channels = JsonUtils.parseList(cachedJson, FindChannelRspVO.class);
-            } catch (Exception e) {
-                log.warn("频道快照缓存解析失败，跳过缓存并尝试删除，key={}", key, e);
-                channels = null;
-                deleteRedisValue(key, "频道快照");
-            }
-        } else {
-            channels = null;
-        }
+        List<FindChannelRspVO> channels = safeRedisUtil.getList(key, FindChannelRspVO.class);
         if (CollUtil.isEmpty(channels)) {
             channels = channelDOMapper.selectAllEnabled().stream()
                     .map(channel -> FindChannelRspVO.builder().id(channel.getId()).name(channel.getName()).build())
                     .toList();
-            cacheChannels(key, channels);
+            safeRedisUtil.setObject(key, channels, CacheTtl.basePlusRandom(10, 5), TimeUnit.MINUTES);
         }
         channelLocalCache.put(key, channels);
         return Response.success(channels);
@@ -146,7 +136,9 @@ public class FeedServiceImpl implements FeedService {
                 cacheDiscoverPageSnapshot(cacheKey, fresh);
                 return fresh;
             } finally {
-                lock.unlock();
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
         }
 
@@ -272,42 +264,22 @@ public class FeedServiceImpl implements FeedService {
     private String discoverFeedVersion(Long channelId) {
         // 版本按频道拆分：只影响所属频道与首页(0)。
         String key = RedisKeyConstants.buildDiscoverFeedVersionKey(channelId);
-        try {
-            Object value = stringRedisTemplate.opsForValue().get(key);
-            if (value != null && StringUtils.isNotBlank(String.valueOf(value))) {
-                return String.valueOf(value);
-            }
-            String initialVersion = String.valueOf(System.currentTimeMillis());
-            stringRedisTemplate.opsForValue().setIfAbsent(key, initialVersion);
-            Object current = stringRedisTemplate.opsForValue().get(key);
-            return current == null ? initialVersion : String.valueOf(current);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页跳过缓存并回源 MySQL", e);
-            return null;
+        String value = safeRedisUtil.get(key);
+        if (StringUtils.isNotBlank(value)) {
+            return value;
         }
+        String initialVersion = String.valueOf(System.currentTimeMillis());
+        safeRedisUtil.setIfAbsent(key, initialVersion);
+        String current = safeRedisUtil.get(key);
+        return current == null ? initialVersion : current;
     }
 
     private DiscoverPageSnapshot readDiscoverPageSnapshot(String cacheKey) {
-        Object cached = stringRedisTemplate.opsForValue().get(cacheKey);
-        if (!(cached instanceof String cachedJson)) {
-            return null;
-        }
-        try {
-            return JsonUtils.parseObject(cachedJson, DiscoverPageSnapshot.class);
-        } catch (Exception e) {
-            log.warn("发现页缓存解析失败，跳过缓存并尝试删除，key={}", cacheKey, e);
-            deleteRedisValue(cacheKey, "发现页缓存");
-            return null;
-        }
+        return safeRedisUtil.getObject(cacheKey, DiscoverPageSnapshot.class);
     }
 
     private void cacheDiscoverPageSnapshot(String cacheKey, DiscoverPageSnapshot snapshot) {
-        try {
-            stringRedisTemplate.opsForValue().set(cacheKey, JsonUtils.toJsonString(snapshot),
-                    CacheTtl.basePlusRandom(30, 30), TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页缓存写入失败，响应将继续返回，key={}", cacheKey, e);
-        }
+        safeRedisUtil.setObject(cacheKey, snapshot, CacheTtl.basePlusRandom(30, 30), TimeUnit.SECONDS);
     }
 
     private boolean isValidDiscoverPageSnapshot(DiscoverPageSnapshot snapshot) {
@@ -320,61 +292,15 @@ public class FeedServiceImpl implements FeedService {
         if (local != null) {
             return local;
         }
-        Object cached = getRedisValue(key, "话题快照");
-        List<FindTopicRspVO> topics;
-        if (cached instanceof String cachedJson) {
-            try {
-                topics = JsonUtils.parseList(cachedJson, FindTopicRspVO.class);
-            } catch (Exception e) {
-                log.warn("话题快照缓存解析失败，跳过缓存并尝试删除，key={}", key, e);
-                topics = null;
-                deleteRedisValue(key, "话题快照");
-            }
-        } else {
-            topics = null;
-        }
+        List<FindTopicRspVO> topics = safeRedisUtil.getList(key, FindTopicRspVO.class);
         if (CollUtil.isEmpty(topics)) {
             topics = topicDOMapper.selectAllEnabled().stream()
                     .map(topic -> FindTopicRspVO.builder().id(topic.getId()).name(topic.getName()).build())
                     .toList();
-            cacheTopics(key, topics);
+            safeRedisUtil.setObject(key, topics, 10, TimeUnit.MINUTES);
         }
         TOPIC_LOCAL_CACHE.put(key, topics);
         return topics;
-    }
-
-    private Object getRedisValue(String key, String cacheName) {
-        try {
-            return stringRedisTemplate.opsForValue().get(key);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，{}读取失败，跳过缓存并回源 MySQL，key={}", cacheName, key, e);
-            return null;
-        }
-    }
-
-    private void cacheChannels(String key, List<FindChannelRspVO> channels) {
-        try {
-            stringRedisTemplate.opsForValue().set(key, JsonUtils.toJsonString(channels),
-                    CacheTtl.basePlusRandom(10, 5), TimeUnit.MINUTES);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，频道快照缓存写入失败，响应将继续返回，key={}", key, e);
-        }
-    }
-
-    private void cacheTopics(String key, List<FindTopicRspVO> topics) {
-        try {
-            stringRedisTemplate.opsForValue().set(key, JsonUtils.toJsonString(topics), 10, TimeUnit.MINUTES);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，话题快照缓存写入失败，响应将继续返回，key={}", key, e);
-        }
-    }
-
-    private void deleteRedisValue(String key, String cacheName) {
-        try {
-            stringRedisTemplate.delete(key);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，{}删除失败，key={}", cacheName, key, e);
-        }
     }
 
     @lombok.Data

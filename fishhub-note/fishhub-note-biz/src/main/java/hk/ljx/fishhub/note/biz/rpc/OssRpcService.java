@@ -22,6 +22,10 @@ public class OssRpcService {
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
 
     public void deleteFiles(Collection<String> fileUrls) {
+        deleteFiles(fileUrls, null);
+    }
+
+    public void deleteFiles(Collection<String> fileUrls, Long creatorId) {
         if (CollUtil.isEmpty(fileUrls)) {
             return;
         }
@@ -30,6 +34,7 @@ public class OssRpcService {
                 try {
                     DeleteFileReqDTO request = new DeleteFileReqDTO();
                     request.setFileUrl(fileUrl);
+                    request.setOwnerId(creatorId);
                     Response<?> response = fileFeignApi.deleteFile(request);
                     if (response == null || !response.isSuccess()) {
                         log.warn("对象存储文件异步删除失败, fileUrl={}, response={}", fileUrl, response);

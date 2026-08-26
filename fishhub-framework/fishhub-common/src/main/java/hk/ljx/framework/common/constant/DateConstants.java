@@ -34,4 +34,15 @@ public interface DateConstants {
      * DateTimeFormatter：年-月
      */
     DateTimeFormatter DATE_FORMAT_Y_M =  DateTimeFormatter.ofPattern("yyyy-MM");
+
+    /**
+     * 复合自适应 DateTimeFormatter：兼容 yyyy-MM-dd HH:mm:ss、ISO_DATE_TIME、ISO_LOCAL_DATE_TIME 等多种格式
+     */
+    DateTimeFormatter DATE_FORMAT_FLEXIBLE = new java.time.format.DateTimeFormatterBuilder()
+            .appendOptional(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+            .appendOptional(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS"))
+            .appendOptional(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"))
+            .appendOptional(DateTimeFormatter.ISO_DATE_TIME)
+            .appendOptional(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            .toFormatter();
 }

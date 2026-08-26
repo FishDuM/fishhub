@@ -92,6 +92,7 @@ class CommentServiceImplTest {
         when(stringRedisTemplate.hasKey(key)).thenReturn(false, false);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(commentDOMapper.selectHeatComments(100L)).thenReturn(List.of());
 
         ReflectionTestUtils.invokeMethod(service, "rebuildCommentListZSetWithLock", key, 100L);
@@ -126,6 +127,7 @@ class CommentServiceImplTest {
         when(valueOperations.get(cacheKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(commentDOMapper.selectOneLevelCountByNoteId(noteId))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();

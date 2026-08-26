@@ -53,7 +53,11 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Response<?> deleteFile(DeleteFileReqDTO request) {
-        fileStrategy.deleteFile(request.getFileUrl(), BUCKET_NAME, requireCurrentUserId());
+        Long ownerId = request.getOwnerId() != null ? request.getOwnerId() : LoginUserContextHolder.getUserId();
+        if (ownerId == null) {
+            throw new IllegalArgumentException("缺少文件所属用户上下文");
+        }
+        fileStrategy.deleteFile(request.getFileUrl(), BUCKET_NAME, ownerId);
         return Response.success();
     }
 

@@ -78,7 +78,6 @@ public class CommentHeatService {
      */
     private void updateRedisHotComments(List<CommentHeatBO> commentHeatBOList) {
         Map<Long, List<CommentHeatBO>> noteIdAndBOListMap = commentHeatBOList.stream()
-                .filter(commentHeatBO -> commentHeatBO.getHeat() > 0)
                 .collect(Collectors.groupingBy(CommentHeatBO::getNoteId));
 
         noteIdAndBOListMap.forEach((noteId, commentHeatBOS) -> {

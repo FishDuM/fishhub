@@ -77,6 +77,11 @@ class UserServiceImplTest {
     @InjectMocks
     private UserServiceImpl userService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(userService, "safeRedisUtil", new hk.ljx.framework.common.util.SafeRedisUtil(stringRedisTemplate));
+    }
+
     @Test
     void findByIdsShouldMergeRedisHitsAndDatabaseMisses() {
         FindUserByIdRspDTO cachedUser = FindUserByIdRspDTO.builder()

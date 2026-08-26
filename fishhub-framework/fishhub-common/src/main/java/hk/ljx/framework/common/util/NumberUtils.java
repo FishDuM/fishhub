@@ -1,15 +1,13 @@
 package hk.ljx.framework.common.util;
 
+import cn.hutool.core.util.NumberUtil;
+
 import java.math.RoundingMode;
-import java.text.DecimalFormat;
 
+/**
+ * 数字格式化工具类
+ */
 public final class NumberUtils {
-
-    private static final ThreadLocal<DecimalFormat> DF_HOLDER = ThreadLocal.withInitial(() -> {
-        DecimalFormat df = new DecimalFormat("#.#");
-        df.setRoundingMode(RoundingMode.DOWN);
-        return df;
-    });
 
     private NumberUtils() {
     }
@@ -21,11 +19,9 @@ public final class NumberUtils {
         if (number < 10000) {
             return String.valueOf(number);
         } else if (number < 100000000) {
-            double result = number / 10000.0;
-            return DF_HOLDER.get().format(result) + "万";
+            return NumberUtil.decimalFormat("#.#", number / 10000.0, RoundingMode.DOWN) + "万";
         } else {
-            double result = number / 100000000.0;
-            return DF_HOLDER.get().format(result) + "亿";
+            return NumberUtil.decimalFormat("#.#", number / 100000000.0, RoundingMode.DOWN) + "亿";
         }
     }
 }

@@ -246,22 +246,7 @@ public class NoteServiceImpl implements NoteService {
     }
 
     private static LocalDateTime parseUpdateTime(String updateTimeStr) {
-        if (StringUtils.isBlank(updateTimeStr)) {
-            return LocalDateTime.now();
-        }
-        try {
-            return LocalDateTime.parse(updateTimeStr, DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
-        } catch (Exception ignored) {
-        }
-        try {
-            return LocalDateTime.parse(updateTimeStr, DateTimeFormatter.ISO_DATE_TIME);
-        } catch (Exception ignored) {
-        }
-        try {
-            return LocalDateTime.parse(updateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        } catch (Exception ignored) {
-        }
-        return LocalDateTime.now();
+        return DateUtils.parseFlexibleLocalDateTime(updateTimeStr, LocalDateTime.now());
     }
 
     private static Long getLong(Map<String, Object> map, String key) {

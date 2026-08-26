@@ -885,7 +885,9 @@ public class CommentServiceImpl implements CommentService {
                 cacheOneLevelCommentTotal(key, total);
                 return total;
             } finally {
-                lock.unlock();
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
         }
 
@@ -1056,7 +1058,9 @@ public class CommentServiceImpl implements CommentService {
                         syncHeatComments2Redis(key, noteId);
                     }
                 } finally {
-                    lock.unlock();
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
             }
         } catch (InterruptedException e) {
@@ -1080,7 +1084,9 @@ public class CommentServiceImpl implements CommentService {
                         syncChildComments2Redis(parentCommentId, key);
                     }
                 } finally {
-                    lock.unlock();
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
             }
         } catch (InterruptedException e) {

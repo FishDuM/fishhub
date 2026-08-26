@@ -25,6 +25,12 @@ class CountReconcileJobTest {
     @Mock
     private CountReconcileDOMapper countReconcileDOMapper;
 
+    @Mock
+    private hk.ljx.framework.common.util.SafeRedisUtil safeRedisUtil;
+
+    @Mock
+    private hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService userCountCacheVersionService;
+
     @InjectMocks
     private CountReconcileJob countReconcileJob;
 
@@ -76,5 +82,8 @@ class CountReconcileJobTest {
         verify(countReconcileDOMapper, times(1)).batchUpsertNoteCounts(any());
         verify(countReconcileDOMapper, times(1)).batchUpsertUserCounts(any());
         verify(countReconcileDOMapper, times(1)).batchUpdateCommentCounts(any());
+        verify(safeRedisUtil, times(1)).delete(eq(List.of("count:note:1001", "count:note:1002")));
+        verify(userCountCacheVersionService, times(1)).advanceVersions(eq(List.of(2001L)));
+        verify(safeRedisUtil, times(1)).delete(eq(List.of("count:comment:3001")));
     }
 }

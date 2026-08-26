@@ -11,6 +11,7 @@ import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.DateUtils;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.framework.common.util.SafeRedisUtil;
 import hk.ljx.framework.common.util.NumberUtils;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
@@ -90,6 +91,7 @@ public class NoteServiceImpl implements NoteService {
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
     private final StringRedisTemplate stringRedisTemplate;
+    private final SafeRedisUtil safeRedisUtil;
     private final RocketMQTemplate rocketMQTemplate;
     private final NoteLikeDOMapper noteLikeDOMapper;
     private final NoteCollectionDOMapper noteCollectionDOMapper;
@@ -314,39 +316,31 @@ public class NoteServiceImpl implements NoteService {
      * @param channelIds 受影响频道（可为空）；频道 0（首页）总是参与
      */
     private void invalidateNoteRedisCaches(Long creatorId, Long noteId, Long... channelIds) {
-        try {
-            stringRedisTemplate.delete(List.of(
-                    RedisKeyConstants.buildNoteDetailKey(noteId),
-                    RedisKeyConstants.buildNoteAccessKey(noteId),
-                    RedisKeyConstants.buildPublishedNoteListKey(creatorId)));
-            LOCAL_CACHE.invalidate(noteId);
-            CountClient.invalidate(noteId);
-            Set<Long> channels = new LinkedHashSet<>();
-            channels.add(0L);
-            if (channelIds != null) {
-                for (Long channelId : channelIds) {
-                    if (channelId != null) {
-                        channels.add(channelId);
-                    }
+        safeRedisUtil.delete(List.of(
+                RedisKeyConstants.buildNoteDetailKey(noteId),
+                RedisKeyConstants.buildNoteAccessKey(noteId),
+                RedisKeyConstants.buildPublishedNoteListKey(creatorId)));
+        LOCAL_CACHE.invalidate(noteId);
+        CountClient.invalidate(noteId);
+        Set<Long> channels = new LinkedHashSet<>();
+        channels.add(0L);
+        if (channelIds != null) {
+            for (Long channelId : channelIds) {
+                if (channelId != null) {
+                    channels.add(channelId);
                 }
             }
-            for (Long channelId : channels) {
-                bumpDiscoverFeedVersion(channelId);
-            }
-        } catch (Exception e) {
-            log.warn("笔记缓存失效失败，等待缓存过期兜底, noteId={}", noteId, e);
+        }
+        for (Long channelId : channels) {
+            bumpDiscoverFeedVersion(channelId);
         }
     }
 
     // 发现页版本 bump：实时写入最新时间戳推进版本，使旧快照立即失效。
     private void bumpDiscoverFeedVersion(Long channelId) {
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    RedisKeyConstants.buildDiscoverFeedVersionKey(channelId),
-                    String.valueOf(System.currentTimeMillis()));
-        } catch (Exception e) {
-            log.warn("Redis 不可用，发现页版本 bump 失败，等待缓存过期兜底, channelId={}", channelId, e);
-        }
+        safeRedisUtil.set(
+                RedisKeyConstants.buildDiscoverFeedVersionKey(channelId),
+                String.valueOf(System.currentTimeMillis()));
     }
 
     /**
@@ -377,7 +371,7 @@ public class NoteServiceImpl implements NoteService {
         }
 
         String noteDetailRedisKey = RedisKeyConstants.buildNoteDetailKey(noteId);
-        String noteDetailJson = stringRedisTemplate.opsForValue().get(noteDetailRedisKey);
+        String noteDetailJson = safeRedisUtil.get(noteDetailRedisKey);
 
         if (StringUtils.isNotBlank(noteDetailJson)) {
             if ("null".equals(noteDetailJson)) {
@@ -385,7 +379,7 @@ public class NoteServiceImpl implements NoteService {
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(noteDetailJson, FindNoteDetailRspVO.class);
             if (!isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                stringRedisTemplate.delete(noteDetailRedisKey);
+                safeRedisUtil.delete(noteDetailRedisKey);
             } else {
                 LOCAL_CACHE.put(noteId,
                         Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
@@ -398,13 +392,8 @@ public class NoteServiceImpl implements NoteService {
         NoteDO noteDO = noteDOMapper.selectByPrimaryKey(noteId);
 
         if (Objects.isNull(noteDO)) {
-            try {
-                // 防止缓存穿透，同步将空数据存入 Redis 缓存 (过期时间不宜设置过长)
-                long expireSeconds = CacheTtl.minutes(1, 1);
-                stringRedisTemplate.opsForValue().set(noteDetailRedisKey, "null", expireSeconds, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，写入防穿透空值缓存失败, noteId={}", noteId, e);
-            }
+            // 防止缓存穿透，同步将空数据存入 Redis 缓存 (过期时间不宜设置过长)
+            safeRedisUtil.set(noteDetailRedisKey, "null", CacheTtl.minutes(1, 1), TimeUnit.SECONDS);
             throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
         }
 
@@ -476,32 +465,27 @@ public class NoteServiceImpl implements NoteService {
         // 仅公开笔记写回 Redis 缓存，私密笔记直接读库，节省缓存空间并杜绝越权泄露
         if (Objects.equals(findNoteDetailRspVO.getVisible(), NoteVisibleEnum.PUBLIC.getCode())) {
             threadPoolTaskExecutor.submit(() -> {
-                try {
-                    FindNoteDetailRspVO cacheSnapshot = FindNoteDetailRspVO.builder()
-                            .id(findNoteDetailRspVO.getId())
-                            .type(findNoteDetailRspVO.getType())
-                            .title(findNoteDetailRspVO.getTitle())
-                            .content("")
-                            .imgUris(findNoteDetailRspVO.getImgUris())
-                            .topicId(findNoteDetailRspVO.getTopicId())
-                            .topicName(findNoteDetailRspVO.getTopicName())
-                            .creatorId(findNoteDetailRspVO.getCreatorId())
-                            .creatorName(findNoteDetailRspVO.getCreatorName())
-                            .avatar(findNoteDetailRspVO.getAvatar())
-                            .videoUri(findNoteDetailRspVO.getVideoUri())
-                            .updateTime(findNoteDetailRspVO.getUpdateTime())
-                            .likeTotal(findNoteDetailRspVO.getLikeTotal())
-                            .collectTotal(findNoteDetailRspVO.getCollectTotal())
-                            .commentTotal(findNoteDetailRspVO.getCommentTotal())
-                            .visible(findNoteDetailRspVO.getVisible())
-                            .build();
-                    String freshNoteDetailJson = JsonUtils.toJsonString(cacheSnapshot);
-                    long expireSeconds = CacheTtl.hours(1, 2);
-                    stringRedisTemplate.opsForValue().set(noteDetailRedisKey, freshNoteDetailJson, expireSeconds, TimeUnit.SECONDS);
-                    LOCAL_CACHE.put(noteId, freshNoteDetailJson);
-                } catch (Exception e) {
-                    log.warn("Redis 不可用，笔记详情元数据缓存写入失败，响应将继续返回，noteId={}", noteId, e);
-                }
+                FindNoteDetailRspVO cacheSnapshot = FindNoteDetailRspVO.builder()
+                        .id(findNoteDetailRspVO.getId())
+                        .type(findNoteDetailRspVO.getType())
+                        .title(findNoteDetailRspVO.getTitle())
+                        .content("")
+                        .imgUris(findNoteDetailRspVO.getImgUris())
+                        .topicId(findNoteDetailRspVO.getTopicId())
+                        .topicName(findNoteDetailRspVO.getTopicName())
+                        .creatorId(findNoteDetailRspVO.getCreatorId())
+                        .creatorName(findNoteDetailRspVO.getCreatorName())
+                        .avatar(findNoteDetailRspVO.getAvatar())
+                        .videoUri(findNoteDetailRspVO.getVideoUri())
+                        .updateTime(findNoteDetailRspVO.getUpdateTime())
+                        .likeTotal(findNoteDetailRspVO.getLikeTotal())
+                        .collectTotal(findNoteDetailRspVO.getCollectTotal())
+                        .commentTotal(findNoteDetailRspVO.getCommentTotal())
+                        .visible(findNoteDetailRspVO.getVisible())
+                        .build();
+                String freshNoteDetailJson = JsonUtils.toJsonString(cacheSnapshot);
+                safeRedisUtil.set(noteDetailRedisKey, freshNoteDetailJson, CacheTtl.hours(1, 2), TimeUnit.SECONDS);
+                LOCAL_CACHE.put(noteId, freshNoteDetailJson);
             });
         }
 
@@ -603,7 +587,7 @@ public class NoteServiceImpl implements NoteService {
         }
         List<String> obsoleteMediaUrls = CollUtil.subtractToList(getMediaUrls(selectNoteDO), newMediaUrls);
         if (CollUtil.isNotEmpty(obsoleteMediaUrls)) {
-            ossRpcService.deleteFiles(obsoleteMediaUrls);
+            ossRpcService.deleteFiles(obsoleteMediaUrls, selectNoteDO.getCreatorId());
         }
 
         return Response.success();
@@ -732,7 +716,7 @@ public class NoteServiceImpl implements NoteService {
 
         List<String> mediaUrls = getMediaUrls(selectNoteDO);
         if (CollUtil.isNotEmpty(mediaUrls)) {
-            ossRpcService.deleteFiles(mediaUrls);
+            ossRpcService.deleteFiles(mediaUrls, selectNoteDO.getCreatorId());
         }
 
         return Response.success();
@@ -1242,13 +1226,7 @@ public class NoteServiceImpl implements NoteService {
     private void syncFirstPagePublishedNoteList2Redis(List<NoteItemRspVO> noteVOS, String publishedNoteListRedisKey) {
         if (CollUtil.isEmpty(noteVOS)) return;
         threadPoolTaskExecutor.submit(() -> {
-            try {
-                long expireSeconds = CacheTtl.minutes(30, 30);
-                stringRedisTemplate.opsForValue()
-                        .set(publishedNoteListRedisKey, JsonUtils.toJsonString(noteVOS), expireSeconds, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                log.warn("Redis 不可用，已发布笔记列表缓存写入失败", e);
-            }
+            safeRedisUtil.setObject(publishedNoteListRedisKey, noteVOS, CacheTtl.minutes(30, 30), TimeUnit.SECONDS);
         });
     }
 
@@ -1342,32 +1320,28 @@ public class NoteServiceImpl implements NoteService {
             return;
         }
         Long noteId = noteDetail.getId();
-        try {
-            String countKey = CountKeyConstants.buildCountNoteKey(noteId);
-            List<Object> hashValues = stringRedisTemplate.opsForHash().multiGet(countKey,
-                    List.of(CountKeyConstants.FIELD_LIKE_TOTAL,
-                            CountKeyConstants.FIELD_COLLECT_TOTAL,
-                            CountKeyConstants.FIELD_COMMENT_TOTAL));
-            if (CollUtil.isNotEmpty(hashValues) && hashValues.size() >= 3) {
-                boolean hasValidCount = false;
-                if (hashValues.get(0) != null) {
-                    noteDetail.setLikeTotal(Long.parseLong(String.valueOf(hashValues.get(0))));
-                    hasValidCount = true;
-                }
-                if (hashValues.get(1) != null) {
-                    noteDetail.setCollectTotal(Long.parseLong(String.valueOf(hashValues.get(1))));
-                    hasValidCount = true;
-                }
-                if (hashValues.get(2) != null) {
-                    noteDetail.setCommentTotal(Long.parseLong(String.valueOf(hashValues.get(2))));
-                    hasValidCount = true;
-                }
-                if (hasValidCount) {
-                    return;
-                }
+        String countKey = CountKeyConstants.buildCountNoteKey(noteId);
+        List<Object> hashValues = safeRedisUtil.hMultiGet(countKey,
+                List.of(CountKeyConstants.FIELD_LIKE_TOTAL,
+                        CountKeyConstants.FIELD_COLLECT_TOTAL,
+                        CountKeyConstants.FIELD_COMMENT_TOTAL));
+        if (CollUtil.isNotEmpty(hashValues) && hashValues.size() >= 3) {
+            boolean hasValidCount = false;
+            if (hashValues.get(0) != null) {
+                noteDetail.setLikeTotal(Long.parseLong(String.valueOf(hashValues.get(0))));
+                hasValidCount = true;
             }
-        } catch (Exception e) {
-            log.warn("从 Redis 读取笔记计数失败，降级调用 count RPC, noteId={}", noteId, e);
+            if (hashValues.get(1) != null) {
+                noteDetail.setCollectTotal(Long.parseLong(String.valueOf(hashValues.get(1))));
+                hasValidCount = true;
+            }
+            if (hashValues.get(2) != null) {
+                noteDetail.setCommentTotal(Long.parseLong(String.valueOf(hashValues.get(2))));
+                hasValidCount = true;
+            }
+            if (hasValidCount) {
+                return;
+            }
         }
 
         try {
@@ -1453,7 +1427,9 @@ public class NoteServiceImpl implements NoteService {
                 }
                 return loadAccessSnapshotFromMySql(noteId, key, true);
             } finally {
-                lock.unlock();
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
         }
 
@@ -1463,20 +1439,7 @@ public class NoteServiceImpl implements NoteService {
 
     /** 读取访问快照缓存；空白/"null"/解析失败统一走重建（解析失败先删脏值）。 */
     private NoteAccessSnapshot readAccessSnapshot(String key) {
-        String cached = getAccessSnapshotCacheValue(key);
-        if (StringUtils.isBlank(cached)) {
-            return null;
-        }
-        if ("null".equals(cached)) {
-            return null;
-        }
-        try {
-            return JsonUtils.parseObject(cached, NoteAccessSnapshot.class);
-        } catch (Exception e) {
-            log.warn("笔记访问快照解析失败，跳过缓存并回源 MySQL，key={}", key, e);
-            deleteAccessSnapshotCache(key);
-            return null;
-        }
+        return safeRedisUtil.getObject(key, NoteAccessSnapshot.class);
     }
 
     private NoteAccessSnapshot loadAccessSnapshotFromMySql(Long noteId, String key, boolean cacheResult) {
@@ -1501,18 +1464,15 @@ public class NoteServiceImpl implements NoteService {
         List<String> keys = noteIds.stream()
                 .map(RedisKeyConstants::buildNoteAccessKey)
                 .toList();
-        List<String> cachedValues;
-        try {
-            cachedValues = stringRedisTemplate.opsForValue().multiGet(keys);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，笔记访问快照批量读取失败，回源 MySQL，noteIds={}", noteIds, e);
+        List<String> cachedValues = safeRedisUtil.multiGet(keys);
+        if (CollUtil.isEmpty(cachedValues)) {
             return loadAccessSnapshotsFromMySql(noteIds);
         }
         Map<Long, NoteAccessSnapshot> snapshots = new HashMap<>(noteIds.size());
         List<Long> missedNoteIds = new ArrayList<>();
 
         for (int i = 0; i < noteIds.size(); i++) {
-            String cached = cachedValues == null || cachedValues.size() <= i ? null : cachedValues.get(i);
+            String cached = cachedValues.size() <= i ? null : cachedValues.get(i);
             if (StringUtils.isBlank(cached)) {
                 missedNoteIds.add(noteIds.get(i));
                 continue;
@@ -1523,7 +1483,6 @@ public class NoteServiceImpl implements NoteService {
             try {
                 snapshots.put(noteIds.get(i), JsonUtils.parseObject(cached, NoteAccessSnapshot.class));
             } catch (Exception e) {
-                // 损坏的快照不能阻断批量权限校验；删除后统一回源并回填。
                 deleteAccessSnapshotCache(keys.get(i));
                 missedNoteIds.add(noteIds.get(i));
             }
@@ -1557,28 +1516,15 @@ public class NoteServiceImpl implements NoteService {
     }
 
     private String getAccessSnapshotCacheValue(String key) {
-        try {
-            return stringRedisTemplate.opsForValue().get(key);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，笔记访问快照读取失败，回源 MySQL，key={}", key, e);
-            return null;
-        }
+        return safeRedisUtil.get(key);
     }
 
     private void cacheAccessSnapshot(String key, String value) {
-        try {
-            stringRedisTemplate.opsForValue().set(key, value, 30, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，笔记访问快照写入失败，响应将继续返回，key={}", key, e);
-        }
+        safeRedisUtil.set(key, value, 30, TimeUnit.SECONDS);
     }
 
     private void deleteAccessSnapshotCache(String key) {
-        try {
-            stringRedisTemplate.delete(key);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，笔记访问快照删除失败，key={}", key, e);
-        }
+        safeRedisUtil.delete(key);
     }
 
     private NoteAccessSnapshot toAccessSnapshot(NoteDO note) {

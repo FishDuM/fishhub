@@ -62,6 +62,11 @@ class FeedServiceImplTest {
     @InjectMocks
     private FeedServiceImpl service;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "safeRedisUtil", new hk.ljx.framework.common.util.SafeRedisUtil(stringRedisTemplate));
+    }
+
     @Test
     void shouldRequestCountsOnceWhenCursorPageCacheMisses() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";

@@ -202,21 +202,21 @@ public class NoteCountServiceImpl implements NoteCountService {
                     // 设置 Field 计数
                     Map<String, Long> countMap = Maps.newHashMap();
                     NoteCountDO noteCountDO = noteIdAndDOMap.get(noteId);
-                    if (noteCountDO == null) {
-                        continue;
-                    }
+                    Long dbLike = noteCountDO != null ? noteCountDO.getLikeTotal() : null;
+                    Long dbCollect = noteCountDO != null ? noteCountDO.getCollectTotal() : null;
+                    Long dbComment = noteCountDO != null ? noteCountDO.getCommentTotal() : null;
 
                     if (Objects.isNull(likeTotal)) {
                         countMap.put(CountKeyConstants.FIELD_LIKE_TOTAL,
-                                Counts.clamp0(noteCountDO.getLikeTotal()));
+                                Counts.clamp0(dbLike));
                     }
                     if (Objects.isNull(collectTotal)) {
                         countMap.put(CountKeyConstants.FIELD_COLLECT_TOTAL,
-                                Counts.clamp0(noteCountDO.getCollectTotal()));
+                                Counts.clamp0(dbCollect));
                     }
                     if (Objects.isNull(commentTotal)) {
                         countMap.put(CountKeyConstants.FIELD_COMMENT_TOTAL,
-                                Counts.clamp0(noteCountDO.getCommentTotal()));
+                                Counts.clamp0(dbComment));
                     }
 
                     // 批量添加 Hash 的计数 Field，使用 putIfAbsent 防止覆盖并发产生的增量数据

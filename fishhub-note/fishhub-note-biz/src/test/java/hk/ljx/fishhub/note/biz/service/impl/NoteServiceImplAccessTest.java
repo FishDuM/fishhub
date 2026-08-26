@@ -68,6 +68,7 @@ class NoteServiceImplAccessTest {
 
     @BeforeEach
     void clearLocalCache() {
+        ReflectionTestUtils.setField(service, "safeRedisUtil", new hk.ljx.framework.common.util.SafeRedisUtil(stringRedisTemplate));
         @SuppressWarnings("unchecked")
         Cache<Long, String> localCache = (Cache<Long, String>) ReflectionTestUtils.getField(NoteServiceImpl.class, "LOCAL_CACHE");
         if (localCache != null) {
@@ -141,6 +142,7 @@ class NoteServiceImplAccessTest {
         when(valueOperations.get(key)).thenReturn(null, null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
 

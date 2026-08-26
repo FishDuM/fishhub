@@ -40,4 +40,26 @@ public class UserCountCacheVersionService {
         stringRedisTemplate.opsForValue().increment(versionKey);
         stringRedisTemplate.expire(versionKey, VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
     }
+
+    /**
+     * 批量推进用户计数缓存版本（Pipeline 批量执行）
+     *
+     * @param userIds 用户 ID 列表
+     */
+    public void advanceVersions(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return;
+        }
+        stringRedisTemplate.executePipelined(new org.springframework.data.redis.core.SessionCallback<>() {
+            @Override
+            public Object execute(org.springframework.data.redis.core.RedisOperations operations) {
+                for (Long userId : userIds) {
+                    String versionKey = CountKeyConstants.buildCountUserCacheVersionKey(userId);
+                    operations.opsForValue().increment(versionKey);
+                    operations.expire(versionKey, VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
+                }
+                return null;
+            }
+        });
+    }
 }

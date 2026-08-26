@@ -5,6 +5,9 @@ import hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO;
 import hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO;
 import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.CountReconcileDOMapper;
+import hk.ljx.framework.common.util.SafeRedisUtil;
+import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,7 +20,7 @@ import java.util.stream.Collectors;
 
 /**
  * 计数数据对账任务（每日定时校准数据）
- * 采用 MyBatis 游标 Keyset 分批 + 单表索引聚合 + 批量落库，彻底避免雪花 ID 步长空循环与慢查询临时表。
+ * 采用 MyBatis 游标 Keyset 分批 + 单表索引聚合 + 批量落库与缓存失效，彻底避免雪花 ID 步长空循环与慢查询临时表。
  */
 @Component
 @Slf4j
@@ -26,6 +29,8 @@ public class CountReconcileJob {
 
     private static final int BATCH_SIZE = 1000;
     private final CountReconcileDOMapper countReconcileDOMapper;
+    private final SafeRedisUtil safeRedisUtil;
+    private final UserCountCacheVersionService userCountCacheVersionService;
 
     @Scheduled(cron = "0 30 3 * * ?")
     public void reconcile() {
@@ -63,6 +68,10 @@ public class CountReconcileJob {
             ).toList();
 
             countReconcileDOMapper.batchUpsertNoteCounts(list);
+            // 批量失效 Redis 笔记计数缓存，避免旧脏数据滞留
+            List<String> noteRedisKeys = noteIds.stream().map(CountKeyConstants::buildCountNoteKey).toList();
+            safeRedisUtil.delete(noteRedisKeys);
+
             totalUpdated += list.size();
             lastId = noteIds.get(noteIds.size() - 1);
         }
@@ -99,6 +108,9 @@ public class CountReconcileJob {
             ).toList();
 
             countReconcileDOMapper.batchUpsertUserCounts(list);
+            // 批量推进用户计数缓存版本，旧快照立即失效
+            userCountCacheVersionService.advanceVersions(userIds);
+
             totalUpdated += list.size();
             lastId = userIds.get(userIds.size() - 1);
         }
@@ -129,6 +141,10 @@ public class CountReconcileJob {
             ).toList();
 
             countReconcileDOMapper.batchUpdateCommentCounts(list);
+            // 批量失效 Redis 评论计数缓存
+            List<String> commentRedisKeys = commentIds.stream().map(CountKeyConstants::buildCountCommentKey).toList();
+            safeRedisUtil.delete(commentRedisKeys);
+
             totalUpdated += list.size();
             lastId = commentIds.get(commentIds.size() - 1);
         }
