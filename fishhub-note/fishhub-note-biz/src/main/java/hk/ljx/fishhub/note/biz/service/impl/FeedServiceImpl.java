@@ -48,7 +48,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class FeedServiceImpl implements FeedService {
 
-    private static final long PAGE_SIZE = 10L;
+    private static final long PAGE_SIZE = 20L;
 
 
 

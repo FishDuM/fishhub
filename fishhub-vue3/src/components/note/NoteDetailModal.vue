@@ -346,7 +346,7 @@ const mergeNoteDetail = (detail = {}) => ({
   topics: detail.topics || (detail.topicName ? [{ id: detail.topicId, name: detail.topicName }] : []),
   likeTotal: detail.likeTotal ?? props.note.likeTotal ?? 0,
   collectTotal: detail.collectTotal ?? props.note.collectTotal ?? 0,
-  commentTotal: detail.commentTotal ?? props.note.commentTotal ?? 0
+  commentTotal: Number(detail.commentTotal ?? props.note.commentTotal ?? 0) || 0
 })
 
 const emit = defineEmits(['update:visible', 'interaction-change'])
@@ -433,12 +433,26 @@ const hasMoreComments = computed(() => currCommentPageNo.value < totalCommentPag
 const isLoadingMoreComments = ref(false)
 
 const normalizeComment = (comment) => {
-  const childComments = [...(comment.childComments || [])]
+  if (!comment) return comment
+  const childComments = [...(comment.childComments || [])].map(child => ({
+    ...child,
+    likeTotal: Number(child.likeTotal) || 0,
+    childCommentTotal: Number(child.childCommentTotal) || 0
+  }))
   if (comment.firstReplyComment &&
       !childComments.some(child => String(child.commentId) === String(comment.firstReplyComment.commentId))) {
-    childComments.unshift(comment.firstReplyComment)
+    childComments.unshift({
+      ...comment.firstReplyComment,
+      likeTotal: Number(comment.firstReplyComment.likeTotal) || 0,
+      childCommentTotal: Number(comment.firstReplyComment.childCommentTotal) || 0
+    })
   }
-  return { ...comment, childComments }
+  return {
+    ...comment,
+    likeTotal: Number(comment.likeTotal) || 0,
+    childCommentTotal: Number(comment.childCommentTotal) || 0,
+    childComments
+  }
 }
 
 const loadMoreComments = () => {
@@ -608,11 +622,11 @@ watch(() => props.visible, (newVisible) => {
       if (res.success) {
         comments.value = (res.data || []).map(normalizeComment)
         hydrateCommentLikeState(comments.value)
-        currCommentPageNo.value = res.pageNo
-        totalCommentPage.value = res.totalPage
-        if (commentTotal.value === 0 && res.totalCount) {
-          commentTotal.value = res.totalCount
-          currNote.value.commentTotal = res.totalCount
+        currCommentPageNo.value = Number(res.pageNo) || 1
+        totalCommentPage.value = Number(res.totalPage) || 1
+        if (Number(commentTotal.value) === 0 && res.totalCount != null) {
+          commentTotal.value = Number(res.totalCount) || 0
+          currNote.value.commentTotal = commentTotal.value
         }
       }
     })
@@ -773,15 +787,12 @@ const handlePublishComment = () => {
             newComment.replyUserName = replyTo.value.nickname
             newComment.replyUserId = replyTo.value.userId
             result.parentComment.childComments.splice(result.childIndex + 1, 0, newComment)
-            result.parentComment.childCommentTotal = (result.parentComment.childCommentTotal || 0) + 1
+            result.parentComment.childCommentTotal = (Number(result.parentComment.childCommentTotal) || 0) + 1
           } else {
             if (!result.parentComment.childComments) {
               result.parentComment.childComments = []
             }
-            if (!result.parentComment.childCommentTotal) {
-              result.parentComment.childCommentTotal = 0
-            }
-            result.parentComment.childCommentTotal += 1
+            result.parentComment.childCommentTotal = (Number(result.parentComment.childCommentTotal) || 0) + 1
 
             if (!result.parentComment.childComments.length) {
               result.parentComment.childComments = [newComment]
@@ -798,7 +809,7 @@ const handlePublishComment = () => {
         }
       }
 
-      commentTotal.value += 1
+      commentTotal.value = (Number(commentTotal.value) || 0) + 1
       currNote.value.commentTotal = commentTotal.value
 
 
@@ -841,13 +852,14 @@ const loadChildComments = (parentComment, pageNo = 1) => {
   getChildCommentList(parentComment.commentId, parentComment.currChildCommentPage + 1).then(res => {
     if (res.success) {
       if (res.data && res.data.length > 0) {
-        parentComment.childComments.push(...res.data)
-        hydrateCommentLikeState(res.data)
+        const normalizedChildren = res.data.map(normalizeComment)
+        parentComment.childComments.push(...normalizedChildren)
+        hydrateCommentLikeState(normalizedChildren)
 
-        parentComment.childCommentTotal = res.totalCount
-        parentComment.currChildCommentPage = res.pageNo
-        parentComment.totalChildCommentPage = res.totalPage
-        parentComment.hasMoreChildComments = res.pageNo < res.totalPage
+        parentComment.childCommentTotal = Number(res.totalCount) || 0
+        parentComment.currChildCommentPage = Number(res.pageNo) || 1
+        parentComment.totalChildCommentPage = Number(res.totalPage) || 1
+        parentComment.hasMoreChildComments = Number(res.pageNo || 0) < Number(res.totalPage || 0)
       } else {
         parentComment.hasMoreChildComments = false
       }

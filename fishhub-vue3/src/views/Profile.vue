@@ -351,8 +351,25 @@ const loadNotes = async (isFirstPage = true) => {
         : null
     hasMore.value = Boolean(nextCursor.value && newNotes.length)
   } finally {
-    if (isCurrentNoteRequest(requestId)) isLoading.value = false
+    if (isCurrentNoteRequest(requestId)) {
+      isLoading.value = false
+      checkAndFillScreen(requestId)
+    }
   }
+}
+
+const checkAndFillScreen = (requestId) => {
+  nextTick(() => {
+    if (requestId && !isCurrentNoteRequest(requestId)) return
+    if (!hasMore.value || isLoading.value) return
+
+    const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
+    const clientHeight = document.documentElement.clientHeight || window.innerHeight
+
+    if (scrollHeight <= clientHeight + 200) {
+      loadNotes(false)
+    }
+  })
 }
 
 const loadMoreNotes = () => loadNotes(false)
@@ -364,7 +381,7 @@ const handleScroll = () => {
   const windowHeight = window.innerHeight
   const documentHeight = document.documentElement.scrollHeight
   
-  if (documentHeight - scrollTop - windowHeight < 200) {
+  if (documentHeight - scrollTop - windowHeight < 300) {
     if (!isLoading.value) {
       loadMoreNotes()
     }
@@ -393,6 +410,10 @@ const handleFollow = async () => {
       return
     }
     isFollowing.value = !wasFollowing
+    if (profile.value.fansTotal != null) {
+      const currentFans = Number(profile.value.fansTotal) || 0
+      profile.value.fansTotal = Math.max(0, currentFans + (wasFollowing ? -1 : 1))
+    }
     message.success(wasFollowing ? '已取消关注' : '关注成功')
   } catch (error) {
     console.error(wasFollowing ? '取消关注失败:' : '关注失败:', error)

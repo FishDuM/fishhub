@@ -343,8 +343,25 @@ const performSearch = async (isFirstPage = true) => {
   } catch {
     if (searchId === latestSearchId) handleSearchFailure()
   } finally {
-    if (searchId === latestSearchId) isLoading.value = false
+    if (searchId === latestSearchId) {
+      isLoading.value = false
+      checkAndFillScreen(searchId)
+    }
   }
+}
+
+const checkAndFillScreen = (searchId) => {
+  nextTick(() => {
+    if (searchId && searchId !== latestSearchId) return
+    if (!hasMore.value || isLoading.value) return
+
+    const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
+    const clientHeight = document.documentElement.clientHeight || window.innerHeight
+
+    if (scrollHeight <= clientHeight + 200) {
+      performSearch(false)
+    }
+  })
 }
 
 watch(() => route.query.keyword, (newKeyword, oldKeyword) => {
@@ -369,7 +386,7 @@ const handleScroll = () => {
   const windowHeight = window.innerHeight
   const documentHeight = document.documentElement.scrollHeight
   
-  if (documentHeight - scrollTop - windowHeight < 200) {
+  if (documentHeight - scrollTop - windowHeight < 300) {
     loadMore()
   }
 }

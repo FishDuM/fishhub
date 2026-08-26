@@ -73,7 +73,7 @@ class FeedServiceImplTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
@@ -95,7 +95,7 @@ class FeedServiceImplTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn("{");
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
@@ -113,7 +113,7 @@ class FeedServiceImplTest {
     void shouldFallBackToMySqlWhenDiscoverRedisIsUnavailable() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenThrow(new IllegalStateException("redis unavailable"));
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
@@ -125,7 +125,7 @@ class FeedServiceImplTest {
         var response = service.findDiscoverNoteList(request);
 
         assertEquals(1, response.getData().size());
-        verify(noteDOMapper).selectDiscoverPageListByCursor(null, null, 11L);
+        verify(noteDOMapper).selectDiscoverPageListByCursor(null, null, 21L);
     }
 
     @Test
@@ -244,13 +244,13 @@ class FeedServiceImplTest {
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L))
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
         assertThrows(IllegalStateException.class, () -> service.findDiscoverNoteList(request));
 
-        verify(noteDOMapper, times(1)).selectDiscoverPageListByCursor(null, null, 11L);
+        verify(noteDOMapper, times(1)).selectDiscoverPageListByCursor(null, null, 21L);
     }
 }

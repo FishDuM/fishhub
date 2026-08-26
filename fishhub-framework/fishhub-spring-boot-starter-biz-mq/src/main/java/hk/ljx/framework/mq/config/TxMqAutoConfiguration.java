@@ -34,7 +34,6 @@ import javax.sql.DataSource;
 public class TxMqAutoConfiguration {
 
     @Bean
-    @ConditionalOnBean(TxJournalDOMapper.class)
     @ConditionalOnMissingBean
     public TxJournalStore txJournalStore(TxJournalDOMapper txJournalDOMapper) {
         return new TxJournalStore(txJournalDOMapper);
@@ -47,14 +46,12 @@ public class TxMqAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(TxJournalStore.class)
     @ConditionalOnMissingBean(TxMqLocalTransactionListener.class)
     public TxMqLocalTransactionListener txMqLocalTransactionListener(TxJournalStore txJournalStore) {
         return new TxMqLocalTransactionListener(txJournalStore);
     }
 
     @Bean
-    @ConditionalOnBean(MqConsumeRecordDOMapper.class)
     @ConditionalOnMissingBean
     public MqConsumeRecordStore mqConsumeRecordStore(MqConsumeRecordDOMapper mqConsumeRecordDOMapper) {
         return new MqConsumeRecordStore(mqConsumeRecordDOMapper);
@@ -62,7 +59,7 @@ public class TxMqAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public BatchConsumerFactory batchConsumerFactory(@Value("${rocketmq.name-server}") String namesrvAddr) {
+    public BatchConsumerFactory batchConsumerFactory(@Value("${rocketmq.name-server:127.0.0.1:9876}") String namesrvAddr) {
         return new BatchConsumerFactory(namesrvAddr);
     }
 
@@ -74,7 +71,6 @@ public class TxMqAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(MqConsumeRecordStore.class)
     @ConditionalOnMissingBean
     public MqConsumeRecordPurgeJob mqConsumeRecordPurgeJob(MqConsumeRecordStore mqConsumeRecordStore,
             @Value("${mq.consume-record.retention-days:7}") int retentionDays) {
@@ -82,7 +78,6 @@ public class TxMqAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(TxJournalDOMapper.class)
     @ConditionalOnMissingBean
     public TxJournalPurgeJob txJournalPurgeJob(TxJournalDOMapper txJournalDOMapper,
             @Value("${mq.tx-journal.retention-hours:24}") int retentionHours) {
