@@ -64,8 +64,8 @@ class AuthServiceImplTest {
 
     @Test
     void shouldRejectLoginWhenCaptchaExpiredOrNotFound() {
-        when(stringRedisTemplate.execute(any(RedisScript.class), anyList(), anyString(), anyString()))
-                .thenReturn(-1L); // captcha not found / expired
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn(null); // captcha not found / expired
 
         UserLoginReqVO reqVO = UserLoginReqVO.builder()
                 .phone("13800138000")
@@ -79,9 +79,9 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void shouldRejectLoginWhenCaptchaAttemptsExceeded() {
-        when(stringRedisTemplate.execute(any(RedisScript.class), anyList(), anyString(), anyString()))
-                .thenReturn(-2L); // captcha attempts exceeded (>=10)
+    void shouldRejectLoginWhenCaptchaMismatch() {
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn("wxyz"); // mismatch
 
         UserLoginReqVO reqVO = UserLoginReqVO.builder()
                 .phone("13800138000")
@@ -91,13 +91,13 @@ class AuthServiceImplTest {
                 .build();
 
         BizException ex = assertThrows(BizException.class, () -> authService.login(reqVO));
-        assertEquals("AUTH-20002", ex.getErrorCode());
+        assertEquals("AUTH-20001", ex.getErrorCode());
     }
 
     @Test
     void shouldRejectRegisterWhenPhoneAlreadyExists() {
-        when(stringRedisTemplate.execute(any(RedisScript.class), anyList(), anyString(), anyString()))
-                .thenReturn(1L); // captcha pass
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn("abcd"); // captcha pass
 
         when(userRpcService.registerUser(eq("13800138000"), any()))
                 .thenThrow(new BizException(ResponseCodeEnum.PHONE_ALREADY_REGISTERED));
@@ -111,5 +111,6 @@ class AuthServiceImplTest {
 
         BizException ex = assertThrows(BizException.class, () -> authService.register(reqVO));
         assertEquals("AUTH-20003", ex.getErrorCode());
+        verify(stringRedisTemplate).delete(anyString());
     }
 }

@@ -60,23 +60,27 @@ public class AddUserId2HeaderFilter implements GlobalFilter {
     }
 
     private Object resolveLoginIdFromRequest(ServerHttpRequest request) {
-        // Header 提取
-        HttpHeaders headers = request.getHeaders();
-        if (headers != null) {
-            String authorization = headers.getFirst(AUTHORIZATION);
-            if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
-                String token = authorization.substring(BEARER_PREFIX.length()).trim();
-                Object loginId = StpUtil.getLoginIdByToken(token);
-                if (loginId != null) {
-                    return loginId;
+        try {
+            // Header 提取
+            HttpHeaders headers = request.getHeaders();
+            if (headers != null) {
+                String authorization = headers.getFirst(AUTHORIZATION);
+                if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
+                    String token = authorization.substring(BEARER_PREFIX.length()).trim();
+                    Object loginId = StpUtil.getLoginIdByToken(token);
+                    if (loginId != null) {
+                        return loginId;
+                    }
                 }
             }
-        }
 
-        // Cookie 提取 (HttpOnly 会话)
-        HttpCookie authCookie = request.getCookies().getFirst(AUTHORIZATION);
-        if (authCookie != null && StringUtils.isNotBlank(authCookie.getValue())) {
-            return StpUtil.getLoginIdByToken(authCookie.getValue().trim());
+            // Cookie 提取 (HttpOnly 会话)
+            HttpCookie authCookie = request.getCookies().getFirst(AUTHORIZATION);
+            if (authCookie != null && StringUtils.isNotBlank(authCookie.getValue())) {
+                return StpUtil.getLoginIdByToken(authCookie.getValue().trim());
+            }
+        } catch (Exception e) {
+            log.debug("免登录路径 Token 解析失效或异常，按未登录处理: {}", e.getMessage());
         }
         return null;
     }

@@ -88,12 +88,9 @@ public class CommentHeatService {
 
         noteIdAndBOListMap.forEach((noteId, commentHeatBOS) -> {
             String key = RedisKeyConstants.buildCommentListKey(noteId);
-            List<String> args = Lists.newArrayList();
-            commentHeatBOS.forEach(commentHeatBO -> {
-                args.add(String.valueOf(commentHeatBO.getId()));
-                args.add(String.valueOf(commentHeatBO.getHeat()));
-            });
-            stringRedisTemplate.execute(UPDATE_HOT_COMMENTS_SCRIPT, Collections.singletonList(key), args.toArray());
+            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
+                commentHeatBOS.forEach(bo -> stringRedisTemplate.opsForZSet().add(key, String.valueOf(bo.getId()), bo.getHeat()));
+            }
         });
     }
 }

@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS `t_role_permission_rel` (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
   `is_deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '逻辑删除(0：未删除 1：已删除)',
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_role_permission` (`role_id`, `permission_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户权限表' ROW_FORMAT = DYNAMIC;
 
 CREATE TABLE IF NOT EXISTS `t_user_role_rel` (
@@ -154,6 +155,7 @@ CREATE TABLE IF NOT EXISTS `t_note` (
   `revision` bigint UNSIGNED NOT NULL DEFAULT 1 COMMENT '笔记聚合版本（编辑乐观锁与缓存版本）',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_creator_id`(`creator_id` ASC) USING BTREE,
+  INDEX `idx_creator_status_visible_id`(`creator_id` ASC, `status` ASC, `visible` ASC, `id` DESC) USING BTREE,
   INDEX `idx_topic_id`(`topic_id` ASC) USING BTREE,
   INDEX `idx_channel_id`(`channel_id` ASC) USING BTREE,
   INDEX `idx_status`(`status` ASC) USING BTREE,
@@ -199,7 +201,7 @@ CREATE TABLE IF NOT EXISTS `t_note_collection` (
   `status` tinyint NOT NULL DEFAULT 0 COMMENT '收藏状态(0：取消收藏 1：收藏)',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_user_id_note_id`(`user_id` ASC, `note_id` ASC) USING BTREE,
-  INDEX `idx_note_id`(`note_id` ASC) USING BTREE,
+  INDEX `idx_note_id_status`(`note_id` ASC, `status` ASC) USING BTREE,
   INDEX `idx_user_status_create_id`(`user_id` ASC, `status` ASC, `create_time` ASC, `id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '笔记收藏表' ROW_FORMAT = DYNAMIC;
 
@@ -309,7 +311,8 @@ CREATE TABLE IF NOT EXISTS `t_comment_like` (
   `comment_id` bigint NOT NULL COMMENT '评论ID',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_user_id_comment_id`(`user_id` ASC, `comment_id` ASC) USING BTREE
+  UNIQUE INDEX `uk_user_id_comment_id`(`user_id` ASC, `comment_id` ASC) USING BTREE,
+  INDEX `idx_comment_id`(`comment_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 51 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '评论点赞表' ROW_FORMAT = Dynamic;
 
 CREATE TABLE IF NOT EXISTS `t_mq_consume_record` (
@@ -393,7 +396,7 @@ CREATE TABLE IF NOT EXISTS `leaf_alloc` (
 
 INSERT INTO `leaf_alloc` (`biz_tag`, `max_id`, `step`, `description`, `update_time`) VALUES
 ('leaf-segment-fishhub-id', 10100, 2000, 'fishhub ID', now()),
-('leaf-segment-user-id', 100, 2000, '用户 ID', now()),
+('leaf-segment-user-id', 10000, 2000, '用户 ID', now()),
 ('leaf-segment-comment-id', 1, 2000, '评论 ID', now())
 ON DUPLICATE KEY UPDATE `step`=VALUES(`step`), `description`=VALUES(`description`);
 

@@ -53,9 +53,9 @@
 
   <delete id="batchDelete" parameterType="map">
     DELETE FROM t_comment_like
-    WHERE (comment_id, user_id) IN
+    WHERE (user_id, comment_id) IN
     <foreach collection="unlikes" item="unlike" open="(" separator="," close=")">
-      (#{unlike.commentId}, #{unlike.userId})
+      (#{unlike.userId}, #{unlike.commentId})
     </foreach>
   </delete>
 

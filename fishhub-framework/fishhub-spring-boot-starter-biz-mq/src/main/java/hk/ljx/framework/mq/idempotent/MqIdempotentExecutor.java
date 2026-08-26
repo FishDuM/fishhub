@@ -24,12 +24,10 @@ public class MqIdempotentExecutor {
     public boolean execute(String consumerGroup, String messageIdentity, Runnable databaseAction) {
         String messageKey = DigestUtil.sha256Hex(messageIdentity);
         return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
-            if (store.exists(consumerGroup, messageKey) > 0) {
-                return false;
-            }
             try {
                 store.insert(consumerGroup, messageKey);
             } catch (DuplicateKeyException e) {
+                // 唯一索引冲突：表示消息已处理过，幂等拦截
                 return false;
             }
             databaseAction.run();
@@ -39,12 +37,6 @@ public class MqIdempotentExecutor {
 
     /**
      * 批量事件级幂等：以每条消息身份独立判重，只对本次新增的键执行 freshAction。
-     * 并发抢占导致插入行数不匹配时回滚整批，交由消息重投收敛（重投后已存在键被跳过）。
-     *
-     * @param consumerGroup      消费组
-     * @param messageIdentities  本批消息身份（每条唯一）
-     * @param freshAction        新增键集合上的业务动作，入参为本次新增的 sha256 键；返回 true 表示已应用
-     * @return 本批是否应用了业务（false 表示全部重复投递）
      */
     public boolean executeBatch(String consumerGroup, List<String> messageIdentities,
                                 Function<List<String>, Boolean> freshAction) {
@@ -62,11 +54,7 @@ public class MqIdempotentExecutor {
             if (freshKeys.isEmpty()) {
                 return false;
             }
-            int inserted = store.insertIgnoreBatch(consumerGroup, freshKeys);
-            if (inserted != freshKeys.size()) {
-                // 并发窗口内部分键被其他实例写入：抛出异常触发事务回滚，并驱动 MQ 稍后重投收敛
-                throw new IllegalStateException("批量幂等插入并发冲突 (expected " + freshKeys.size() + ", inserted " + inserted + ")，回滚触发 MQ 重投");
-            }
+            store.insertIgnoreBatch(consumerGroup, freshKeys);
             return Boolean.TRUE.equals(freshAction.apply(freshKeys));
         }));
     }

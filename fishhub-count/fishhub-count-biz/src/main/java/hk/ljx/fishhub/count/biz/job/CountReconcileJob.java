@@ -1,13 +1,23 @@
 package hk.ljx.fishhub.count.biz.job;
 
+import hk.ljx.fishhub.count.biz.domain.dataobject.CommentCountReconcileBO;
+import hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO;
+import hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO;
+import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
+import hk.ljx.fishhub.count.biz.domain.mapper.CountReconcileDOMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * 计数数据对账任务（每日定时校准数据）
+ * 采用 MyBatis 游标 Keyset 分批 + 单表索引聚合 + 批量落库，彻底避免雪花 ID 步长空循环与慢查询临时表。
  */
 @Component
 @Slf4j
@@ -15,7 +25,7 @@ import org.springframework.stereotype.Component;
 public class CountReconcileJob {
 
     private static final int BATCH_SIZE = 1000;
-    private final JdbcTemplate jdbcTemplate;
+    private final CountReconcileDOMapper countReconcileDOMapper;
 
     @Scheduled(cron = "0 30 3 * * ?")
     public void reconcile() {
@@ -27,114 +37,114 @@ public class CountReconcileJob {
                 noteRows, userRows, commentRows, System.currentTimeMillis() - start);
     }
 
+    /**
+     * 笔记维度计数对账
+     */
     private int reconcileNoteCounts() {
-        Long minId = queryForLong("SELECT MIN(id) FROM fishhub_note.t_note WHERE status = 1");
-        Long maxId = queryForLong("SELECT MAX(id) FROM fishhub_note.t_note WHERE status = 1");
-        if (minId == null || maxId == null) {
-            return 0;
-        }
+        long lastId = 0L;
         int totalUpdated = 0;
-        long currentStart = minId;
-        String sql = """
-                INSERT INTO fishhub_count.t_note_count (note_id, like_total, collect_total, comment_total)
-                SELECT n.id,
-                       COALESCE(l.cnt, 0),
-                       COALESCE(c.cnt, 0),
-                       COALESCE(cm.cnt, 0)
-                FROM fishhub_note.t_note n
-                LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_note.t_note_like WHERE note_id >= ? AND note_id < ? AND status = 1 GROUP BY note_id) l ON l.note_id = n.id
-                LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_note.t_note_collection WHERE note_id >= ? AND note_id < ? AND status = 1 GROUP BY note_id) c ON c.note_id = n.id
-                LEFT JOIN (SELECT note_id, COUNT(*) AS cnt FROM fishhub_comment.t_comment WHERE note_id >= ? AND note_id < ? AND level = 1 GROUP BY note_id) cm ON cm.note_id = n.id
-                WHERE n.id >= ? AND n.id < ? AND n.status = 1
-                ON DUPLICATE KEY UPDATE
-                    like_total = VALUES(like_total),
-                    collect_total = VALUES(collect_total),
-                    comment_total = VALUES(comment_total)
-                """;
-        while (currentStart <= maxId) {
-            long currentEnd = currentStart + BATCH_SIZE;
-            int rows = jdbcTemplate.update(sql, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd);
-            totalUpdated += rows;
-            currentStart = currentEnd;
-        }
-        return totalUpdated;
-    }
 
-    private int reconcileUserCounts() {
-        Long minId = queryForLong("SELECT MIN(id) FROM fishhub_user.t_user WHERE is_deleted = 0");
-        Long maxId = queryForLong("SELECT MAX(id) FROM fishhub_user.t_user WHERE is_deleted = 0");
-        if (minId == null || maxId == null) {
-            return 0;
-        }
-        int totalUpdated = 0;
-        long currentStart = minId;
-        String sql = """
-                INSERT INTO fishhub_count.t_user_count (user_id, fans_total, following_total, note_total, like_total, collect_total)
-                SELECT u.id,
-                       COALESCE(fans.cnt, 0),
-                       COALESCE(fl.cnt, 0),
-                       COALESCE(nt.cnt, 0),
-                       COALESCE(lk.cnt, 0),
-                       COALESCE(cl.cnt, 0)
-                FROM fishhub_user.t_user u
-                LEFT JOIN (SELECT following_user_id AS uid, COUNT(*) AS cnt FROM fishhub_user.t_following WHERE following_user_id >= ? AND following_user_id < ? GROUP BY following_user_id) fans ON fans.uid = u.id
-                LEFT JOIN (SELECT user_id AS uid, COUNT(*) AS cnt FROM fishhub_user.t_following WHERE user_id >= ? AND user_id < ? GROUP BY user_id) fl ON fl.uid = u.id
-                LEFT JOIN (SELECT creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note WHERE creator_id >= ? AND creator_id < ? AND status = 1 GROUP BY creator_id) nt ON nt.uid = u.id
-                LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_like l JOIN fishhub_note.t_note n ON l.note_id = n.id WHERE n.creator_id >= ? AND n.creator_id < ? AND l.status = 1 AND n.status = 1 GROUP BY n.creator_id) lk ON lk.uid = u.id
-                LEFT JOIN (SELECT n.creator_id AS uid, COUNT(*) AS cnt FROM fishhub_note.t_note_collection c JOIN fishhub_note.t_note n ON c.note_id = n.id WHERE n.creator_id >= ? AND n.creator_id < ? AND c.status = 1 AND n.status = 1 GROUP BY n.creator_id) cl ON cl.uid = u.id
-                WHERE u.id >= ? AND u.id < ? AND u.is_deleted = 0
-                ON DUPLICATE KEY UPDATE
-                    fans_total = VALUES(fans_total),
-                    following_total = VALUES(following_total),
-                    note_total = VALUES(note_total),
-                    like_total = VALUES(like_total),
-                    collect_total = VALUES(collect_total)
-                """;
-        while (currentStart <= maxId) {
-            long currentEnd = currentStart + BATCH_SIZE;
-            int rows = jdbcTemplate.update(sql, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd);
-            totalUpdated += rows;
-            currentStart = currentEnd;
+        while (true) {
+            List<Long> noteIds = countReconcileDOMapper.selectNextNoteIds(lastId, BATCH_SIZE);
+            if (noteIds == null || noteIds.isEmpty()) {
+                break;
+            }
+
+            Map<Long, Long> likeMap = toMap(countReconcileDOMapper.countNoteLikes(noteIds));
+            Map<Long, Long> collectMap = toMap(countReconcileDOMapper.countNoteCollections(noteIds));
+            Map<Long, Long> commentMap = toMap(countReconcileDOMapper.countNoteComments(noteIds));
+
+            List<NoteCountDO> list = noteIds.stream().map(id -> NoteCountDO.builder()
+                    .noteId(id)
+                    .likeTotal(likeMap.getOrDefault(id, 0L))
+                    .collectTotal(collectMap.getOrDefault(id, 0L))
+                    .commentTotal(commentMap.getOrDefault(id, 0L))
+                    .build()
+            ).toList();
+
+            countReconcileDOMapper.batchUpsertNoteCounts(list);
+            totalUpdated += list.size();
+            lastId = noteIds.get(noteIds.size() - 1);
         }
         return totalUpdated;
     }
 
     /**
-     * 评论维度计数对账（按 ID 分批滑动更新，避免大表行锁）
+     * 用户维度计数对账
      */
-    private int reconcileCommentCounts() {
-        Long minId = queryForLong("SELECT MIN(id) FROM fishhub_comment.t_comment");
-        Long maxId = queryForLong("SELECT MAX(id) FROM fishhub_comment.t_comment");
-        if (minId == null || maxId == null) {
-            return 0;
-        }
+    private int reconcileUserCounts() {
+        long lastId = 0L;
         int totalUpdated = 0;
-        long currentStart = minId;
-        String sql = """
-                UPDATE fishhub_comment.t_comment c
-                LEFT JOIN (SELECT comment_id AS cid, COUNT(*) AS cnt
-                           FROM fishhub_comment.t_comment_like WHERE comment_id >= ? AND comment_id < ? GROUP BY comment_id) lk ON lk.cid = c.id
-                LEFT JOIN (SELECT parent_id AS pid, COUNT(*) AS cnt
-                           FROM fishhub_comment.t_comment WHERE parent_id >= ? AND parent_id < ? AND parent_id <> 0 GROUP BY parent_id) ch ON ch.pid = c.id
-                SET c.like_total = COALESCE(lk.cnt, 0),
-                    c.child_comment_total = COALESCE(ch.cnt, 0)
-                WHERE c.id >= ? AND c.id < ?
-                """;
-        while (currentStart <= maxId) {
-            long currentEnd = currentStart + BATCH_SIZE;
-            int rows = jdbcTemplate.update(sql, currentStart, currentEnd, currentStart, currentEnd, currentStart, currentEnd);
-            totalUpdated += rows;
-            currentStart = currentEnd;
+
+        while (true) {
+            List<Long> userIds = countReconcileDOMapper.selectNextUserIds(lastId, BATCH_SIZE);
+            if (userIds == null || userIds.isEmpty()) {
+                break;
+            }
+
+            Map<Long, Long> fansMap = toMap(countReconcileDOMapper.countUserFans(userIds));
+            Map<Long, Long> followingMap = toMap(countReconcileDOMapper.countUserFollowings(userIds));
+            Map<Long, Long> noteMap = toMap(countReconcileDOMapper.countUserNotes(userIds));
+            Map<Long, Long> likeMap = toMap(countReconcileDOMapper.countUserLikes(userIds));
+            Map<Long, Long> collectMap = toMap(countReconcileDOMapper.countUserCollections(userIds));
+
+            List<UserCountDO> list = userIds.stream().map(id -> UserCountDO.builder()
+                    .userId(id)
+                    .fansTotal(fansMap.getOrDefault(id, 0L))
+                    .followingTotal(followingMap.getOrDefault(id, 0L))
+                    .noteTotal(noteMap.getOrDefault(id, 0L))
+                    .likeTotal(likeMap.getOrDefault(id, 0L))
+                    .collectTotal(collectMap.getOrDefault(id, 0L))
+                    .build()
+            ).toList();
+
+            countReconcileDOMapper.batchUpsertUserCounts(list);
+            totalUpdated += list.size();
+            lastId = userIds.get(userIds.size() - 1);
         }
         return totalUpdated;
     }
 
-    private Long queryForLong(String sql) {
-        try {
-            return jdbcTemplate.queryForObject(sql, Long.class);
-        } catch (Exception e) {
-            log.warn("查询对账 ID 边界异常, sql={}: {}", sql, e.getMessage());
-            return null;
+    /**
+     * 评论维度计数对账
+     */
+    private int reconcileCommentCounts() {
+        long lastId = 0L;
+        int totalUpdated = 0;
+
+        while (true) {
+            List<Long> commentIds = countReconcileDOMapper.selectNextCommentIds(lastId, BATCH_SIZE);
+            if (commentIds == null || commentIds.isEmpty()) {
+                break;
+            }
+
+            Map<Long, Long> likeMap = toMap(countReconcileDOMapper.countCommentLikes(commentIds));
+            Map<Long, Long> childCommentMap = toMap(countReconcileDOMapper.countChildComments(commentIds));
+
+            List<CommentCountReconcileBO> list = commentIds.stream().map(id -> CommentCountReconcileBO.builder()
+                    .commentId(id)
+                    .likeTotal(likeMap.getOrDefault(id, 0L))
+                    .childCommentTotal(childCommentMap.getOrDefault(id, 0L))
+                    .build()
+            ).toList();
+
+            countReconcileDOMapper.batchUpdateCommentCounts(list);
+            totalUpdated += list.size();
+            lastId = commentIds.get(commentIds.size() - 1);
         }
+        return totalUpdated;
+    }
+
+    private static Map<Long, Long> toMap(List<IdCountBO> list) {
+        if (list == null || list.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return list.stream()
+                .filter(item -> item != null && item.getId() != null)
+                .collect(Collectors.toMap(
+                        IdCountBO::getId,
+                        item -> item.getCount() == null ? 0L : item.getCount(),
+                        (a, b) -> a
+                ));
     }
 }

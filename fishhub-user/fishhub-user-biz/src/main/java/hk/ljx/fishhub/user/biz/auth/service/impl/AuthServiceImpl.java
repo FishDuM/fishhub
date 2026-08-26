@@ -187,31 +187,20 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * 图形验证码原子校验与消费（5分钟有效，错误超10次旧码自动作废）
+     * 图形验证码校验与消费（5分钟有效）
      */
     private void verifyAndConsumeCaptcha(String captchaKey, String captchaCode) {
         Preconditions.checkArgument(StringUtils.isNotBlank(captchaKey), "验证码标识不能为空");
         Preconditions.checkArgument(StringUtils.isNotBlank(captchaCode), "验证码不能为空");
 
         String key = RedisKeyConstants.buildCaptchaKey(captchaKey);
-        String normalizedCode = captchaCode.trim().toLowerCase();
-
-        Long result = stringRedisTemplate.execute(
-                VERIFY_AND_CONSUME_CAPTCHA_SCRIPT,
-                Collections.singletonList(key),
-                normalizedCode,
-                String.valueOf(CAPTCHA_MAX_ATTEMPTS)
-        );
-
-        if (Objects.equals(result, 1L)) {
-            return; // 校验成功并已删除
-        }
-        if (Objects.equals(result, -2L)) {
-            throw new BizException(ResponseCodeEnum.CAPTCHA_TOO_MANY_ATTEMPTS);
-        }
-        if (Objects.equals(result, -1L)) {
+        String cachedCode = stringRedisTemplate.opsForValue().get(key);
+        if (StringUtils.isBlank(cachedCode)) {
             throw new BizException(ResponseCodeEnum.CAPTCHA_NOT_FOUND_OR_EXPIRED);
         }
-        throw new BizException(ResponseCodeEnum.CAPTCHA_ERROR);
+        if (!cachedCode.equalsIgnoreCase(captchaCode.trim())) {
+            throw new BizException(ResponseCodeEnum.CAPTCHA_ERROR);
+        }
+        stringRedisTemplate.delete(key); // 校验成功立即删除
     }
 }

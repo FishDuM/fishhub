@@ -921,7 +921,10 @@ public class NoteServiceImpl implements NoteService {
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeLike(userId, noteId)) {
-            throw new BizException(ResponseCodeEnum.NOTE_NOT_LIKED);
+            // 缓存未命中（说明可能处于 1000 条之后的较早历史数据）：回源 DB 校验是否点赞过
+            if (noteLikeDOMapper.selectCountByUserIdAndNoteId(userId, noteId) == 0) {
+                throw new BizException(ResponseCodeEnum.NOTE_NOT_LIKED);
+            }
         }
 
         LikeUnlikeNoteMqDTO likeUnlikeNoteMqDTO = LikeUnlikeNoteMqDTO.builder()
@@ -1006,7 +1009,10 @@ public class NoteServiceImpl implements NoteService {
         Long userId = LoginUserContextHolder.getUserId();
 
         if (!noteInteractionCacheService.removeCollect(userId, noteId)) {
-            throw new BizException(ResponseCodeEnum.NOTE_NOT_COLLECTED);
+            // 缓存未命中（说明可能处于 1000 条之后的较早历史数据）：回源 DB 校验是否收藏过
+            if (noteCollectionDOMapper.selectCountByUserIdAndNoteId(userId, noteId) == 0) {
+                throw new BizException(ResponseCodeEnum.NOTE_NOT_COLLECTED);
+            }
         }
 
         CollectUnCollectNoteMqDTO unCollectNoteMqDTO = CollectUnCollectNoteMqDTO.builder()

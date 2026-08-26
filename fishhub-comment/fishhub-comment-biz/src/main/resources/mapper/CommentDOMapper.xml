@@ -100,16 +100,13 @@
   </select>
 
   <select id="selectEarliestFirstReplyByParentIds" resultMap="BaseResultMap" parameterType="list">
-    select id, parent_id, create_time from (
-        select id, parent_id, create_time,
-               row_number() over (partition by parent_id order by create_time asc, id asc) rn
-        from t_comment
-        where parent_id in
-        <foreach collection="parentIds" item="parentId" open="(" separator="," close=")">
-            #{parentId}
-        </foreach>
-        and level = 2
-    ) t where t.rn = 1
+    select id, parent_id, create_time from t_comment
+    where parent_id in
+    <foreach collection="parentIds" item="parentId" open="(" separator="," close=")">
+        #{parentId}
+    </foreach>
+      and level = 2
+    order by parent_id asc, create_time asc, id asc
   </select>
 
   <select id="selectPageList" resultMap="BaseResultMap" parameterType="map">
@@ -188,10 +185,10 @@
   <update id="batchUpdateHeatByCommentIds" parameterType="map">
     UPDATE t_comment
     SET heat = CASE id
-    <foreach collection="commentHeatBOS" item="bo" separator="">
+    <foreach collection="commentHeatBOS" item="bo">
       WHEN #{bo.id} THEN #{bo.heat}
     </foreach>
-    ELSE heat END
+    END
     WHERE id IN
     <foreach collection="commentIds" item="commentId" open="(" close=")" separator=",">
       #{commentId}
@@ -204,16 +201,16 @@
     where id = #{id}
   </update>
 
-    <update id="batchUpdateFirstReplyCommentIds" parameterType="map">
-    update t_comment
-    set first_reply_comment_id = case id
+  <update id="batchUpdateFirstReplyCommentIds" parameterType="map">
+    UPDATE t_comment
+    SET first_reply_comment_id = CASE id
     <foreach collection="commentFirstReplyBOS" item="bo">
-        when #{bo.id} then #{bo.firstReplyCommentId}
+      WHEN #{bo.id} THEN #{bo.firstReplyCommentId}
     </foreach>
-    else first_reply_comment_id end
-    where id in
+    END
+    WHERE id IN
     <foreach collection="commentFirstReplyBOS" item="bo" open="(" close=")" separator=",">
-        #{bo.id}
+      #{bo.id}
     </foreach>
   </update>
 

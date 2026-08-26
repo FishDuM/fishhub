@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -267,7 +268,14 @@ public class CommentChangedLocalHandler {
             return;
         }
 
-        List<CommentFirstReplyBO> replyBOS = earliestReplies.stream()
+        // 内存提取每组 parentId 的第 1 条（SQL 已按 create_time ASC 排序）
+        Map<Long, CommentDO> firstReplyByParent = earliestReplies.stream().collect(Collectors.toMap(
+                CommentDO::getParentId,
+                Function.identity(),
+                (existing, replacement) -> existing
+        ));
+
+        List<CommentFirstReplyBO> replyBOS = firstReplyByParent.values().stream()
                 .map(reply -> CommentFirstReplyBO.builder()
                         .id(reply.getParentId())
                         .firstReplyCommentId(reply.getId())
