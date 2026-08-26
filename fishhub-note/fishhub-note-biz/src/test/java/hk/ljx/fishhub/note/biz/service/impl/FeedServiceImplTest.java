@@ -220,7 +220,7 @@ class FeedServiceImplTest {
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null, "{\"notes\":[],\"nextCursor\":null}");
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
@@ -238,7 +238,7 @@ class FeedServiceImplTest {
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();

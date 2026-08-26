@@ -7,15 +7,12 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentHeatBO;
 import hk.ljx.fishhub.comment.biz.util.HeatCalculator;
-import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,14 +21,12 @@ import java.util.stream.Collectors;
 
 /**
  * 评论热度重算公共入口：按数据库最新值重算一级评论热度并回写 DB 与 Redis 热点榜。
- * 由多条事件链（点赞计数落库、评论变更）共用，重复调用安全（脚本按分数 upsert）。
+ * 由多条事件链（点赞计数落库、评论变更）共用，重复调用安全。
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class CommentHeatService {
-
-    private static final DefaultRedisScript<Long> UPDATE_HOT_COMMENTS_SCRIPT = RedisScriptHelper.loadLongScript("/lua/update_hot_comments.lua");
 
     private final CommentDOMapper commentDOMapper;
     private final StringRedisTemplate stringRedisTemplate;

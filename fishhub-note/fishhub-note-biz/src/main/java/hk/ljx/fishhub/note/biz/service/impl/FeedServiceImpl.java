@@ -1,8 +1,8 @@
+
+
 package hk.ljx.fishhub.note.biz.service.impl;
 
-import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
-
 import cn.hutool.core.collection.CollUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -49,11 +49,7 @@ public class FeedServiceImpl implements FeedService {
 
     private static final long PAGE_SIZE = 10L;
 
-    // 冷缓存并发风暴防护：单飞锁持有者重建期间，等待者最长等 1s（20×50ms）拿热缓存，
-    // 避免 60ms 等不到就全部回源 MySQL 造成 Feign 扇出风暴（实测 200 并发冷缓存最差 5.2s）。
-    private static final int CACHE_REBUILD_RETRY_TIMES = 20;
-    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 50L;
-    private static final long DISCOVER_PAGE_REBUILD_LOCK_SECONDS = 5L;
+
 
     private static final Cache<String, List<FindTopicRspVO>> TOPIC_LOCAL_CACHE = Caffeine.newBuilder()
             .maximumSize(1)
@@ -124,27 +120,38 @@ public class FeedServiceImpl implements FeedService {
 
     private DiscoverPageSnapshot loadDiscoverPageSnapshot(Long channelId, Long cursor, String version) {
         String cacheKey = RedisKeyConstants.buildDiscoverFeedCursorKey(version, channelId, cursor);
-        String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(version, channelId, cursor);
-
         DiscoverPageSnapshot snapshot = readDiscoverPageSnapshot(cacheKey);
         if (isValidDiscoverPageSnapshot(snapshot)) {
             return snapshot;
         }
 
-        return CacheRebuildSupport.getOrRebuild(
-                new hk.ljx.framework.redisson.lock.RedissonRebuildLock(redissonClient, lockKey, DISCOVER_PAGE_REBUILD_LOCK_SECONDS),
-                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
-                () -> {
-                    DiscoverPageSnapshot s = readDiscoverPageSnapshot(cacheKey);
-                    return isValidDiscoverPageSnapshot(s) ? s : null;
-                },
-                () -> {
-                    DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-                    cacheDiscoverPageSnapshot(cacheKey, fresh);
-                    return fresh;
-                },
-                () -> loadDiscoverPageSnapshotFromMySql(channelId, cursor)
-        );
+        String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(version, channelId, cursor);
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean acquired = false;
+        try {
+            acquired = lock.tryLock(500, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("获取 Feed 游标快照重建锁异常, lockKey={}", lockKey, e);
+        }
+
+        if (acquired) {
+            try {
+                snapshot = readDiscoverPageSnapshot(cacheKey);
+                if (isValidDiscoverPageSnapshot(snapshot)) {
+                    return snapshot;
+                }
+                DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+                cacheDiscoverPageSnapshot(cacheKey, fresh);
+                return fresh;
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        snapshot = readDiscoverPageSnapshot(cacheKey);
+        return isValidDiscoverPageSnapshot(snapshot) ? snapshot : loadDiscoverPageSnapshotFromMySql(channelId, cursor);
     }
 
     private DiscoverPageSnapshot loadDiscoverPageSnapshotFromMySql(Long channelId, Long cursor) {

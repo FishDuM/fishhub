@@ -7,13 +7,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.ZSetOperations;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -34,10 +31,6 @@ class RelationListCacheServiceTest {
     private ValueOperations<String, String> valueOperations;
     @Mock
     private FollowingDOMapper followingDOMapper;
-    @Mock
-    private RedissonClient redissonClient;
-    @Mock
-    private RLock lock;
     @InjectMocks
     private RelationListCacheService cacheService;
 
@@ -55,12 +48,9 @@ class RelationListCacheServiceTest {
     }
 
     @Test
-    void shouldRebuildFollowingCacheAndReadWhenKeyMissing() throws Exception {
-        when(stringRedisTemplate.hasKey("following:1")).thenReturn(false, false, true);
+    void shouldRebuildFollowingCacheAndReadWhenKeyMissing() {
+        when(stringRedisTemplate.hasKey("following:1")).thenReturn(false);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(zSetOperations.reverseRange("following:1", 0L, 10L))
                 .thenReturn(new LinkedHashSet<>(Arrays.asList("2", "7")));
         when(followingDOMapper.selectByUserId(1L)).thenReturn(Arrays.asList(
@@ -70,51 +60,26 @@ class RelationListCacheServiceTest {
         List<String> members = cacheService.fetchFollowingMembers(1L, 0L, 11);
 
         assertEquals(Arrays.asList("2", "7"), members);
-        // 重建走了单飞锁：获取后必须释放
-        verify(lock).unlock();
+        verify(followingDOMapper).selectByUserId(1L);
     }
 
     @Test
-    void shouldCreateEmptyZSetAndFallbackToDbWhenEmptyRecords() throws Exception {
-        when(stringRedisTemplate.hasKey("following:1")).thenReturn(false, false, false);
-        when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(lock.isHeldByCurrentThread()).thenReturn(true);
+    void shouldCreateEmptyZSetWhenEmptyRecords() {
+        when(stringRedisTemplate.hasKey("following:1")).thenReturn(false);
+        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
         when(followingDOMapper.selectByUserId(1L)).thenReturn(Collections.emptyList());
-        when(followingDOMapper.selectCursorPageByUserId(eq(1L), isNull(), eq(11L))).thenReturn(Collections.emptyList());
 
         List<String> members = cacheService.fetchFollowingMembers(1L, 0L, 11);
 
         assertTrue(members.isEmpty());
-        // 空列表也占位（锁获取并释放），DB 兜底查询过一次
-        verify(lock).unlock();
-        verify(followingDOMapper).selectCursorPageByUserId(eq(1L), isNull(), eq(11L));
+        verify(followingDOMapper).selectByUserId(1L);
+        verify(followingDOMapper, never()).selectCursorPageByUserId(anyLong(), any(), anyLong());
     }
 
     @Test
-    void shouldFallbackToDbWhenRebuildLockIsBusy() throws Exception {
-        when(stringRedisTemplate.hasKey("following:1")).thenReturn(false);
-        when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(false);
-        when(followingDOMapper.selectCursorPageByUserId(eq(1L), isNull(), eq(11L))).thenReturn(Arrays.asList(
-                FollowingDO.builder().userId(1L).followingUserId(5L).createTime(LocalDateTime.now()).build()));
-
-        List<String> members = cacheService.fetchFollowingMembers(1L, 0L, 11);
-
-        assertEquals(Collections.singletonList("5"), members);
-        // 锁被占用时不重建，也不重复打全量 DB
-        verify(followingDOMapper, never()).selectByUserId(anyLong());
-        // 未抢到锁则不会释放锁
-        verify(lock, never()).unlock();
-    }
-
-    @Test
-    void shouldRebuildFansCacheFromDbWhenKeyMissing() throws Exception {
-        when(stringRedisTemplate.hasKey("fans:9")).thenReturn(false, false, true);
+    void shouldRebuildFansCacheFromDbWhenKeyMissing() {
+        when(stringRedisTemplate.hasKey("fans:9")).thenReturn(false);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock(anyLong(), anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(zSetOperations.reverseRange("fans:9", 0L, 10L))
                 .thenReturn(new LinkedHashSet<>(Arrays.asList("6", "5")));
         when(followingDOMapper.selectCursorPageByFollowingUserId(eq(9L), isNull(), eq(5000L))).thenReturn(Arrays.asList(
@@ -124,25 +89,30 @@ class RelationListCacheServiceTest {
         List<String> members = cacheService.fetchFansMembers(9L, 0L, 11);
 
         assertEquals(Arrays.asList("6", "5"), members);
-        // 粉丝列表从 DB 全量重建（最多 5000 条）
         verify(followingDOMapper).selectCursorPageByFollowingUserId(eq(9L), isNull(), eq(5000L));
-        verify(lock).unlock();
     }
 
     @Test
-    void shouldWriteNewFanWithTimestampTtlAndFanIdArgs() {
+    void shouldWriteNewFanWhenKeyExists() {
+        when(stringRedisTemplate.hasKey("fans:9")).thenReturn(true);
+        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
+        when(zSetOperations.zCard("fans:9")).thenReturn(10L);
+
         cacheService.addFan(9L, 2L, LocalDateTime.of(2025, 1, 1, 0, 0));
 
-        // 参数形状：时间戳, 粉丝ID, 过期秒数
-        verify(stringRedisTemplate).execute(any(DefaultRedisScript.class), anyList(), any(), any(), any());
+        verify(zSetOperations).add(eq("fans:9"), eq("2"), anyDouble());
+        verify(stringRedisTemplate).expire(eq("fans:9"), anyLong(), eq(TimeUnit.SECONDS));
     }
 
     @Test
-    void shouldRemoveFanWithFanIdAndTtlArgs() {
+    void shouldRemoveFanWhenKeyExists() {
+        when(stringRedisTemplate.hasKey("fans:9")).thenReturn(true);
+        when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
+
         cacheService.removeFan(9L, 2L);
 
-        // 参数形状：粉丝ID, 过期秒数
-        verify(stringRedisTemplate).execute(any(DefaultRedisScript.class), anyList(), any(), any());
+        verify(zSetOperations).remove(eq("fans:9"), eq("2"));
+        verify(stringRedisTemplate).expire(eq("fans:9"), anyLong(), eq(TimeUnit.SECONDS));
     }
 
     @Test

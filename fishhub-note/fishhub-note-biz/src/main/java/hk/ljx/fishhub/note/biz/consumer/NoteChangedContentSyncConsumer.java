@@ -1,20 +1,21 @@
 package hk.ljx.fishhub.note.biz.consumer;
 
+import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.common.util.JsonUtils;
+import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
+import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.constant.MQConstants;
+import hk.ljx.fishhub.note.biz.domain.dataobject.NoteContentDO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteCollectionDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
+import hk.ljx.fishhub.note.biz.domain.repository.NoteContentRepository;
 import hk.ljx.fishhub.note.biz.enums.NoteContentTaskTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteOperateEnum;
-import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
-import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
-import hk.ljx.fishhub.note.biz.kv.KeyValueClient;
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.lang3.StringUtils;
-import cn.hutool.core.collection.CollUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
@@ -22,9 +23,10 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
- * 消费笔记变更统一事件中的正文任务，幂等同步到 KV。
+ * 消费笔记变更统一事件中的正文任务，幂等同步到 Cassandra。
  * 写前校验 contentUuid 归属 + 写后复核，天然幂等于消息重投递。
  */
 @Component
@@ -35,7 +37,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class NoteChangedContentSyncConsumer implements RocketMQListener<String> {
 
-    private final KeyValueClient keyValueClient;
+    private final NoteContentRepository noteContentRepository;
     private final NoteDOMapper noteDOMapper;
     private final NoteLikeDOMapper noteLikeDOMapper;
     private final NoteCollectionDOMapper noteCollectionDOMapper;
@@ -47,7 +49,7 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
             throw new IllegalArgumentException("笔记变更消息缺少必要字段");
         }
 
-        // 删除事件：清理互动残留行（幂等；若事件丢失，计数由对账 SQL 过滤 n.status=1 收敛）
+        // 删除事件：清理互动残留行
         if (Objects.equals(event.getChangeType(), NoteOperateEnum.DELETE.getCode())) {
             noteLikeDOMapper.deleteByNoteId(event.getNoteId());
             noteCollectionDOMapper.deleteByNoteId(event.getNoteId());
@@ -76,9 +78,7 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
         List<NoteContentTaskMqDTO> upsertTasks = new ArrayList<>();
         for (NoteContentTaskMqDTO task : tasks) {
             if (Objects.equals(task.getType(), NoteContentTaskTypeEnum.DELETE.name())) {
-                if (!keyValueClient.deleteNoteContent(task.getContentUuid())) {
-                    throw new IllegalStateException("笔记正文删除到 KV 失败");
-                }
+                deleteNoteContent(task.getContentUuid());
             } else {
                 upsertTasks.add(task);
             }
@@ -94,13 +94,12 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
             if (matchesCurrentContent(current, task)) {
                 toSaveTasks.add(task);
             } else {
-                keyValueClient.deleteNoteContent(task.getContentUuid());
+                deleteNoteContent(task.getContentUuid());
             }
         }
         for (NoteContentTaskMqDTO task : toSaveTasks) {
-            if (StringUtils.isBlank(task.getContent())
-                    || !keyValueClient.saveNoteContent(task.getContentUuid(), task.getContent())) {
-                throw new IllegalStateException("笔记正文同步到 KV 失败");
+            if (StringUtils.isNotBlank(task.getContent())) {
+                saveNoteContent(task.getContentUuid(), task.getContent());
             }
         }
 
@@ -108,7 +107,28 @@ public class NoteChangedContentSyncConsumer implements RocketMQListener<String> 
         NoteDO after = noteDOMapper.selectByPrimaryKey(upsertTasks.get(0).getNoteId());
         toSaveTasks.stream()
                 .filter(task -> !matchesCurrentContent(after, task))
-                .forEach(task -> keyValueClient.deleteNoteContent(task.getContentUuid()));
+                .forEach(task -> deleteNoteContent(task.getContentUuid()));
+    }
+
+    private void saveNoteContent(String uuid, String content) {
+        try {
+            noteContentRepository.save(NoteContentDO.builder()
+                    .id(UUID.fromString(uuid))
+                    .content(content)
+                    .build());
+        } catch (Exception e) {
+            log.error("Cassandra 保存笔记正文异常, uuid={}", uuid, e);
+            throw new IllegalStateException("笔记正文同步到 KV 失败", e);
+        }
+    }
+
+    private void deleteNoteContent(String uuid) {
+        try {
+            noteContentRepository.deleteById(UUID.fromString(uuid));
+        } catch (Exception e) {
+            log.error("Cassandra 删除笔记正文异常, uuid={}", uuid, e);
+            throw new IllegalStateException("笔记正文删除到 KV 失败", e);
+        }
     }
 
     private boolean matchesCurrentContent(NoteDO note, NoteContentTaskMqDTO task) {

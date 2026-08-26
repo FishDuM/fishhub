@@ -1,9 +1,6 @@
 package hk.ljx.fishhub.note.biz.service.impl;
 
-import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
-import hk.ljx.framework.common.util.RebuildLock;
-
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -37,7 +34,6 @@ import hk.ljx.fishhub.note.api.NoteContentTaskMqDTO;
 import hk.ljx.fishhub.note.biz.model.bo.NoteAccessSnapshot;
 import hk.ljx.fishhub.note.biz.model.vo.*;
 import hk.ljx.fishhub.count.client.CountClient;
-import hk.ljx.fishhub.note.biz.kv.KeyValueClient;
 import hk.ljx.fishhub.note.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.note.biz.rpc.OssRpcService;
 import hk.ljx.fishhub.user.client.UserClient;
@@ -75,20 +71,21 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
+import hk.ljx.fishhub.note.biz.domain.repository.NoteContentRepository;
+import hk.ljx.fishhub.note.biz.domain.dataobject.NoteContentDO;
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class NoteServiceImpl implements NoteService {
 
-    private static final int ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES = 3;
-    private static final long ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
-    private static final long ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS = 2L;
+
 
     private final NoteDOMapper noteDOMapper;
     private final TopicDOMapper topicDOMapper;
     private final ChannelDOMapper channelDOMapper;
     private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    private final KeyValueClient keyValueClient;
+    private final NoteContentRepository noteContentRepository;
     private final UserClient userClient;
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
@@ -449,7 +446,9 @@ public class NoteServiceImpl implements NoteService {
         CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
             if (Boolean.FALSE.equals(noteDO.getIsContentEmpty()) && StringUtils.isNotBlank(noteDO.getContentUuid())) {
                 try {
-                    return keyValueClient.findNoteContent(noteDO.getContentUuid());
+                    return noteContentRepository.findById(UUID.fromString(noteDO.getContentUuid()))
+                            .map(NoteContentDO::getContent)
+                            .orElse("");
                 } catch (Exception e) {
                     log.warn("并行查询 Cassandra 笔记正文异常, uuid={}", noteDO.getContentUuid(), e);
                 }
@@ -1304,7 +1303,9 @@ public class NoteServiceImpl implements NoteService {
         CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
             if (Boolean.FALSE.equals(findNoteDetailRspVO.getIsContentEmpty()) && StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
                 try {
-                    return keyValueClient.findNoteContent(findNoteDetailRspVO.getContentUuid());
+                    return noteContentRepository.findById(UUID.fromString(findNoteDetailRspVO.getContentUuid()))
+                            .map(NoteContentDO::getContent)
+                            .orElse("");
                 } catch (Exception e) {
                     log.warn("Cassandra 查询笔记正文异常, uuid={}", findNoteDetailRspVO.getContentUuid(), e);
                 }
@@ -1434,35 +1435,30 @@ public class NoteServiceImpl implements NoteService {
             return cachedSnapshot;
         }
         String lockKey = RedisKeyConstants.buildNoteAccessRebuildLockKey(noteId);
-        // 热点笔记被击穿时单飞重建：抢锁者回源写回，抢不到者轮询等待。
-        return CacheRebuildSupport.getOrRebuild(
-                accessSnapshotRebuildLock(lockKey),
-                ACCESS_SNAPSHOT_REBUILD_RETRY_TIMES, ACCESS_SNAPSHOT_REBUILD_RETRY_INTERVAL_MILLIS,
-                () -> readAccessSnapshot(key),
-                () -> loadAccessSnapshotFromMySql(noteId, key, true),
-                () -> loadAccessSnapshotFromMySql(noteId, key, false));
-    }
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean acquired = false;
+        try {
+            acquired = lock.tryLock(500, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            log.warn("获取笔记访问快照重建锁异常, lockKey={}", lockKey, e);
+        }
 
-    private RebuildLock accessSnapshotRebuildLock(String lockKey) {
-        return new RebuildLock() {
-            private RLock held;
-
-            @Override
-            public boolean tryLock() {
-                try {
-                    held = NoteServiceImpl.this.tryAcquireRebuildLock(lockKey, ACCESS_SNAPSHOT_REBUILD_LOCK_SECONDS);
-                } catch (Exception e) {
-                    log.warn("Redis 不可用，笔记访问快照重建锁获取失败，回源 MySQL，key={}", lockKey, e);
-                    throw e;
+        if (acquired) {
+            try {
+                cachedSnapshot = readAccessSnapshot(key);
+                if (cachedSnapshot != null) {
+                    return cachedSnapshot;
                 }
-                return held != null;
+                return loadAccessSnapshotFromMySql(noteId, key, true);
+            } finally {
+                lock.unlock();
             }
+        }
 
-            @Override
-            public void unlock() {
-                releaseRebuildLock(held, lockKey);
-            }
-        };
+        cachedSnapshot = readAccessSnapshot(key);
+        return cachedSnapshot != null ? cachedSnapshot : loadAccessSnapshotFromMySql(noteId, key, false);
     }
 
     /** 读取访问快照缓存；空白/"null"/解析失败统一走重建（解析失败先删脏值）。 */
@@ -1496,28 +1492,6 @@ public class NoteServiceImpl implements NoteService {
             cacheAccessSnapshot(key, JsonUtils.toJsonString(snapshot));
         }
         return snapshot;
-    }
-
-    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
-        RLock lock = redissonClient.getLock(lockKey);
-        if (lock == null) {
-            return null;
-        }
-        try {
-            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
-        } catch (Exception e) {
-            throw new IllegalStateException("Redis 不可用，笔记访问快照重建锁获取失败, lockKey=" + lockKey, e);
-        }
-    }
-
-    private void releaseRebuildLock(RLock lock, String lockKey) {
-        try {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        } catch (Exception e) {
-            log.warn("Redis 不可用，笔记访问快照重建锁释放失败，key={}", lockKey, e);
-        }
     }
 
     /**

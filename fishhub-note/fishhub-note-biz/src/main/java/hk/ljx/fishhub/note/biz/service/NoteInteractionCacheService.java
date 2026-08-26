@@ -10,8 +10,6 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteLikeDOMapper;
 import hk.ljx.framework.common.util.DateUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -38,14 +36,9 @@ public class NoteInteractionCacheService {
     private static final long BASE_EXPIRE_SECONDS = 24 * 60 * 60L;
     public static final int MAX_INTERACTION_ZSET_SIZE = 1000;
 
-    private static final int CACHE_REBUILD_RETRY_TIMES = 3;
-    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
-    private static final long INTERACTION_CACHE_REBUILD_LOCK_SECONDS = 2L;
-
     private final StringRedisTemplate stringRedisTemplate;
     private final NoteLikeDOMapper noteLikeDOMapper;
     private final NoteCollectionDOMapper noteCollectionDOMapper;
-    private final RedissonClient redissonClient;
 
     public boolean isLiked(Long userId, Long noteId) {
         String key = ensureLikeCache(userId);
@@ -130,7 +123,7 @@ public class NoteInteractionCacheService {
 
     private String ensureLikeCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteLikeZSetKey(userId);
-        return ensureInteractionCache(userId, key, () -> {
+        return ensureInteractionCache(key, () -> {
             List<NoteLikeDO> records = noteLikeDOMapper.selectLikedByUserIdAndLimit(userId, MAX_INTERACTION_ZSET_SIZE);
             return buildLikeTuples(records);
         });
@@ -138,7 +131,7 @@ public class NoteInteractionCacheService {
 
     private String ensureCollectCache(Long userId) {
         String key = RedisKeyConstants.buildUserNoteCollectZSetKey(userId);
-        return ensureInteractionCache(userId, key, () -> {
+        return ensureInteractionCache(key, () -> {
             List<NoteCollectionDO> records = noteCollectionDOMapper.selectCollectedByUserIdAndLimit(userId, MAX_INTERACTION_ZSET_SIZE);
             return buildCollectTuples(records);
         });
@@ -172,69 +165,11 @@ public class NoteInteractionCacheService {
         return tuples;
     }
 
-    private String ensureInteractionCache(Long userId, String key, Supplier<Set<ZSetOperations.TypedTuple<String>>> tupleSupplier) {
-        if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-            return key;
-        }
-        String lockKey = RedisKeyConstants.buildUserNoteInteractionInitLockKey(userId);
-        RLock lock = tryAcquireRebuildLock(lockKey, INTERACTION_CACHE_REBUILD_LOCK_SECONDS);
-        if (lock == null) {
-            // 抢不到锁则轮询等待，超时本地兜底重建
-            if (waitForCacheKey(key)) {
-                return key;
-            }
+    private String ensureInteractionCache(String key, Supplier<Set<ZSetOperations.TypedTuple<String>>> tupleSupplier) {
+        if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             initializeZSet(key, tupleSupplier.get());
-            return key;
         }
-        try {
-            // 二次检查：抢锁期间其他节点可能已写入
-            if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                initializeZSet(key, tupleSupplier.get());
-            }
-            return key;
-        } finally {
-            releaseRebuildLock(lock, lockKey);
-        }
-    }
-
-    private boolean waitForCacheKey(String key) {
-        for (int i = 0; i < CACHE_REBUILD_RETRY_TIMES; i++) {
-            sleepBeforeCacheRetry();
-            if (Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
-        RLock lock = redissonClient.getLock(lockKey);
-        if (lock == null) {
-            return null;
-        }
-        try {
-            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
-        } catch (Exception e) {
-            throw new IllegalStateException("Redis 不可用，互动缓存重建锁获取失败, lockKey=" + lockKey, e);
-        }
-    }
-
-    private void releaseRebuildLock(RLock lock, String lockKey) {
-        try {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        } catch (Exception e) {
-            log.warn("Redis 不可用，互动缓存重建锁释放失败，key={}", lockKey, e);
-        }
-    }
-
-    private void sleepBeforeCacheRetry() {
-        try {
-            Thread.sleep(CACHE_REBUILD_RETRY_INTERVAL_MILLIS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        return key;
     }
 
     private void initializeZSet(String key, Set<ZSetOperations.TypedTuple<String>> tuples) {
@@ -245,7 +180,6 @@ public class NoteInteractionCacheService {
         }
         stringRedisTemplate.expire(key, BASE_EXPIRE_SECONDS + RandomUtil.randomLong(BASE_EXPIRE_SECONDS), TimeUnit.SECONDS);
     }
-
 
     private void trimZSetCapacity(String key) {
         try {

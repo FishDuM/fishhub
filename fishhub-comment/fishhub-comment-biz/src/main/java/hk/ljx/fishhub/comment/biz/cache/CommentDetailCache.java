@@ -1,16 +1,16 @@
 package hk.ljx.fishhub.comment.biz.cache;
 
 import hk.ljx.framework.common.util.CacheTtl;
-
-import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class CommentDetailCache {
@@ -37,16 +37,15 @@ public class CommentDetailCache {
         if (data.isEmpty()) {
             return;
         }
-        RedisSerializer<String> serializer = stringRedisTemplate.getStringSerializer();
-        stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-            for (Map.Entry<String, String> entry : data.entrySet()) {
-                long expireSeconds = CacheTtl.hours(1, 4);
-                connection.stringCommands().setEx(
-                        serializer.serialize(entry.getKey()),
-                        expireSeconds,
-                        serializer.serialize(entry.getValue()));
+        stringRedisTemplate.executePipelined(new SessionCallback<>() {
+            @Override
+            public Object execute(RedisOperations operations) {
+                for (Map.Entry<String, String> entry : data.entrySet()) {
+                    long expireSeconds = CacheTtl.hours(1, 4);
+                    operations.opsForValue().set(entry.getKey(), entry.getValue(), expireSeconds, TimeUnit.SECONDS);
+                }
+                return null;
             }
-            return null;
         });
     }
 
