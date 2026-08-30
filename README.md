@@ -46,7 +46,7 @@ fishhub
 ├── fishhub-search                        # 搜索域服务（Elasticsearch 笔记与用户检索、高亮、多维权重打分）
 │
 ├── fishhub-vue3                          # 前端 SPA 应用（Vue 3 + Vite 5 + Pinia + Tailwind CSS）
-├── scripts                               # 启动与运维脚本（一键启动脚本 start-all.bat / start-services.ps1）
+├── smoke                                 # 全链路高并发压力测试套件（一键双击压测 / 数据安全分批清理）
 ├── deploy                                # 部署配置（Nginx 模版、Sentinel 规则、环境变量配置指南）
 └── sql                                   # 数据库初始化全量脚本（create.sql）
 ```
@@ -69,7 +69,7 @@ fishhub
 
 ---
 
-## 🚀 快速上手与本地启动（开箱即用）
+## 🚀 快速上手与本地启动
 
 ### 1. 环境准备
 - **JDK**：21（Java 21 LTS）
@@ -79,7 +79,7 @@ fishhub
 
 ---
 
-### 2. 一键启动全套基础中间件与数据库
+### 2. 启动基础中间件与数据库
 项目提供了一键容器化编排，会自动拉起 MySQL（**自动执行建表建库脚本**）、Redis、Nacos（**自动创建 fishhub 命名空间**）、RocketMQ、Cassandra、ES、MinIO 及 Sentinel 控制台：
 
 ```bash
@@ -93,26 +93,15 @@ docker compose -f deploy/docker-compose.yml up -d
 
 ---
 
-### 3. 一键初始化本地开发配置
-首次克隆项目后，执行以下脚本即可一键将开发配置模板分发至各微服务模块：
-
-- **Windows 批处理**：`scripts\init-configs.bat`
-- **PowerShell**：`.\scripts\init-configs.ps1`
-- **Python / 跨平台**：`python scripts/init_configs.py`
-
----
-
-### 4. 编译后端工程
+### 3. 编译后端工程
 ```bash
 mvn clean package -DskipTests
 ```
 
 ---
 
-### 5. 启动微服务与前端
-- **一键拉起后端所有微服务**：
-  - Windows: `scripts\start-all.bat` 或 `python scripts/launch_services.py`
-  - PowerShell: `.\scripts\start-services.ps1`
+### 4. 启动微服务与前端
+- **启动微服务**：在 IDE（IntelliJ IDEA）中依次启动 `GatewayApplication`、`UserApplication`、`NoteApplication`、`CountApplication`、`SearchApplication`、`CommentApplication`；
 - **启动前端 Vue 3 工程**：
   ```bash
   cd fishhub-vue3
@@ -120,6 +109,16 @@ mvn clean package -DskipTests
   npm run dev
   ```
   启动成功后访问：`http://localhost:8006`。
+
+---
+
+## 🔥 全链路高并发压力测试 (Smoke Stress Suite)
+
+项目内置了开箱即用的高并发极限压测与数据闭环自愈套件：
+- **Windows 一键双击运行**：进入 [`smoke/`](file:///D:/AAAPorject/main/fishhub/smoke) 目录直接双击 [`run_smoke_stress.bat`](file:///D:/AAAPorject/main/fishhub/smoke/run_smoke_stress.bat)，即可拉起覆盖全项目 7 大业务域（用户、关系、笔记、评论、搜索、计数、混合大促）的高并发压力测试；
+- **数据分批安全清理**：压测完毕后控制台自动提示清理，或随时双击 [`smoke/clean_data.bat`](file:///D:/AAAPorject/main/fishhub/smoke/clean_data.bat)，采用 `LIMIT 500` 分批物理清除沙箱数据和 Redis 缓存，安全不锁表。
+
+详细压测文档请参阅 [smoke/README.md](file:///D:/AAAPorject/main/fishhub/smoke/README.md)。
 
 ---
 

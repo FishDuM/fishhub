@@ -11,3 +11,7 @@ spring:
 mybatis:
   # MyBatis xml 配置文件路径
   mapper-locations: classpath:/mapper/**/*.xml
+
+mq:
+  tx:
+    enabled: false # 计数服务仅消费 MQ，不产生本地半事务消息，关闭事务回查组件与定时任务

@@ -27,58 +27,6 @@ CREATE TABLE IF NOT EXISTS `t_user` (
   UNIQUE INDEX `uk_phone`(`phone` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 2101 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户表' ROW_FORMAT = DYNAMIC;
 
-CREATE TABLE IF NOT EXISTS `t_role` (
-  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `role_name` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '角色名',
-  `role_key` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '角色唯一标识',
-  `status` tinyint NOT NULL DEFAULT 0 COMMENT '状态(0：启用 1：禁用)',
-  `sort` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '管理系统中的显示顺序',
-  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL DEFAULT NULL COMMENT '备注',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最后一次更新时间',
-  `is_deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '逻辑删除(0：未删除 1：已删除)',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE INDEX `uk_role_key`(`role_key` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '角色表' ROW_FORMAT = DYNAMIC;
-
-CREATE TABLE IF NOT EXISTS `t_permission` (
-  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `parent_id` bigint UNSIGNED NOT NULL DEFAULT 0 COMMENT '父ID',
-  `name` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '权限名称',
-  `type` tinyint UNSIGNED NOT NULL COMMENT '类型(1：目录 2：菜单 3：按钮)',
-  `menu_url` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '菜单路由',
-  `menu_icon` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '菜单图标',
-  `sort` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '管理系统中的显示顺序',
-  `permission_key` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '权限标识',
-  `status` tinyint UNSIGNED NOT NULL DEFAULT 0 COMMENT '状态(0：启用；1：禁用)',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-  `is_deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '逻辑删除(0：未删除 1：已删除)',
-  PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '权限表' ROW_FORMAT = DYNAMIC;
-
-CREATE TABLE IF NOT EXISTS `t_role_permission_rel` (
-  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `role_id` bigint UNSIGNED NOT NULL COMMENT '角色ID',
-  `permission_id` bigint UNSIGNED NOT NULL COMMENT '权限ID',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-  `is_deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '逻辑删除(0：未删除 1：已删除)',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_role_permission` (`role_id`, `permission_id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户权限表' ROW_FORMAT = DYNAMIC;
-
-CREATE TABLE IF NOT EXISTS `t_user_role_rel` (
-  `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-  `user_id` bigint UNSIGNED NOT NULL COMMENT '用户ID',
-  `role_id` bigint UNSIGNED NOT NULL COMMENT '角色ID',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-  `is_deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '逻辑删除(0：未删除 1：已删除)',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_user_role` (`user_id`, `role_id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 17 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户角色表' ROW_FORMAT = DYNAMIC;
-
 CREATE TABLE IF NOT EXISTS `t_following` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `user_id` bigint UNSIGNED NOT NULL COMMENT '用户ID',
@@ -108,21 +56,6 @@ CREATE TABLE IF NOT EXISTS `t_tx_journal` (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '事务消息本地事务回查日志';
 
 -- fishhub_user 初始基础数据
-INSERT INTO `t_role` (`id`, `role_name`, `role_key`, `status`, `sort`, `remark`, `create_time`, `update_time`, `is_deleted`) VALUES
-(1, '普通用户', 'common_user', 0, 1, '', '2024-05-29 07:28:42', '2024-05-29 07:28:42', b'0')
-ON DUPLICATE KEY UPDATE `role_name`=VALUES(`role_name`);
-
-INSERT INTO `t_permission` (`id`, `parent_id`, `name`, `type`, `menu_url`, `menu_icon`, `sort`, `permission_key`, `status`, `create_time`, `update_time`, `is_deleted`) VALUES
-(1, 0, '发布笔记', 3, '', '', 1, 'app:note:publish', 0, '2024-05-29 07:26:02', '2024-05-29 07:26:02', b'0'),
-(2, 0, '发布评论', 3, '', '', 2, 'app:comment:publish', 0, '2024-05-29 07:27:17', '2024-05-29 07:27:17', b'0'),
-(3, 0, '测试1111', 3, '', '', 0, 'test', 0, '2024-06-04 09:41:07', '2024-06-04 09:41:07', b'0')
-ON DUPLICATE KEY UPDATE `name`=VALUES(`name`);
-
-INSERT INTO `t_role_permission_rel` (`id`, `role_id`, `permission_id`, `create_time`, `update_time`, `is_deleted`) VALUES
-(1, 1, 1, '2024-05-29 07:29:06', '2024-05-29 07:29:06', b'0'),
-(2, 1, 2, '2024-05-29 07:29:15', '2024-05-29 07:29:15', b'0')
-ON DUPLICATE KEY UPDATE `permission_id`=VALUES(`permission_id`);
-
 INSERT INTO `t_user` (`fishhub_id`, `password`, `nickname`, `phone`, `status`) VALUES
 ('smoke001', '$2a$10$mw1jq3XPBKtAEancOOJsLuSAPhxpwbnPhf6m/gb5gWvJhCuYl.CAC', 'SmokeUser1', '13811110001', 0),
 ('smoke002', '$2a$10$mw1jq3XPBKtAEancOOJsLuSAPhxpwbnPhf6m/gb5gWvJhCuYl.CAC', 'SmokeUser2', '13811110002', 0)
@@ -154,7 +87,6 @@ CREATE TABLE IF NOT EXISTS `t_note` (
   `channel_id` bigint UNSIGNED NULL DEFAULT NULL COMMENT '频道ID',
   `revision` bigint UNSIGNED NOT NULL DEFAULT 1 COMMENT '笔记聚合版本（编辑乐观锁与缓存版本）',
   PRIMARY KEY (`id`) USING BTREE,
-  INDEX `idx_creator_id`(`creator_id` ASC) USING BTREE,
   INDEX `idx_creator_status_visible_id`(`creator_id` ASC, `status` ASC, `visible` ASC, `id` DESC) USING BTREE,
   INDEX `idx_topic_id`(`topic_id` ASC) USING BTREE,
   INDEX `idx_channel_id`(`channel_id` ASC) USING BTREE,
@@ -292,7 +224,6 @@ CREATE TABLE IF NOT EXISTS `t_comment` (
   `parent_id` bigint UNSIGNED NULL DEFAULT 0 COMMENT '父ID (若是对笔记的评论，则此字段存储笔记ID; 若是二级评论，则此字段存储一级评论的ID)',
   `reply_comment_id` bigint UNSIGNED NULL DEFAULT 0 COMMENT '回复哪个的评论 (0表示是对笔记的评论，若是对他人评论的回复，则存储回复评论的ID)',
   `reply_user_id` bigint UNSIGNED NULL DEFAULT 0 COMMENT '回复的哪个用户, 存储用户ID',
-  `is_top` tinyint NOT NULL DEFAULT 0 COMMENT '是否置顶(0：不置顶 1：置顶)',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
   `child_comment_total` bigint NULL DEFAULT 0 COMMENT '二级评论总数（只有一级评论才需要统计）',
@@ -361,13 +292,6 @@ CREATE TABLE IF NOT EXISTS `t_user_count` (
   UNIQUE INDEX `uk_user_id`(`user_id` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 6503 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '用户计数表' ROW_FORMAT = DYNAMIC;
 
-CREATE TABLE IF NOT EXISTS `t_tx_journal` (
-  `tx_id` varchar(64) NOT NULL COMMENT '事务消息 txId（回查判定键）',
-  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`tx_id`),
-  INDEX `idx_create_time` (`create_time`)
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '事务消息本地事务回查日志';
-
 CREATE TABLE IF NOT EXISTS `t_mq_consume_record` (
   `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT,
   `consumer_group` varchar(128) NOT NULL,
@@ -379,32 +303,11 @@ CREATE TABLE IF NOT EXISTS `t_mq_consume_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='RocketMQ 消费幂等记录';
 
 
--- ========================================================
--- 5. 分布式发号器数据库 (Leaf ID Generator)
--- ========================================================
-CREATE DATABASE IF NOT EXISTS `leaf` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `leaf`;
-
-CREATE TABLE IF NOT EXISTS `leaf_alloc` (
-  `biz_tag` varchar(128) NOT NULL DEFAULT '',
-  `max_id` bigint(20) NOT NULL DEFAULT '1',
-  `step` int(11) NOT NULL,
-  `description` varchar(256) DEFAULT NULL,
-  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`biz_tag`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Leaf 号段发号分配表';
-
-INSERT INTO `leaf_alloc` (`biz_tag`, `max_id`, `step`, `description`, `update_time`) VALUES
-('leaf-segment-fishhub-id', 10100, 2000, 'fishhub ID', now()),
-('leaf-segment-user-id', 10000, 2000, '用户 ID', now()),
-('leaf-segment-comment-id', 1, 2000, '评论 ID', now())
-ON DUPLICATE KEY UPDATE `step`=VALUES(`step`), `description`=VALUES(`description`);
-
 SET FOREIGN_KEY_CHECKS = 1;
 
 
 -- ========================================================
--- 6. 对账与一致性自检查询 (Reconciliation Checks)
+-- 5. 对账与一致性自检查询 (Reconciliation Checks)
 -- ========================================================
 
 -- 1) 评论数对账：t_note_count.comment_total 应等于 fishhub_comment 中一级评论数

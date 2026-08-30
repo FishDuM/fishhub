@@ -7,7 +7,6 @@ import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
-import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
@@ -64,9 +63,6 @@ class UserServiceImplTest {
 
     @Mock
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-
-    @Mock
-    private UserRoleDOMapper userRoleDOMapper;
 
     @Mock
     private RolePermissionService rolePermissionService;
@@ -210,7 +206,7 @@ class UserServiceImplTest {
     }
 
     @Test
-    void resolveOrRegisterShouldGrantDefaultRole() {
+    void resolveOrRegisterShouldCreateUserWhenNotExists() {
         ResolveLoginableUserReqDTO request = ResolveLoginableUserReqDTO.builder()
                 .phone("13800138000")
                 .build();
@@ -226,7 +222,7 @@ class UserServiceImplTest {
         Response<ResolveLoginableUserRspDTO> response = userService.resolveOrRegisterLoginableUser(request);
 
         assertTrue(response.getData().isLoginable());
-        verify(userRoleDOMapper).insert(any());
+        verify(userDOMapper).insertIfAbsent(any());
     }
 
     @Test

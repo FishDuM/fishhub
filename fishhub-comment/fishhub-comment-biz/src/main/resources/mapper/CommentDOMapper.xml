@@ -13,7 +13,6 @@
     <result column="parent_id" jdbcType="BIGINT" property="parentId" />
     <result column="reply_comment_id" jdbcType="BIGINT" property="replyCommentId" />
     <result column="reply_user_id" jdbcType="BIGINT" property="replyUserId" />
-    <result column="is_top" jdbcType="TINYINT" property="isTop" />
     <result column="create_time" jdbcType="TIMESTAMP" property="createTime" />
     <result column="update_time" jdbcType="TIMESTAMP" property="updateTime" />
     <result column="child_comment_total" jdbcType="BIGINT" property="childCommentTotal" />
@@ -22,7 +21,7 @@
   </resultMap>
   <sql id="Base_Column_List">
     id, note_id, user_id, content_uuid, is_content_empty, image_url, `level`,
-    like_total, parent_id, reply_comment_id, reply_user_id, is_top, create_time, update_time,
+    like_total, parent_id, reply_comment_id, reply_user_id, create_time, update_time,
     child_comment_total, first_reply_comment_id, heat
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
@@ -49,7 +48,7 @@
   <select id="selectByCommentIds" resultMap="BaseResultMap" parameterType="list">
     select
     id, user_id, content_uuid, is_content_empty, image_url, like_total,
-    is_top, create_time, first_reply_comment_id, child_comment_total,
+    create_time, first_reply_comment_id, child_comment_total,
     level, parent_id, heat, note_id, reply_comment_id, reply_user_id
     from t_comment
     where id in
@@ -111,7 +110,7 @@
 
   <select id="selectPageList" resultMap="BaseResultMap" parameterType="map">
     select id, user_id, content_uuid, is_content_empty, image_url, like_total,
-           is_top, create_time, first_reply_comment_id, child_comment_total, heat
+           create_time, first_reply_comment_id, child_comment_total, heat
     from t_comment
     where note_id = #{noteId} and level = 1 order by heat desc
       limit #{offset}, #{pageSize}
@@ -172,13 +171,13 @@
     content_uuid, is_content_empty, image_url,
     `level`, like_total,
     parent_id, reply_comment_id, reply_user_id,
-    is_top, create_time, update_time
+    create_time, update_time
     )
     values
     <foreach collection="comments" item="comment" separator=",">
       (#{comment.id}, #{comment.noteId}, #{comment.userId}, #{comment.contentUuid}, #{comment.isContentEmpty}
       , #{comment.imageUrl}, #{comment.level}, #{comment.likeTotal}, #{comment.parentId}
-      , #{comment.replyCommentId}, #{comment.replyUserId}, #{comment.isTop}, #{comment.createTime}, #{comment.updateTime})
+      , #{comment.replyCommentId}, #{comment.replyUserId}, #{comment.createTime}, #{comment.updateTime})
     </foreach>
   </insert>
 

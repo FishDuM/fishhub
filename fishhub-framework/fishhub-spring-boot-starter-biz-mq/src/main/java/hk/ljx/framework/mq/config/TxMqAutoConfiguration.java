@@ -20,6 +20,7 @@ import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -35,18 +36,21 @@ public class TxMqAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
     public TxJournalStore txJournalStore(TxJournalDOMapper txJournalDOMapper) {
         return new TxJournalStore(txJournalDOMapper);
     }
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
     public TransactionalMqSender transactionalMqSender(RocketMQTemplate rocketMQTemplate) {
         return new TransactionalMqSender(rocketMQTemplate);
     }
 
     @Bean
     @ConditionalOnMissingBean(TxMqLocalTransactionListener.class)
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
     public TxMqLocalTransactionListener txMqLocalTransactionListener(TxJournalStore txJournalStore) {
         return new TxMqLocalTransactionListener(txJournalStore);
     }
@@ -79,6 +83,7 @@ public class TxMqAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
     public TxJournalPurgeJob txJournalPurgeJob(TxJournalDOMapper txJournalDOMapper,
             @Value("${mq.tx-journal.retention-hours:24}") int retentionHours) {
         return new TxJournalPurgeJob(txJournalDOMapper, retentionHours);

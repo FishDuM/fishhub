@@ -34,8 +34,6 @@ public class CommentDO {
 
     private Long replyUserId;
 
-    private Boolean isTop;
-
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

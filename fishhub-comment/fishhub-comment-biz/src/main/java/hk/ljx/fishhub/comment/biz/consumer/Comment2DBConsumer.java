@@ -153,7 +153,6 @@ public class Comment2DBConsumer {
                         .parentId(publishCommentMqDTO.getNoteId()) // 默认设置为所属笔记 ID
                         .createTime(publishCommentMqDTO.getCreateTime())
                         .updateTime(publishCommentMqDTO.getCreateTime())
-                        .isTop(false)
                         .likeTotal(0L)
                         .replyCommentId(0L)
                         .replyUserId(0L)

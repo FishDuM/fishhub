@@ -20,13 +20,8 @@ import hk.ljx.framework.common.util.ParamUtils;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.user.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.biz.constant.RoleConstants;
-import hk.ljx.fishhub.user.biz.domain.dataobject.RoleDO;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
-import hk.ljx.fishhub.user.biz.domain.dataobject.UserRoleDO;
-import hk.ljx.fishhub.user.biz.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
-import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
@@ -71,8 +66,6 @@ import java.util.stream.Collectors;
 public class UserServiceImpl implements UserService {
 
     private final UserDOMapper userDOMapper;
-    private final UserRoleDOMapper userRoleDOMapper;
-    private final RoleDOMapper roleDOMapper;
     private final OssRpcService ossRpcService;
     private final StringRedisTemplate stringRedisTemplate;
     private final SafeRedisUtil safeRedisUtil;
@@ -246,15 +239,6 @@ public class UserServiceImpl implements UserService {
             if (userDOMapper.insertIfAbsent(newUser) == 0) {
                 throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
             }
-
-            UserRoleDO userRoleDO = UserRoleDO.builder()
-                    .userId(userId)
-                    .roleId(RoleConstants.COMMON_USER_ROLE_ID)
-                    .createTime(LocalDateTime.now())
-                    .updateTime(LocalDateTime.now())
-                    .isDeleted(DeletedEnum.NO.getValue())
-                    .build();
-            userRoleDOMapper.insert(userRoleDO);
             return newUser;
         });
 
@@ -308,14 +292,6 @@ public class UserServiceImpl implements UserService {
                 return concurrentUser;
             }
 
-            UserRoleDO userRoleDO = UserRoleDO.builder()
-                    .userId(userId)
-                    .roleId(RoleConstants.COMMON_USER_ROLE_ID)
-                    .createTime(LocalDateTime.now())
-                    .updateTime(LocalDateTime.now())
-                    .isDeleted(DeletedEnum.NO.getValue())
-                    .build();
-            userRoleDOMapper.insert(userRoleDO);
             return newUser;
         });
 
