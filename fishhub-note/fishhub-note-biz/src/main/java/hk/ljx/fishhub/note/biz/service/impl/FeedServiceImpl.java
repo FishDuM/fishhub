@@ -132,7 +132,7 @@ public class FeedServiceImpl implements FeedService {
             return snapshot;
         }
 
-        String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(version, channelId, cursor);
+        String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(channelId, cursor);
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {

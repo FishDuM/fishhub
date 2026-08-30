@@ -2,6 +2,7 @@ package hk.ljx.fishhub.note.biz.service.impl;
 
 import hk.ljx.framework.common.util.CacheTtl;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -102,6 +103,18 @@ public class NoteServiceImpl implements NoteService {
     private final RedissonClient redissonClient;
     private final UserNoteListService userNoteListService;
     private final OssRpcService ossRpcService;
+
+    private final Cache<Long, ChannelDO> channelLocalCache = Caffeine.newBuilder()
+            .initialCapacity(16)
+            .maximumSize(64)
+            .expireAfterWrite(30, TimeUnit.MINUTES)
+            .build();
+
+    private final Cache<Long, String> topicNameLocalCache = Caffeine.newBuilder()
+            .initialCapacity(64)
+            .maximumSize(500)
+            .expireAfterWrite(30, TimeUnit.MINUTES)
+            .build();
 
     @Override
     public Response<Boolean> exists(Long noteId) {
@@ -241,14 +254,14 @@ public class NoteServiceImpl implements NoteService {
         Long topicId = publishNoteReqVO.getTopicId();
         String topicName = null;
         if (Objects.nonNull(topicId)) {
-            topicName = topicDOMapper.selectNameByPrimaryKey(topicId);
+            topicName = topicNameLocalCache.get(topicId, k -> topicDOMapper.selectNameByPrimaryKey(k));
             if (StringUtils.isBlank(topicName)) {
                 throw new BizException(ResponseCodeEnum.TOPIC_NOT_FOUND);
             }
         }
 
         Long channelId = publishNoteReqVO.getChannelId();
-        ChannelDO channel = channelDOMapper.selectByPrimaryKey(channelId);
+        ChannelDO channel = channelId == null ? null : channelLocalCache.get(channelId, k -> channelDOMapper.selectByPrimaryKey(k));
         if (Objects.isNull(channel) || Boolean.TRUE.equals(channel.getIsDeleted())) {
             throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
         }
@@ -280,7 +293,7 @@ public class NoteServiceImpl implements NoteService {
     }
 
     /**
-     * 将笔记元数据和发布事件一起持久化。
+     * 将笔记元数据快速落库，并异步发送变更事件与失效缓存。
      * @param creatorId
      * @param noteDO
      */
@@ -296,15 +309,23 @@ public class NoteServiceImpl implements NoteService {
                 .contentTasks(contentTasks)
                 .build();
 
-        // 笔记元数据、正文任务与发布事件经由事务消息原子提交。
-        transactionalMqSender.sendInTransaction(MQConstants.TOPIC_NOTE_CHANGED, JsonUtils.toJsonString(event),
-                txId -> {
-                    notePersistenceService.savePublishedNote(noteDO, txId);
-                    return true;
-                });
+        // 1. 本地快速落库（单次主键插入，1~2ms 提交并释放 DB 连接）
+        notePersistenceService.savePublishedNote(noteDO);
 
-        // Redis 为共享存储，提交后于本进程内直接失效，无需跨节点事件；
-        // 各节点本地缓存由读路径的最小事实校验兜底。
+        // 2. 异步投递 MQ 消息至下游（ES 索引同步、Cassandra 正文同步、点赞计数初始化等），完全非阻塞主 HTTP 线程
+        String eventPayload = JsonUtils.toJsonString(event);
+        threadPoolTaskExecutor.execute(() -> {
+            try {
+                Message<String> message = MessageBuilder.withPayload(eventPayload)
+                        .setHeader(TransactionalMqSender.TX_ID_HEADER, IdUtil.fastSimpleUUID())
+                        .build();
+                rocketMQTemplate.syncSend(MQConstants.TOPIC_NOTE_CHANGED, message);
+            } catch (Exception e) {
+                log.warn("异步发送发布笔记变更事件异常, noteId={}", noteDO.getId(), e);
+            }
+        });
+
+        // 3. 异步失效相关 Redis / 本地缓存
         threadPoolTaskExecutor.execute(() -> invalidateNoteRedisCaches(creatorId, noteDO.getId(), noteDO.getChannelId()));
     }
 

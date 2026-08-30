@@ -218,12 +218,12 @@ class FeedServiceImplTest {
     @Test
     void shouldUseDoubleCheckAfterAcquiringDiscoverPageRebuildLock() throws InterruptedException {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
+        String lockKey = "lock:feed:discover:cursor:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null, "{\"notes\":[],\"nextCursor\":null}");
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
@@ -236,12 +236,12 @@ class FeedServiceImplTest {
     @Test
     void shouldNotRetryMySqlWhenDiscoverPageRebuildFails() throws InterruptedException {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
+        String lockKey = "lock:feed:discover:cursor:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();

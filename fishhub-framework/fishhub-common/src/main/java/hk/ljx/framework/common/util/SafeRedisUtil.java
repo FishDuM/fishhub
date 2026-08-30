@@ -413,6 +413,22 @@ public class SafeRedisUtil {
     }
 
     /**
+     * 获取 ZSet 升序范围元素
+     */
+    public Set<String> zRange(String key, long start, long end) {
+        if (StringUtils.isBlank(key)) {
+            return Collections.emptySet();
+        }
+        try {
+            Set<String> members = redisTemplate.opsForZSet().range(key, start, end);
+            return members != null ? members : Collections.emptySet();
+        } catch (Exception e) {
+            log.warn("Redis 不可用，zRange 获取失败，key: {}, error: {}", key, e.getMessage());
+            return Collections.emptySet();
+        }
+    }
+
+    /**
      * 移除 ZSet 成员
      */
     public Long zRemove(String key, Object... members) {

@@ -2,16 +2,17 @@ package hk.ljx.fishhub.comment.biz.service.impl;
 
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
-import hk.ljx.fishhub.comment.biz.constant.RedisKeyConstants;
+import hk.ljx.framework.common.response.PageResponse;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.vo.FindCommentPageListReqVO;
 import hk.ljx.fishhub.comment.biz.model.vo.LikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.model.vo.UnlikeCommentReqVO;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
-import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.model.vo.FindCommentItemRspVO;
+import hk.ljx.fishhub.comment.biz.service.CommentCacheService;
+import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
+import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
-import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -20,23 +21,20 @@ import org.mockito.InjectMocks;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.Message;
-import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -51,90 +49,72 @@ class CommentServiceImplTest {
     @Mock
     private CommentDOMapper commentDOMapper;
     @Mock
-    private StringRedisTemplate stringRedisTemplate;
+    private CommentCacheService commentCacheService;
     @Mock
-    private ValueOperations<String, String> valueOperations;
-    @Mock
-    private RedissonClient redissonClient;
-    @Mock
-    private RLock rebuildLock;
+    private UserClient userClient;
     @Mock
     private CommentLikeRealtimeService commentLikeRealtimeService;
     @Mock
     private RocketMQTemplate rocketMQTemplate;
+    @Mock
+    private org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor threadPoolTaskExecutor;
     @InjectMocks
     private CommentServiceImpl service;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        var pageCache = (com.github.benmanes.caffeine.cache.Cache<?, ?>) ReflectionTestUtils.getField(CommentServiceImpl.class, "COMMENT_PAGE_LOCAL_CACHE");
+        if (pageCache != null) pageCache.invalidateAll();
+        var childCache = (com.github.benmanes.caffeine.cache.Cache<?, ?>) ReflectionTestUtils.getField(CommentServiceImpl.class, "CHILD_COMMENT_PAGE_LOCAL_CACHE");
+        if (childCache != null) childCache.invalidateAll();
+    }
+
     @Test
-    void shouldDoubleCheckOneLevelCommentTotalAfterAcquiringRebuildLock() throws InterruptedException {
+    void shouldReturnEmptyPageWhenTotalCountIsZero() {
         Long noteId = 100L;
-        String cacheKey = "cache:comment:one-level-total:" + noteId + ":v:0";
-        String versionKey = "version:comment:one-level-total:" + noteId;
-        String lockKey = "lock:comment:one-level-total:" + noteId;
         when(noteRpcService.isAccessible(noteId)).thenReturn(true);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(versionKey)).thenReturn("0");
-        when(valueOperations.get(cacheKey)).thenReturn(null, "0");
-        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(commentCacheService.getOneLevelCommentTotal(eq(noteId), any())).thenReturn(0L);
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();
 
         var response = service.findCommentPageList(request);
 
-        verify(commentDOMapper, times(0)).selectOneLevelCountByNoteId(noteId);
-        org.junit.jupiter.api.Assertions.assertEquals(0L, response.getTotalCount());
+        assertEquals(0L, response.getTotalCount());
+        assertEquals(0, response.getData().size());
+        verify(commentCacheService, never()).getCommentIdsByZSet(anyLong(), anyLong(), anyLong());
     }
 
     @Test
-    void shouldRebuildCommentListZSetOnlyByLockWinner() throws InterruptedException {
-        String key = RedisKeyConstants.buildCommentListKey(100L);
-        String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(100L);
-        when(stringRedisTemplate.hasKey(key)).thenReturn(false, false);
-        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
-        when(commentDOMapper.selectHeatComments(100L)).thenReturn(List.of());
-
-        ReflectionTestUtils.invokeMethod(service, "rebuildCommentListZSetWithLock", key, 100L);
-
-        verify(commentDOMapper, times(1)).selectHeatComments(100L);
-        verify(rebuildLock).unlock();
-    }
-
-    @Test
-    void shouldSkipRebuildWhenCommentListLockNotAcquired() throws InterruptedException {
-        String key = RedisKeyConstants.buildCommentListKey(100L);
-        String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(100L);
-        when(stringRedisTemplate.hasKey(key)).thenReturn(false);
-        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
-
-        ReflectionTestUtils.invokeMethod(service, "rebuildCommentListZSetWithLock", key, 100L);
-
-        verify(commentDOMapper, never()).selectHeatComments(100L);
-        verify(rebuildLock, never()).unlock();
-    }
-
-    @Test
-    void shouldNotRetryMySqlWhenOneLevelCommentCountQueryFails() throws InterruptedException {
-        Long noteId = 100L;
-        String cacheKey = "cache:comment:one-level-total:" + noteId + ":v:0";
-        String versionKey = "version:comment:one-level-total:" + noteId;
-        String lockKey = "lock:comment:one-level-total:" + noteId;
+    void shouldRebuildCommentListZSetWhenMissingAndLockAcquired() {
+        Long noteId = 101L;
         when(noteRpcService.isAccessible(noteId)).thenReturn(true);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(versionKey)).thenReturn("0");
-        when(valueOperations.get(cacheKey)).thenReturn(null);
-        when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
-        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
-        when(commentDOMapper.selectOneLevelCountByNoteId(noteId))
-                .thenThrow(new IllegalStateException("mysql unavailable"));
+        when(commentCacheService.getOneLevelCommentTotal(eq(noteId), any())).thenReturn(10L);
+        when(commentCacheService.hasCommentListZSet(noteId)).thenReturn(false, false);
+        when(commentCacheService.tryLockCommentListRebuild(noteId)).thenReturn(true);
+        when(commentDOMapper.selectHeatComments(noteId)).thenReturn(List.of());
+        when(commentDOMapper.selectPageList(noteId, 0, 10)).thenReturn(List.of());
+
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();
+        service.findCommentPageList(request);
 
-        assertThrows(IllegalStateException.class, () -> service.findCommentPageList(request));
+        verify(commentCacheService).tryLockCommentListRebuild(noteId);
+        verify(commentDOMapper).selectHeatComments(noteId);
+        verify(commentCacheService).unlockCommentListRebuild(noteId);
+    }
 
-        verify(commentDOMapper, times(1)).selectOneLevelCountByNoteId(noteId);
+    @Test
+    void shouldSkipRebuildWhenCommentListLockNotAcquired() {
+        Long noteId = 102L;
+        when(noteRpcService.isAccessible(noteId)).thenReturn(true);
+        when(commentCacheService.getOneLevelCommentTotal(eq(noteId), any())).thenReturn(10L);
+        when(commentCacheService.hasCommentListZSet(noteId)).thenReturn(false);
+        when(commentCacheService.tryLockCommentListRebuild(noteId)).thenReturn(false);
+        when(commentDOMapper.selectPageList(noteId, 0, 10)).thenReturn(List.of());
+
+        FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();
+        service.findCommentPageList(request);
+
+        verify(commentDOMapper, never()).selectHeatComments(noteId);
+        verify(commentCacheService, never()).unlockCommentListRebuild(noteId);
     }
 
     @AfterEach

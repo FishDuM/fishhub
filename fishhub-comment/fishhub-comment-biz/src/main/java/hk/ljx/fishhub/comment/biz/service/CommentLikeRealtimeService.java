@@ -13,7 +13,8 @@ import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.DefaultTypedTuple;
-import org.springframework.data.redis.core.RedisCallback;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -104,13 +106,14 @@ public class CommentLikeRealtimeService {
         }
         String zsetKey = ensureZSetCache(userId);
         try {
-            List<Object> results = stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                byte[] rawKey = stringRedisTemplate.getStringSerializer().serialize(zsetKey);
-                for (Long commentId : commentIds) {
-                    byte[] rawMember = stringRedisTemplate.getStringSerializer().serialize(String.valueOf(commentId));
-                    connection.zSetCommands().zScore(rawKey, rawMember);
+            List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<>() {
+                @Override
+                public Object execute(RedisOperations operations) {
+                    for (Long commentId : commentIds) {
+                        operations.opsForZSet().score(zsetKey, String.valueOf(commentId));
+                    }
+                    return null;
                 }
-                return null;
             });
 
             List<Long> likedIds = new ArrayList<>();
@@ -218,22 +221,19 @@ public class CommentLikeRealtimeService {
             String zsetKey = RedisKeyConstants.buildUserCommentLikeZSetKey(userId);
             String commentIdStr = String.valueOf(commentId);
 
-            stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                byte[] rawZsetKey = stringRedisTemplate.getStringSerializer().serialize(zsetKey);
-                byte[] rawCountKey = stringRedisTemplate.getStringSerializer().serialize(countKey);
-                byte[] rawMember = stringRedisTemplate.getStringSerializer().serialize(commentIdStr);
-
-                if (incr > 0) {
-                    // 点赞：添加 ZSet（score 为时间戳）、计数 +1
-                    connection.zSetCommands().zAdd(rawZsetKey, System.currentTimeMillis(), rawMember);
-                    connection.stringCommands().incr(rawCountKey);
-                } else {
-                    // 取消点赞：移出 ZSet、计数 -1
-                    connection.zSetCommands().zRem(rawZsetKey, rawMember);
-                    connection.stringCommands().decr(rawCountKey);
+            stringRedisTemplate.executePipelined(new SessionCallback<>() {
+                @Override
+                public Object execute(RedisOperations operations) {
+                    if (incr > 0) {
+                        operations.opsForZSet().add(zsetKey, commentIdStr, System.currentTimeMillis());
+                    } else {
+                        operations.opsForZSet().remove(zsetKey, commentIdStr);
+                    }
+                    operations.opsForHash().increment(countKey, CountKeyConstants.FIELD_LIKE_TOTAL, incr);
+                    operations.expire(zsetKey, FOOTPRINT_TTL_SECONDS, TimeUnit.SECONDS);
+                    operations.expire(countKey, CacheTtl.hours(1, 4), TimeUnit.SECONDS);
+                    return null;
                 }
-                connection.keyCommands().expire(rawZsetKey, FOOTPRINT_TTL_SECONDS);
-                return null;
             });
         } catch (Exception e) {
             log.warn("点赞实时更新失败（Redis 不可用？），将依赖 MySQL 落盘兜底, userId={}, commentId={}, incr={}",

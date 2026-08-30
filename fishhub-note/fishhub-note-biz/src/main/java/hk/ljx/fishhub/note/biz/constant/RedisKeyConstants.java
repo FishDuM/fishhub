@@ -84,8 +84,8 @@ public class RedisKeyConstants {
                 + ":cursor:" + (cursor == null ? "first" : cursor);
     }
 
-    public static String buildDiscoverFeedCursorLockKey(String version, Long channelId, Long cursor) {
-        return DISCOVER_FEED_CURSOR_LOCK_KEY + version + ":channel:" + (channelId == null ? 0 : channelId)
+    public static String buildDiscoverFeedCursorLockKey(Long channelId, Long cursor) {
+        return DISCOVER_FEED_CURSOR_LOCK_KEY + "channel:" + (channelId == null ? 0 : channelId)
                 + ":cursor:" + (cursor == null ? "first" : cursor);
     }
 
