@@ -42,6 +42,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.util.concurrent.TimeUnit;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
@@ -57,6 +60,13 @@ public class NoteServiceImpl implements NoteService {
     private static final Logger log = LoggerFactory.getLogger(NoteServiceImpl.class);
     private final RestHighLevelClient restHighLevelClient;
     private final UserClient userClient;
+
+    /** 笔记搜索本地短缓存（3 秒）：极大降低高并发相同关键词检索时的 ES 分词与高亮开销 */
+    private static final Cache<String, PageResponse<SearchNoteRspVO>> SEARCH_NOTE_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(500)
+            .maximumSize(5000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
 
     public NoteServiceImpl(RestHighLevelClient restHighLevelClient, UserClient userClient) {
         this.restHighLevelClient = restHighLevelClient;
@@ -76,6 +86,12 @@ public class NoteServiceImpl implements NoteService {
         Integer type = searchNoteReqVO.getType();
         Integer sort = searchNoteReqVO.getSort();
         Integer publishTimeRange = searchNoteReqVO.getPublishTimeRange();
+
+        String localCacheKey = String.format("%s:%s:%s:%s:%s", keyword, pageNo, type, sort, publishTimeRange);
+        PageResponse<SearchNoteRspVO> localCached = SEARCH_NOTE_LOCAL_CACHE.getIfPresent(localCacheKey);
+        if (localCached != null) {
+            return localCached;
+        }
 
         SearchRequest searchRequest = new SearchRequest(NoteIndex.NAME);
         // 新环境尚未产生公开笔记时，note 索引不存在应视为无搜索结果，而不是服务异常。
@@ -204,7 +220,9 @@ public class NoteServiceImpl implements NoteService {
             throw new IllegalStateException("Elasticsearch 查询失败", e);
         }
 
-        return PageResponse.success(searchNoteRspVOS, pageNo, total);
+        PageResponse<SearchNoteRspVO> response = PageResponse.success(searchNoteRspVOS, pageNo, total);
+        SEARCH_NOTE_LOCAL_CACHE.put(localCacheKey, response);
+        return response;
     }
 
     private static SearchNoteRspVO buildSearchNoteRspVO(SearchHit hit, Map<Long, FindUserByIdRspDTO> userMap) {

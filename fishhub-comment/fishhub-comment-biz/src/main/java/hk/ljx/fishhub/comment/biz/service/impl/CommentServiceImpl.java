@@ -48,6 +48,9 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.util.concurrent.TimeUnit;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -74,6 +77,20 @@ public class CommentServiceImpl implements CommentService {
     private final TransactionTemplate transactionTemplate;
     private final RedissonClient redissonClient;
     private final CommentLikeRealtimeService commentLikeRealtimeService;
+
+    /** 一级热点评论分页本地短缓存（3 秒）：极大降低高并发下对同一笔记热度评论的重复锁竞争与 Feign/DB 穿透 */
+    private static final Cache<String, PageResponse<FindCommentItemRspVO>> COMMENT_PAGE_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(500)
+            .maximumSize(5000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
+
+    /** 二级子评论分页本地短缓存（3 秒） */
+    private static final Cache<String, PageResponse<FindChildCommentItemRspVO>> CHILD_COMMENT_PAGE_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(500)
+            .maximumSize(5000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
 
 
 
@@ -134,6 +151,11 @@ public class CommentServiceImpl implements CommentService {
         Integer pageNo = findCommentPageListReqVO.getPageNo();
         long pageSize = 10;
 
+        String localCacheKey = noteId + ":" + pageNo;
+        return COMMENT_PAGE_LOCAL_CACHE.get(localCacheKey, k -> doFindCommentPageList(noteId, pageNo, pageSize));
+    }
+
+    private PageResponse<FindCommentItemRspVO> doFindCommentPageList(Long noteId, Integer pageNo, long pageSize) {
         // 一级评论数单独缓存；不能拿包含回复数的笔记评论总数替代。
         long count = getOneLevelCommentTotal(noteId);
 
@@ -142,7 +164,6 @@ public class CommentServiceImpl implements CommentService {
         }
 
         List<FindCommentItemRspVO> commentRspVOS = Lists.newArrayList();
-
         long offset = PageResponse.getOffset(pageNo, pageSize);
 
         String commentZSetKey = RedisKeyConstants.buildCommentListKey(noteId);
@@ -237,6 +258,11 @@ public class CommentServiceImpl implements CommentService {
         Integer pageNo = findChildCommentPageListReqVO.getPageNo();
         long pageSize = 6;
 
+        String localCacheKey = parentCommentId + ":" + pageNo;
+        return CHILD_COMMENT_PAGE_LOCAL_CACHE.get(localCacheKey, k -> doFindChildCommentPageList(parentCommentId, pageNo, pageSize));
+    }
+
+    private PageResponse<FindChildCommentItemRspVO> doFindChildCommentPageList(Long parentCommentId, Integer pageNo, long pageSize) {
         String countCommentKey = CountKeyConstants.buildCountCommentKey(parentCommentId);
         String redisCount = stringRedisTemplate.<String, String>opsForHash()
                 .get(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
@@ -285,7 +311,7 @@ public class CommentServiceImpl implements CommentService {
             if (offset >= cacheStart) {
                 long rank = offset - cacheStart;
                 Set<String> childCommentIds = stringRedisTemplate.<String>opsForZSet()
-                        .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, rank, pageSize);
+                    .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, rank, pageSize);
 
                 if (CollUtil.isNotEmpty(childCommentIds)) {
                     List<String> childCommentIdList = Lists.newArrayList(childCommentIds);
@@ -868,7 +894,7 @@ public class CommentServiceImpl implements CommentService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(500, TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(3000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
@@ -1052,7 +1078,7 @@ public class CommentServiceImpl implements CommentService {
         String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(noteId);
         RLock lock = redissonClient.getLock(lockKey);
         try {
-            if (lock.tryLock(500, TimeUnit.MILLISECONDS)) {
+            if (lock.tryLock(3000, TimeUnit.MILLISECONDS)) {
                 try {
                     if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
                         syncHeatComments2Redis(key, noteId);
@@ -1078,7 +1104,7 @@ public class CommentServiceImpl implements CommentService {
         String lockKey = RedisKeyConstants.buildChildCommentListRebuildLockKey(parentCommentId);
         RLock lock = redissonClient.getLock(lockKey);
         try {
-            if (lock.tryLock(500, TimeUnit.MILLISECONDS)) {
+            if (lock.tryLock(3000, TimeUnit.MILLISECONDS)) {
                 try {
                     if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
                         syncChildComments2Redis(parentCommentId, key);

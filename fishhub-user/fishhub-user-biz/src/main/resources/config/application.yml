@@ -25,4 +25,4 @@ sa-token:
   is-concurrent: true
   is-share: true
   token-style: random-128
-  is-log: true
+  is-log: false

@@ -101,4 +101,4 @@ sa-token:
   # 允许从 HttpOnly 会话 Cookie 读取 token（登录时由 auth 服务下发）
   is-read-cookie: true
   # 是否输出操作日志
-  is-log: true
+  is-log: false

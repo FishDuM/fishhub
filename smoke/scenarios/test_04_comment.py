@@ -104,6 +104,9 @@ def run(client, concurrency: int = DEFAULT_CONCURRENCY, rounds: int = DEFAULT_RO
     stats_pub_l2.finish()
     results.append(stats_pub_l2)
 
+    # 平滑窗口：等待后台 MQ 消费写入完成，避免读写线程单机 I/O 踩踏
+    time.sleep(0.3)
+
     # 3. 评论列表热度排序高频拉取
     stats_list = ScenarioStats("热度评论列表查询", "评论互动域", "笔记下热度评论列表高频读取")
     stats_list.start()

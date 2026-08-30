@@ -63,6 +63,12 @@ public class FeedServiceImpl implements FeedService {
             .expireAfterWrite(1, TimeUnit.MINUTES)
             .build();
 
+    // 发现页快照本地短缓存 3s，避免高并发 Feed 流下频繁反序列化 Redis 与锁排队
+    private final Cache<String, DiscoverPageSnapshot> feedPageLocalCache = Caffeine.newBuilder()
+            .maximumSize(500)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
+
     private final ChannelDOMapper channelDOMapper;
     private final TopicDOMapper topicDOMapper;
     private final NoteDOMapper noteDOMapper;
@@ -102,16 +108,27 @@ public class FeedServiceImpl implements FeedService {
         DiscoverPageSnapshot snapshot = version == null
                 ? loadDiscoverPageSnapshotFromMySql(channelId, cursor)
                 : loadDiscoverPageSnapshot(channelId, cursor, version);
-        List<NoteItemRspVO> notes = snapshot.getNotes();
-        Long nextCursor = snapshot.getNextCursor();
-        hydrateVolatileFields(notes);
+        List<NoteItemRspVO> notes = snapshot == null ? Collections.emptyList() : snapshot.getNotes();
+        Long nextCursor = snapshot == null ? null : snapshot.getNextCursor();
+
+        // 仅处理登录用户的动态个性化点赞标记（零 Feign RPC 调用，纯内存/缓存秒回）
+        Long userId = LoginUserContextHolder.getUserId();
+        if (userId != null && CollUtil.isNotEmpty(notes)) {
+            notes = personalizeLikedState(notes, userId);
+        }
         return DiscoverNotePageResponse.success(notes, PAGE_SIZE, nextCursor);
     }
 
     private DiscoverPageSnapshot loadDiscoverPageSnapshot(Long channelId, Long cursor, String version) {
         String cacheKey = RedisKeyConstants.buildDiscoverFeedCursorKey(version, channelId, cursor);
+        DiscoverPageSnapshot localSnap = feedPageLocalCache.getIfPresent(cacheKey);
+        if (isValidDiscoverPageSnapshot(localSnap)) {
+            return localSnap;
+        }
+
         DiscoverPageSnapshot snapshot = readDiscoverPageSnapshot(cacheKey);
         if (isValidDiscoverPageSnapshot(snapshot)) {
+            feedPageLocalCache.put(cacheKey, snapshot);
             return snapshot;
         }
 
@@ -119,7 +136,7 @@ public class FeedServiceImpl implements FeedService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(500, TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(2000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
@@ -130,10 +147,12 @@ public class FeedServiceImpl implements FeedService {
             try {
                 snapshot = readDiscoverPageSnapshot(cacheKey);
                 if (isValidDiscoverPageSnapshot(snapshot)) {
+                    feedPageLocalCache.put(cacheKey, snapshot);
                     return snapshot;
                 }
                 DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
                 cacheDiscoverPageSnapshot(cacheKey, fresh);
+                feedPageLocalCache.put(cacheKey, fresh);
                 return fresh;
             } finally {
                 if (lock.isHeldByCurrentThread()) {
@@ -143,7 +162,11 @@ public class FeedServiceImpl implements FeedService {
         }
 
         snapshot = readDiscoverPageSnapshot(cacheKey);
-        return isValidDiscoverPageSnapshot(snapshot) ? snapshot : loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+        DiscoverPageSnapshot result = isValidDiscoverPageSnapshot(snapshot) ? snapshot : loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+        if (isValidDiscoverPageSnapshot(result)) {
+            feedPageLocalCache.put(cacheKey, result);
+        }
+        return result;
     }
 
     private DiscoverPageSnapshot loadDiscoverPageSnapshotFromMySql(Long channelId, Long cursor) {
@@ -151,6 +174,8 @@ public class FeedServiceImpl implements FeedService {
         boolean hasMore = result.size() > PAGE_SIZE;
         List<NoteDO> page = CollUtil.sub(result, 0, (int) PAGE_SIZE);
         List<NoteItemRspVO> notes = toNoteItems(page);
+        // 一次性烘焙点赞数进快照（仅在快照重建时调用 1 次 Feign，命中路径 0 次 Feign）
+        fillCountsIntoNoteItems(notes);
         notes.forEach(note -> note.setIsLiked(false));
         Long nextCursor = hasMore && !notes.isEmpty() ? notes.get(notes.size() - 1).getNoteId() : null;
         return new DiscoverPageSnapshot(notes, nextCursor);
@@ -179,6 +204,7 @@ public class FeedServiceImpl implements FeedService {
                 .videoUri(note.getVideoUri())
                 .title(note.getTitle())
                 .creatorId(note.getCreatorId())
+                .likeTotal("0")
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
@@ -210,18 +236,7 @@ public class FeedServiceImpl implements FeedService {
         return commaIndex >= 0 ? imgUris.substring(0, commaIndex) : imgUris;
     }
 
-    private void hydrateVolatileFields(List<NoteItemRspVO> notes) {
-        if (CollUtil.isEmpty(notes)) {
-            return;
-        }
-        // 实时覆盖点赞数（无论快照命中与否，均通过 Redis Pipeline 注入最新点赞数）
-        fillCountsIntoNoteItems(notes);
-        // 实时覆盖用户红心点赞状态
-        setLikedState(notes);
-    }
-
-
-    /** 从 count 服务回填点赞数到快照项（仅重建路径调用；命中路径见 {@link #hydrateVolatileFields}）。 */
+    /** 仅在快照构建时从 count 服务回填点赞数到快照项；命中路径零 Feign RPC */
     private void fillCountsIntoNoteItems(List<NoteItemRspVO> notes) {
         if (CollUtil.isEmpty(notes)) {
             return;
@@ -238,17 +253,26 @@ public class FeedServiceImpl implements FeedService {
     }
 
     /**
-     * 发现页需要按当前登录用户返回点赞状态；不能把列表项固定标记为未点赞。
+     * 仅按当前登录用户个性化点赞状态（纯本地/Redis Hash匹配，零 Feign RPC）
      */
-    private void setLikedState(List<NoteItemRspVO> notes) {
-        Long userId = LoginUserContextHolder.getUserId();
-        if (userId == null || CollUtil.isEmpty(notes)) {
-            return;
+    private List<NoteItemRspVO> personalizeLikedState(List<NoteItemRspVO> notes, Long userId) {
+        try {
+            List<Long> noteIds = notes.stream().map(NoteItemRspVO::getNoteId).toList();
+            Set<Long> likedNoteIds = noteInteractionCacheService.findLikedNoteIds(userId, noteIds);
+            if (CollUtil.isEmpty(likedNoteIds)) {
+                return notes;
+            }
+            return notes.stream().map(note -> {
+                boolean isLiked = likedNoteIds.contains(note.getNoteId());
+                if (isLiked == Boolean.TRUE.equals(note.getIsLiked())) {
+                    return note;
+                }
+                return note.toBuilder().isLiked(isLiked).build();
+            }).collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("个性化用户点赞态失败, userId={}", userId, e);
+            return notes;
         }
-
-        List<Long> noteIds = notes.stream().map(NoteItemRspVO::getNoteId).toList();
-        Set<Long> likedNoteIds = noteInteractionCacheService.findLikedNoteIds(userId, noteIds);
-        notes.forEach(note -> note.setIsLiked(likedNoteIds.contains(note.getNoteId())));
     }
 
     private List<FindNoteCountsByIdRspDTO> safeCounts(List<Long> noteIds) {

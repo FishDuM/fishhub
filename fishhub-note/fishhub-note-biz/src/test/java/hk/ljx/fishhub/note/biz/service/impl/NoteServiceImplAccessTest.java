@@ -123,7 +123,7 @@ class NoteServiceImplAccessTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("note:access:11")).thenReturn("{", "{");
         when(redissonClient.getLock(RedisKeyConstants.buildNoteAccessRebuildLockKey(11L))).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).build());
 
@@ -141,7 +141,7 @@ class NoteServiceImplAccessTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(key)).thenReturn(null, null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
@@ -162,7 +162,7 @@ class NoteServiceImplAccessTest {
         // 首次读 miss + 抢不到锁后读 miss
         when(valueOperations.get(key)).thenReturn(null, null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(false);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
 

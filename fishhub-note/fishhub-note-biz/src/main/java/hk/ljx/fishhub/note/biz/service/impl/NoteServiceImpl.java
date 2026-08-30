@@ -305,7 +305,7 @@ public class NoteServiceImpl implements NoteService {
 
         // Redis 为共享存储，提交后于本进程内直接失效，无需跨节点事件；
         // 各节点本地缓存由读路径的最小事实校验兜底。
-        invalidateNoteRedisCaches(creatorId, noteDO.getId(), noteDO.getChannelId());
+        threadPoolTaskExecutor.execute(() -> invalidateNoteRedisCaches(creatorId, noteDO.getId(), noteDO.getChannelId()));
     }
 
     /**
@@ -1412,7 +1412,7 @@ public class NoteServiceImpl implements NoteService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(500, TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(2000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

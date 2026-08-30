@@ -83,6 +83,13 @@ public class UserServiceImpl implements UserService {
             .expireAfterWrite(2, TimeUnit.SECONDS)
             .build();
 
+    /** 用户主页信息本地短缓存（3 秒）：避免高并发或重复查看主页时频繁穿透 Feign 与 Redis */
+    private final Cache<Long, FindUserProfileRspVO> userProfileLocalCache = Caffeine.newBuilder()
+            .initialCapacity(1000)
+            .maximumSize(10000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
+
     /** 可关注用户 Redis 缓存 TTL：禁用/删除操作的最长生效滞后窗口，必须远短于 user:info(1天) */
     private static final long ACTIVE_CACHE_TTL_SECONDS = 15L;
     /** 防穿透 null 哨兵 TTL：短于正常 TTL，避免不存在的用户长期占位 */
@@ -201,6 +208,8 @@ public class UserServiceImpl implements UserService {
 
         stringRedisTemplate.delete(Arrays.asList(userInfoRedisKey, userProfileRedisKey, userRolePermissionKey));
         activeUserLocalCache.invalidate(userId);
+        userProfileLocalCache.invalidate(userId);
+        CountClient.invalidateUser(userId);
     }
 
     /**
@@ -244,6 +253,7 @@ public class UserServiceImpl implements UserService {
 
         if (finalUser != null) {
             rolePermissionService.evict(finalUser.getId());
+            warmupUserCache(finalUser);
         }
 
         return Response.success(userId);
@@ -297,9 +307,38 @@ public class UserServiceImpl implements UserService {
 
         if (finalUser != null) {
             rolePermissionService.evict(finalUser.getId());
+            warmupUserCache(finalUser);
         }
 
         return resolvedLoginableUserResponse(finalUser);
+    }
+
+    private void warmupUserCache(UserDO user) {
+        if (user == null || user.getId() == null) {
+            return;
+        }
+        try {
+            Long userId = user.getId();
+            FindUserProfileRspVO profile = FindUserProfileRspVO.builder()
+                    .userId(userId)
+                    .avatar(user.getAvatar())
+                    .nickname(user.getNickname())
+                    .fishhubId(user.getFishhubId())
+                    .sex(user.getSex())
+                    .birthday(user.getBirthday())
+                    .introduction(user.getIntroduction())
+                    .fansTotal("0")
+                    .followingTotal("0")
+                    .likeTotal("0")
+                    .collectTotal("0")
+                    .noteTotal("0")
+                    .build();
+            String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
+            syncUserProfile2Redis(userProfileRedisKey, profile);
+            userProfileLocalCache.put(userId, profile);
+        } catch (Exception e) {
+            log.warn("用户注册缓存预热失败, userId={}", user.getId(), e);
+        }
     }
 
     private Response<ResolveLoginableUserRspDTO> resolvedLoginableUserResponse(UserDO user) {
@@ -566,16 +605,23 @@ public class UserServiceImpl implements UserService {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
+        FindUserProfileRspVO localCached = userProfileLocalCache.getIfPresent(userId);
+        if (localCached != null) {
+            return Response.success(localCached);
+        }
+
         String userProfileRedisKey = RedisKeyConstants.buildUserProfileKey(userId);
 
         String userProfileJson = safeRedisUtil.get(userProfileRedisKey);
 
         if (StringUtils.isNotBlank(userProfileJson)) {
             FindUserProfileRspVO findUserProfileRspVO = JsonUtils.parseObject(userProfileJson, FindUserProfileRspVO.class);
-            // 无论是作者本人还是访客查看，均统一覆盖最新的实时动态计数（~0.3ms，直查计数服务 Redis Hash）
-            rpcCountServiceAndSetData(userId, findUserProfileRspVO);
-
-            return Response.success(findUserProfileRspVO);
+            if (findUserProfileRspVO != null) {
+                // 无论是作者本人还是访客查看，均统一覆盖最新的实时动态计数
+                rpcCountServiceAndSetData(userId, findUserProfileRspVO);
+                userProfileLocalCache.put(userId, findUserProfileRspVO);
+                return Response.success(findUserProfileRspVO);
+            }
         }
 
         UserDO userDO = userDOMapper.selectByPrimaryKey(userId);
@@ -601,6 +647,7 @@ public class UserServiceImpl implements UserService {
 
         // 动态覆盖计数
         rpcCountServiceAndSetData(userId, findUserProfileRspVO);
+        userProfileLocalCache.put(userId, findUserProfileRspVO);
 
         return Response.success(findUserProfileRspVO);
     }

@@ -76,7 +76,7 @@ class CommentServiceImplTest {
         when(valueOperations.get(versionKey)).thenReturn("0");
         when(valueOperations.get(cacheKey)).thenReturn(null, "0");
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         FindCommentPageListReqVO request = FindCommentPageListReqVO.builder().noteId(noteId).pageNo(1).build();
 
         var response = service.findCommentPageList(request);
@@ -91,7 +91,7 @@ class CommentServiceImplTest {
         String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(100L);
         when(stringRedisTemplate.hasKey(key)).thenReturn(false, false);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(commentDOMapper.selectHeatComments(100L)).thenReturn(List.of());
 
@@ -107,7 +107,7 @@ class CommentServiceImplTest {
         String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(100L);
         when(stringRedisTemplate.hasKey(key)).thenReturn(false);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(false);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
 
         ReflectionTestUtils.invokeMethod(service, "rebuildCommentListZSetWithLock", key, 100L);
 
@@ -126,7 +126,7 @@ class CommentServiceImplTest {
         when(valueOperations.get(versionKey)).thenReturn("0");
         when(valueOperations.get(cacheKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(500, TimeUnit.MILLISECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(commentDOMapper.selectOneLevelCountByNoteId(noteId))
                 .thenThrow(new IllegalStateException("mysql unavailable"));

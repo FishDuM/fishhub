@@ -163,23 +163,21 @@ class FeedServiceImplTest {
     }
 
     @Test
-    void shouldRefreshCountsWhenDiscoverSnapshotIsHit() {
+    void shouldUseBakedCountsWithoutFeignWhenDiscoverSnapshotIsHit() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey))
                 .thenReturn("{\"notes\":[{\"noteId\":101,\"type\":0,\"title\":\"标题\",\"likeTotal\":\"5\",\"isLiked\":false}],\"nextCursor\":null}");
-        when(countClient.findByNoteIds(List.of(101L))).thenReturn(List.of(
-                FindNoteCountsByIdRspDTO.builder().noteId(101L).likeTotal(8L).build()));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
         var response = service.findDiscoverNoteList(request);
 
         assertEquals(1, response.getData().size());
-        assertEquals("8", response.getData().get(0).getLikeTotal());
-        // 快照命中时也实时通过 countClient 刷新最新点赞数
-        verify(countClient, times(1)).findByNoteIds(List.of(101L));
+        assertEquals("5", response.getData().get(0).getLikeTotal());
+        // 快照命中时直接使用烘焙的点赞数，零 Feign RPC 调用
+        verify(countClient, never()).findByNoteIds(any());
     }
 
     @Test

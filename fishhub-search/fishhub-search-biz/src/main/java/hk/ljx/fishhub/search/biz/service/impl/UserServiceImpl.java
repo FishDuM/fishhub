@@ -23,18 +23,26 @@ import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.elasticsearch.search.sort.FieldSortBuilder;
 import org.elasticsearch.search.sort.SortBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.stereotype.Service;
-
+import java.util.concurrent.TimeUnit;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
 
 @Service
 public class UserServiceImpl implements UserService {
 
     private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
     private final RestHighLevelClient restHighLevelClient;
+
+    /** 用户搜索本地短缓存（3 秒） */
+    private static final Cache<String, PageResponse<SearchUserRspVO>> SEARCH_USER_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(500)
+            .maximumSize(5000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
 
     public UserServiceImpl(RestHighLevelClient restHighLevelClient) {
         this.restHighLevelClient = restHighLevelClient;
@@ -52,6 +60,12 @@ public class UserServiceImpl implements UserService {
         String keyword = searchUserReqVO.getKeyword();
         // 当前页码
         Integer pageNo = searchUserReqVO.getPageNo();
+
+        String localCacheKey = keyword + ":" + pageNo;
+        PageResponse<SearchUserRspVO> localCached = SEARCH_USER_LOCAL_CACHE.getIfPresent(localCacheKey);
+        if (localCached != null) {
+            return localCached;
+        }
 
         // 构建 SearchRequest，指定索引
         SearchRequest searchRequest = new SearchRequest(UserIndex.NAME);
@@ -142,7 +156,9 @@ public class UserServiceImpl implements UserService {
             throw new IllegalStateException("Elasticsearch 查询失败", e);
         }
 
-        return PageResponse.success(searchUserRspVOS, pageNo, total);
+        PageResponse<SearchUserRspVO> response = PageResponse.success(searchUserRspVOS, pageNo, total);
+        SEARCH_USER_LOCAL_CACHE.put(localCacheKey, response);
+        return response;
     }
 
 }
