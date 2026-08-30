@@ -1,20 +1,29 @@
 package hk.ljx.fishhub.comment.biz.rpc;
 
-import hk.ljx.framework.id.client.DistributedIdGeneratorClient;
-import hk.ljx.framework.id.constant.ApiConstants;
+import cn.hutool.core.lang.Snowflake;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * 评论分布式发号服务（基于本地 Hutool Snowflake 纳秒级发号）
+ */
 @Component
 @RequiredArgsConstructor
 public class DistributedIdGeneratorRpcService {
 
-    private final DistributedIdGeneratorClient distributedIdGeneratorClient;
+    private final Snowflake snowflake;
 
     /**
-     * 生成评论 ID（使用 Leaf 雪花算法，带重试与本地雪花降级）
+     * 生成评论 ID (String)
      */
     public String generateCommentId() {
-        return distributedIdGeneratorClient.getSnowflakeId(ApiConstants.BIZ_TAG_COMMENT_ID);
+        return String.valueOf(snowflake.nextId());
+    }
+
+    /**
+     * 生成评论 ID (Long)
+     */
+    public long nextCommentId() {
+        return snowflake.nextId();
     }
 }

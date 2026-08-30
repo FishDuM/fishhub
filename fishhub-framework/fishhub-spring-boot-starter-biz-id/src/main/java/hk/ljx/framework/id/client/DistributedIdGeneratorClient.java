@@ -1,17 +1,17 @@
 package hk.ljx.framework.id.client;
 
-import hk.ljx.framework.id.core.SnowflakeIdGenerator;
+import cn.hutool.core.lang.Snowflake;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 分布式发号客户端门面（本地嵌入式发号，纳秒级生成，零网络开销）
+ * 分布式发号客户端门面（基于 Hutool Snowflake 本地高性能发号，纳秒级生成，零网络开销）
  */
 @Slf4j
 @RequiredArgsConstructor
 public class DistributedIdGeneratorClient {
 
-    private final SnowflakeIdGenerator snowflakeIdGenerator;
+    private final Snowflake snowflake;
 
     /**
      * 获取分布式雪花 ID
@@ -20,7 +20,7 @@ public class DistributedIdGeneratorClient {
      * @return 分布式 ID 字符串
      */
     public String getSnowflakeId(String bizTag) {
-        return String.valueOf(snowflakeIdGenerator.nextId());
+        return String.valueOf(snowflake.nextId());
     }
 
     /**
@@ -30,6 +30,24 @@ public class DistributedIdGeneratorClient {
      * @return 分布式 ID Long
      */
     public long nextId(String bizTag) {
-        return snowflakeIdGenerator.nextId();
+        return snowflake.nextId();
+    }
+
+    /**
+     * 生成分布式雪花 ID
+     *
+     * @return 分布式 ID Long
+     */
+    public long nextId() {
+        return snowflake.nextId();
+    }
+
+    /**
+     * 生成分布式雪花 ID 字符串
+     *
+     * @return 分布式 ID 字符串
+     */
+    public String nextIdStr() {
+        return String.valueOf(snowflake.nextId());
     }
 }

@@ -64,16 +64,34 @@ public class CollectUnCollectNoteConsumer {
     }
 
     private boolean consumeBatch(List<MessageExt> msgs) {
-        try {
-            List<String> bodys = msgs.stream()
-                    .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
-                    .toList();
-            consumeEventBodies(bodys);
-            return true;
-        } catch (Exception e) {
-            log.error("笔记收藏批量消费失败，整批稍后重投", e);
-            return false;
+        List<String> bodys = msgs.stream()
+                .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
+                .toList();
+
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                consumeEventBodies(bodys);
+                return true;
+            } catch (org.springframework.dao.ConcurrencyFailureException e) {
+                if (attempt == maxRetries) {
+                    log.error("笔记收藏批量消费死锁重试 {} 次仍失败，稍后由 MQ 重投", maxRetries, e);
+                    return false;
+                }
+                long backoff = 15L + (long) (Math.random() * 35);
+                log.warn("笔记收藏批量入库遭遇 MySQL 并发争锁，执行第 {} 次本地退避重试 (backoff={}ms)", attempt, backoff);
+                try {
+                    Thread.sleep(backoff);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            } catch (Exception e) {
+                log.error("笔记收藏批量消费失败，整批稍后重投", e);
+                return false;
+            }
         }
+        return false;
     }
 
     void consumeEventBodies(List<String> bodys) {
@@ -134,7 +152,10 @@ public class CollectUnCollectNoteConsumer {
                 deduplicateMap.put(key, item);
             }
         }
-        List<NoteCollectionDO> finalNoteCollections = new ArrayList<>(deduplicateMap.values());
+        List<NoteCollectionDO> finalNoteCollections = deduplicateMap.values().stream()
+                .sorted(java.util.Comparator.comparing(NoteCollectionDO::getUserId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+                        .thenComparing(NoteCollectionDO::getNoteId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                .toList();
 
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_COLLECT, payload,
                 txId -> persistenceService.saveNoteCollectBatch(finalNoteCollections, CONSUME_GROUP, batchKey, txId));

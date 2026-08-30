@@ -18,21 +18,14 @@ import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
-
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
 
 /**
  * 评论点赞/取消点赞批量落库消费者
@@ -71,104 +64,113 @@ public class LikeUnlikeComment2DBConsumer {
 
     private boolean consumeBatch(List<MessageExt> msgs) {
         log.info("==> 【评论点赞、取消点赞】本批次消息大小: {}", msgs.size());
-        try {
-            // 将批次 Json 消息体转换 DTO 集合
-            List<LikeUnlikeCommentMqDTO> likeUnlikeCommentMqDTOS = Lists.newArrayList();
-
-            msgs.forEach(msg -> {
-                String tag = msg.getTags(); // Tag 标签
-                String msgJson = new String(msg.getBody(), StandardCharsets.UTF_8); // 消息体 Json 字符串
-                log.info("处理评论点赞事件，tag={}, payloadSize={}", tag, msgJson.length());
-
-                try {
-                    LikeUnlikeCommentMqDTO operation = JsonUtils.parseObject(msgJson, LikeUnlikeCommentMqDTO.class);
-                    if (operation == null || operation.getCommentId() == null || operation.getUserId() == null
-                            || operation.getType() == null || operation.getCreateTime() == null) {
-                        log.error("丢弃缺少业务主键的评论点赞消息, msgId={}, payloadSize={}",
-                                msg.getMsgId(), msgJson.length());
-                        return;
-                    }
-                    likeUnlikeCommentMqDTOS.add(operation);
-                } catch (Exception e) {
-                    // 反序列化失败无法通过重试恢复，确认该消息，避免阻塞同一顺序队列。
-                    log.error("丢弃无法解析的评论点赞消息, msgId={}, payloadSize={}",
-                            msg.getMsgId(), msgJson.length(), e);
-                }
-            });
-
-            if (CollUtil.isEmpty(likeUnlikeCommentMqDTOS)) {
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                processBatch(msgs);
                 return true;
+            } catch (org.springframework.dao.ConcurrencyFailureException e) {
+                if (attempt == maxRetries) {
+                    log.error("评论点赞批量消费死锁重试 {} 次仍失败，稍后由 MQ 重投", maxRetries, e);
+                    return false;
+                }
+                long backoff = 15L + (long) (Math.random() * 35);
+                log.warn("评论点赞批量入库遭遇 MySQL 并发争锁，执行第 {} 次本地退避重试 (backoff={}ms)", attempt, backoff);
+                try {
+                    Thread.sleep(backoff);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            } catch (Exception e) {
+                log.error("评论点赞批量消费异常", e);
+                return false;
             }
+        }
+        return false;
+    }
 
-            // 按评论 ID 分组
-            Map<Long, List<LikeUnlikeCommentMqDTO>> commentIdAndListMap = likeUnlikeCommentMqDTOS.stream()
-                    .collect(Collectors.groupingBy(LikeUnlikeCommentMqDTO::getCommentId));
+    private void processBatch(List<MessageExt> msgs) {
+        // 将批次 Json 消息体转换 DTO 集合
+        List<LikeUnlikeCommentMqDTO> likeUnlikeCommentMqDTOS = Lists.newArrayList();
 
-            List<LikeUnlikeCommentMqDTO> finalLikeUnlikeCommentMqDTOS = Lists.newArrayList();
+        msgs.forEach(msg -> {
+            String tag = msg.getTags(); // Tag 标签
+            String msgJson = new String(msg.getBody(), StandardCharsets.UTF_8); // 消息体 Json 字符串
+            log.info("处理评论点赞事件，tag={}, payloadSize={}", tag, msgJson.length());
 
-            commentIdAndListMap.forEach((commentId, ops) -> {
-                // 合并同一用户的多次操作，保留最新一条
-                Map<Long, LikeUnlikeCommentMqDTO> userLastOp = ops.stream()
-                        .collect(Collectors.toMap(
-                                LikeUnlikeCommentMqDTO::getUserId,
-                                Function.identity(),
-                                (oldValue, newValue) ->
-                                        oldValue.getCreateTime().isAfter(newValue.getCreateTime()) ? oldValue : newValue
-                        ));
+            try {
+                LikeUnlikeCommentMqDTO operation = JsonUtils.parseObject(msgJson, LikeUnlikeCommentMqDTO.class);
+                if (operation == null || operation.getCommentId() == null || operation.getUserId() == null
+                        || operation.getType() == null || operation.getCreateTime() == null) {
+                    log.error("丢弃缺少业务主键的评论点赞消息, msgId={}, payloadSize={}",
+                            msg.getMsgId(), msgJson.length());
+                    return;
+                }
+                likeUnlikeCommentMqDTOS.add(operation);
+            } catch (Exception e) {
+                log.error("丢弃无法解析的评论点赞消息, msgId={}, payloadSize={}",
+                        msg.getMsgId(), msgJson.length(), e);
+            }
+        });
 
-                finalLikeUnlikeCommentMqDTOS.addAll(userLastOp.values());
-            });
+        // 按 (commentId, userId) 聚合，保留最新状态
+        Map<String, LikeUnlikeCommentMqDTO> latestOperations = new LinkedHashMap<>();
+        for (LikeUnlikeCommentMqDTO operation : likeUnlikeCommentMqDTOS) {
+            String key = operation.getCommentId() + ":" + operation.getUserId();
+            latestOperations.put(key, operation);
+        }
 
-            Map<Long, CommentDO> comments = commentDOMapper.selectNoteIdsByCommentIds(
-                            finalLikeUnlikeCommentMqDTOS.stream()
-                                    .map(LikeUnlikeCommentMqDTO::getCommentId)
-                                    .distinct()
-                                    .toList())
-                    .stream()
-                    .collect(Collectors.toMap(CommentDO::getId, Function.identity(), (left, right) -> left));
-            Set<Long> appliedCommentIds = new LinkedHashSet<>();
-            List<LikeUnlikeCommentMqDTO> persistOps = Lists.newArrayList();
-            for (LikeUnlikeCommentMqDTO operation : finalLikeUnlikeCommentMqDTOS) {
-                CommentDO comment = comments.get(operation.getCommentId());
-                if (comment == null) {
-                    if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.UNLIKE.getCode())) {
-                        // 评论已在 t_comment 中删除，仍放行执行 t_comment_like 的物理删除以清理残留关系行
-                        persistOps.add(operation);
-                    } else {
-                        log.warn("丢弃不可写/已删除评论上的点赞并回滚实时缓存，commentId={}, userId={}",
-                                operation.getCommentId(), operation.getUserId());
-                        if (commentLikeRealtimeService != null) {
-                            commentLikeRealtimeService.markUnliked(operation.getUserId(), operation.getCommentId());
-                        }
+        List<LikeUnlikeCommentMqDTO> mergedOperations = new ArrayList<>(latestOperations.values());
+        if (CollUtil.isEmpty(mergedOperations)) {
+            return;
+        }
+
+        // 仅处理数据库中已存在的评论
+        List<Long> commentIds = mergedOperations.stream()
+                .map(LikeUnlikeCommentMqDTO::getCommentId)
+                .distinct()
+                .toList();
+        List<CommentDO> commentDOS = commentDOMapper.selectNoteIdsByCommentIds(commentIds);
+        Map<Long, CommentDO> comments = CollUtil.isEmpty(commentDOS) ? Collections.emptyMap() :
+                commentDOS.stream().collect(Collectors.toMap(CommentDO::getId, Function.identity()));
+
+        List<Long> appliedCommentIds = new ArrayList<>();
+        List<LikeUnlikeCommentMqDTO> persistOps = new ArrayList<>();
+        for (LikeUnlikeCommentMqDTO operation : mergedOperations) {
+            if (!comments.containsKey(operation.getCommentId())) {
+                if (Objects.equals(operation.getType(), LikeUnlikeCommentTypeEnum.UNLIKE.getCode())) {
+                    // 评论已在 t_comment 中删除，仍放行执行 t_comment_like 的物理删除以清理残留关系行
+                    persistOps.add(operation);
+                } else {
+                    log.warn("丢弃不可写/已删除评论上的点赞并回滚实时缓存，commentId={}, userId={}",
+                            operation.getCommentId(), operation.getUserId());
+                    if (commentLikeRealtimeService != null) {
+                        commentLikeRealtimeService.markUnliked(operation.getUserId(), operation.getCommentId());
                     }
-                    continue;
                 }
-                persistOps.add(operation);
+                continue;
             }
+            persistOps.add(operation);
+        }
 
-            // 批量落库
-            if (CollUtil.isNotEmpty(persistOps)) {
-                appliedCommentIds.addAll(persistenceService.applyBatch(persistOps));
+        // 批量落库
+        if (CollUtil.isNotEmpty(persistOps)) {
+            appliedCommentIds.addAll(persistenceService.applyBatch(persistOps));
+        }
+
+        // 异步触发热度更新（仅对仍存在的一级/有效评论发送，避免对已删评论空转重算）
+        if (CollUtil.isNotEmpty(appliedCommentIds)) {
+            Set<Long> validAppliedCommentIds = appliedCommentIds.stream()
+                    .filter(commentId -> {
+                        CommentDO comment = comments.get(commentId);
+                        return comment != null && Objects.equals(comment.getLevel(), CommentLevelEnum.ONE.getCode());
+                    })
+                    .collect(Collectors.toSet());
+            if (CollUtil.isNotEmpty(validAppliedCommentIds)) {
+                Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(validAppliedCommentIds)).build();
+                RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage, "评论热度更新");
             }
-
-            // 异步触发热度更新（仅对仍存在的一级/有效评论发送，避免对已删评论空转重算）
-            if (CollUtil.isNotEmpty(appliedCommentIds)) {
-                Set<Long> validAppliedCommentIds = appliedCommentIds.stream()
-                        .filter(commentId -> {
-                            CommentDO comment = comments.get(commentId);
-                            return comment != null && Objects.equals(comment.getLevel(), CommentLevelEnum.ONE.getCode());
-                        })
-                        .collect(Collectors.toSet());
-                if (CollUtil.isNotEmpty(validAppliedCommentIds)) {
-                    Message<String> heatMessage = MessageBuilder.withPayload(JsonUtils.toJsonString(validAppliedCommentIds)).build();
-                    RocketMqHelper.asyncSend(rocketMQTemplate, MQConstants.TOPIC_COMMENT_HEAT_UPDATE, heatMessage, "评论热度更新");
-                }
-            }
-
-            return true;
-        } catch (Exception e) {
-            log.error("评论点赞批量消费异常", e);
-            return false;
         }
     }
 

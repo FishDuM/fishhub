@@ -34,7 +34,11 @@ public class NoteInteractionPersistenceService {
         } catch (DuplicateKeyException e) {
             return false;
         }
-        noteLikeDOMapper.insertOrUpdateBatch(noteLikes);
+        List<NoteLikeDO> sortedLikes = noteLikes.stream()
+                .sorted(java.util.Comparator.comparing(NoteLikeDO::getUserId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+                        .thenComparing(NoteLikeDO::getNoteId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                .toList();
+        noteLikeDOMapper.insertOrUpdateBatch(sortedLikes);
         txJournalStore.record(txId);
         return true;
     }
@@ -49,7 +53,11 @@ public class NoteInteractionPersistenceService {
         } catch (DuplicateKeyException e) {
             return false;
         }
-        noteCollectionDOMapper.insertOrUpdateBatch(noteCollections);
+        List<NoteCollectionDO> sortedCollections = noteCollections.stream()
+                .sorted(java.util.Comparator.comparing(NoteCollectionDO::getUserId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+                        .thenComparing(NoteCollectionDO::getNoteId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                .toList();
+        noteCollectionDOMapper.insertOrUpdateBatch(sortedCollections);
         txJournalStore.record(txId);
         return true;
     }

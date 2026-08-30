@@ -39,8 +39,8 @@ public class UserServiceImpl implements UserService {
 
     /** 用户搜索本地短缓存（3 秒） */
     private static final Cache<String, PageResponse<SearchUserRspVO>> SEARCH_USER_LOCAL_CACHE = Caffeine.newBuilder()
-            .initialCapacity(500)
-            .maximumSize(5000)
+            .initialCapacity(100)
+            .maximumSize(1000)
             .expireAfterWrite(3, TimeUnit.SECONDS)
             .build();
 
@@ -74,6 +74,15 @@ public class UserServiceImpl implements UserService {
 
         // 构建查询内容
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.trackTotalHitsUpTo(10000);
+        sourceBuilder.fetchSource(new String[]{
+                UserIndex.FIELD_USER_ID,
+                UserIndex.FIELD_USER_NICKNAME,
+                UserIndex.FIELD_USER_AVATAR,
+                UserIndex.FIELD_USER_FISHHUB_ID,
+                UserIndex.FIELD_USER_NOTE_TOTAL,
+                UserIndex.FIELD_USER_FANS_TOTAL
+        }, null);
 
         // 构建 multi_match 查询，查询 nickname 和 fishhub_id 字段
         sourceBuilder.query(QueryBuilders.multiMatchQuery(

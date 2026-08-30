@@ -36,8 +36,12 @@ public class CommentLikePersistenceService {
         Map<Long, List<LikeUnlikeCommentMqDTO>> groups = operations.stream()
                 .collect(Collectors.groupingBy(LikeUnlikeCommentMqDTO::getCommentId));
 
+        List<Map.Entry<Long, List<LikeUnlikeCommentMqDTO>>> sortedGroups = groups.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+
         List<Long> appliedCommentIds = new ArrayList<>();
-        for (Map.Entry<Long, List<LikeUnlikeCommentMqDTO>> entry : groups.entrySet()) {
+        for (Map.Entry<Long, List<LikeUnlikeCommentMqDTO>> entry : sortedGroups) {
             Long commentId = entry.getKey();
             List<LikeUnlikeCommentMqDTO> ops = entry.getValue();
 
@@ -46,8 +50,17 @@ public class CommentLikePersistenceService {
             List<LikeUnlikeCommentMqDTO> likeOps = partitioned.get(Boolean.TRUE);
             List<LikeUnlikeCommentMqDTO> unlikeOps = partitioned.get(Boolean.FALSE);
 
-            int inserted = CollUtil.isEmpty(likeOps) ? 0 : commentLikeDOMapper.batchInsert(likeOps);
-            int deleted = CollUtil.isEmpty(unlikeOps) ? 0 : commentLikeDOMapper.batchDelete(unlikeOps);
+            List<LikeUnlikeCommentMqDTO> sortedLikeOps = CollUtil.isEmpty(likeOps) ? null : likeOps.stream()
+                    .sorted(java.util.Comparator.comparing(LikeUnlikeCommentMqDTO::getCommentId)
+                            .thenComparing(LikeUnlikeCommentMqDTO::getUserId))
+                    .toList();
+            List<LikeUnlikeCommentMqDTO> sortedUnlikeOps = CollUtil.isEmpty(unlikeOps) ? null : unlikeOps.stream()
+                    .sorted(java.util.Comparator.comparing(LikeUnlikeCommentMqDTO::getCommentId)
+                            .thenComparing(LikeUnlikeCommentMqDTO::getUserId))
+                    .toList();
+
+            int inserted = CollUtil.isEmpty(sortedLikeOps) ? 0 : commentLikeDOMapper.batchInsert(sortedLikeOps);
+            int deleted = CollUtil.isEmpty(sortedUnlikeOps) ? 0 : commentLikeDOMapper.batchDelete(sortedUnlikeOps);
             int delta = inserted - deleted;
             if (delta != 0) {
                 commentDOMapper.updateLikeTotalByCommentId(delta, commentId);

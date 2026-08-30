@@ -185,7 +185,7 @@ public class CommentCacheServiceImpl implements CommentCacheService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(3000, TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(50, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
@@ -274,7 +274,7 @@ public class CommentCacheServiceImpl implements CommentCacheService {
         String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(noteId);
         RLock lock = redissonClient.getLock(lockKey);
         try {
-            return lock.tryLock(2000, TimeUnit.MILLISECONDS);
+            return lock.tryLock(50, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -308,7 +308,13 @@ public class CommentCacheServiceImpl implements CommentCacheService {
     @Override
     public Set<String> getChildCommentIdsByZSet(Long parentCommentId, long offset, long limit) {
         String key = RedisKeyConstants.buildChildCommentListKey(parentCommentId);
-        return safeRedisUtil.zRange(key, offset, offset + limit - 1);
+        try {
+            Set<String> members = stringRedisTemplate.opsForZSet().range(key, offset, offset + limit - 1);
+            return members != null ? members : Collections.emptySet();
+        } catch (Exception e) {
+            log.warn("获取子评论 ID 列表异常, parentCommentId={}, offset={}, limit={}", parentCommentId, offset, limit, e);
+            return Collections.emptySet();
+        }
     }
 
     @Override
@@ -343,7 +349,7 @@ public class CommentCacheServiceImpl implements CommentCacheService {
         String lockKey = RedisKeyConstants.buildChildCommentListRebuildLockKey(parentCommentId);
         RLock lock = redissonClient.getLock(lockKey);
         try {
-            return lock.tryLock(2000, TimeUnit.MILLISECONDS);
+            return lock.tryLock(50, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;

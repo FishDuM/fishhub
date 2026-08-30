@@ -1,12 +1,11 @@
 package hk.ljx.fishhub.user.biz.rpc;
 
-import hk.ljx.framework.id.client.DistributedIdGeneratorClient;
-import hk.ljx.framework.id.constant.ApiConstants;
+import cn.hutool.core.lang.Snowflake;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * 用户 ID / 小鱼号分布式发号服务：统一采用 Leaf Snowflake 算法
+ * 用户 ID / 小鱼号分布式发号服务：统一采用本地 Hutool Snowflake 纳秒级算法
  */
 @Component
 @RequiredArgsConstructor
@@ -14,18 +13,27 @@ public class DistributedIdGeneratorRpcService {
 
     private static final String FISHHUB_ID_PREFIX = "fish";
 
-    private final DistributedIdGeneratorClient distributedIdGeneratorClient;
+    private final Snowflake snowflake;
 
     public String getFishhubId() {
-        return FISHHUB_ID_PREFIX + distributedIdGeneratorClient.getSnowflakeId(ApiConstants.BIZ_TAG_FISHHUB_ID);
+        return FISHHUB_ID_PREFIX + snowflake.nextId();
     }
 
     /**
-     * 调用分布式 ID 生成服务生成用户 ID
+     * 调用本地 Snowflake 生成用户 ID
      *
-     * @return
+     * @return 用户 ID 字符串
      */
     public String getUserId() {
-        return distributedIdGeneratorClient.getSnowflakeId(ApiConstants.BIZ_TAG_USER_ID);
+        return String.valueOf(snowflake.nextId());
+    }
+
+    /**
+     * 调用本地 Snowflake 生成用户 ID (Long)
+     *
+     * @return 用户 ID 数值
+     */
+    public long nextUserId() {
+        return snowflake.nextId();
     }
 }

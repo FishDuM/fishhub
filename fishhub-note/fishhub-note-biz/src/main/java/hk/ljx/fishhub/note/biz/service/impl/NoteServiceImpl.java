@@ -240,8 +240,7 @@ public class NoteServiceImpl implements NoteService {
                 break;
         }
 
-        String snowflakeId = distributedIdGeneratorRpcService.getSnowflakeId();
-        Long noteId = Long.valueOf(snowflakeId);
+        Long noteId = distributedIdGeneratorRpcService.nextId();
         String contentUuid = null;
 
         String content = publishNoteReqVO.getContent();
@@ -269,7 +268,7 @@ public class NoteServiceImpl implements NoteService {
         Long creatorId = LoginUserContextHolder.getUserId();
 
         NoteDO noteDO = NoteDO.builder()
-                .id(Long.valueOf(snowflakeId))
+                .id(noteId)
                 .isContentEmpty(isContentEmpty)
                 .creatorId(creatorId)
                 .channelId(channelId)
@@ -898,11 +897,11 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
-        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一笔记操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(noteId);
 
         try {
-            // 同步顺序发送（hashKey=userId 保持同用户操作有序），失败回滚缓存后抛出，避免假成功
+            // 同步顺序发送（hashKey=noteId 保持同笔记操作有序），失败回滚缓存后抛出，避免假成功
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记点赞");
             CountClient.invalidate(noteId);
         } catch (Exception e) {
@@ -944,8 +943,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
-        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一笔记操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(noteId);
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记取消点赞");
@@ -987,8 +986,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_COLLECT;
 
-        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一笔记操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(noteId);
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记收藏");
@@ -1032,8 +1031,8 @@ public class NoteServiceImpl implements NoteService {
 
         String destination = MQConstants.TOPIC_COLLECT_OR_UN_COLLECT + ":" + MQConstants.TAG_UN_COLLECT;
 
-        // 分区键：同一用户操作路由到同一队列，保证消费端顺序
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一笔记操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(noteId);
 
         try {
             RocketMqHelper.syncSendOrderly(rocketMQTemplate, destination, message, hashKey, "笔记取消收藏");
@@ -1433,7 +1432,7 @@ public class NoteServiceImpl implements NoteService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(2000, TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(50, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

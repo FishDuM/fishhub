@@ -136,7 +136,7 @@ public class FeedServiceImpl implements FeedService {
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
         try {
-            acquired = lock.tryLock(2000, TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(50, 3000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {

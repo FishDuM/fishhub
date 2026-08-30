@@ -64,16 +64,34 @@ public class LikeUnlikeNoteConsumer {
     }
 
     private boolean consumeBatch(List<MessageExt> msgs) {
-        try {
-            List<String> bodys = msgs.stream()
-                    .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
-                    .toList();
-            consumeEventBodies(bodys);
-            return true;
-        } catch (Exception e) {
-            log.error("笔记点赞批量消费失败，整批稍后重投", e);
-            return false;
+        List<String> bodys = msgs.stream()
+                .map(msg -> new String(msg.getBody(), StandardCharsets.UTF_8))
+                .toList();
+
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                consumeEventBodies(bodys);
+                return true;
+            } catch (org.springframework.dao.ConcurrencyFailureException e) {
+                if (attempt == maxRetries) {
+                    log.error("笔记点赞批量消费死锁重试 {} 次仍失败，稍后由 MQ 重投", maxRetries, e);
+                    return false;
+                }
+                long backoff = 15L + (long) (Math.random() * 35);
+                log.warn("笔记点赞批量入库遭遇 MySQL 并发争锁，执行第 {} 次本地退避重试 (backoff={}ms)", attempt, backoff);
+                try {
+                    Thread.sleep(backoff);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            } catch (Exception e) {
+                log.error("笔记点赞批量消费失败，整批稍后重投", e);
+                return false;
+            }
         }
+        return false;
     }
 
     void consumeEventBodies(List<String> bodys) {
@@ -134,7 +152,10 @@ public class LikeUnlikeNoteConsumer {
                 deduplicateMap.put(key, item);
             }
         }
-        List<NoteLikeDO> finalNoteLikes = new ArrayList<>(deduplicateMap.values());
+        List<NoteLikeDO> finalNoteLikes = deduplicateMap.values().stream()
+                .sorted(java.util.Comparator.comparing(NoteLikeDO::getUserId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+                        .thenComparing(NoteLikeDO::getNoteId, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+                .toList();
 
         transactionalMqSender.sendInTransaction(MQConstants.TOPIC_COUNT_NOTE_LIKE, payload,
                 txId -> persistenceService.saveNoteLikeBatch(finalNoteLikes, CONSUME_GROUP, batchKey, txId));

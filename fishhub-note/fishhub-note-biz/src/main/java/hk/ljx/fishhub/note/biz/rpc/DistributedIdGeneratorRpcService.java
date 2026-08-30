@@ -1,20 +1,29 @@
 package hk.ljx.fishhub.note.biz.rpc;
 
-import hk.ljx.framework.id.client.DistributedIdGeneratorClient;
-import hk.ljx.framework.id.constant.ApiConstants;
+import cn.hutool.core.lang.Snowflake;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * 笔记分布式发号服务（基于本地 Hutool Snowflake 纳秒级发号）
+ */
 @Component
 @RequiredArgsConstructor
 public class DistributedIdGeneratorRpcService {
 
-    private final DistributedIdGeneratorClient distributedIdGeneratorClient;
+    private final Snowflake snowflake;
 
     /**
-     * 生成笔记雪花算法 ID
+     * 生成笔记雪花算法 ID (String)
      */
     public String getSnowflakeId() {
-        return distributedIdGeneratorClient.getSnowflakeId(ApiConstants.BIZ_TAG_NOTE_ID);
+        return String.valueOf(snowflake.nextId());
+    }
+
+    /**
+     * 生成笔记雪花算法 ID (Long)
+     */
+    public long nextId() {
+        return snowflake.nextId();
     }
 }

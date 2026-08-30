@@ -429,7 +429,8 @@ public class CommentServiceImpl implements CommentService {
 
         String destination = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一评论操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(commentId);
 
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markLiked(userId, commentId);
@@ -477,7 +478,8 @@ public class CommentServiceImpl implements CommentService {
 
         String destination = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一评论操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(commentId);
 
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markUnliked(userId, commentId);

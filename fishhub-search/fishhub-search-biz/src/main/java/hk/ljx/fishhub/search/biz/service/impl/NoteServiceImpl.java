@@ -63,8 +63,8 @@ public class NoteServiceImpl implements NoteService {
 
     /** 笔记搜索本地短缓存（3 秒）：极大降低高并发相同关键词检索时的 ES 分词与高亮开销 */
     private static final Cache<String, PageResponse<SearchNoteRspVO>> SEARCH_NOTE_LOCAL_CACHE = Caffeine.newBuilder()
-            .initialCapacity(500)
-            .maximumSize(5000)
+            .initialCapacity(100)
+            .maximumSize(1000)
             .expireAfterWrite(3, TimeUnit.SECONDS)
             .build();
 
@@ -98,6 +98,21 @@ public class NoteServiceImpl implements NoteService {
         searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
 
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.trackTotalHitsUpTo(10000);
+        sourceBuilder.fetchSource(new String[]{
+                NoteIndex.FIELD_NOTE_ID,
+                NoteIndex.FIELD_NOTE_CREATOR_ID,
+                NoteIndex.FIELD_NOTE_COVER,
+                NoteIndex.FIELD_NOTE_TITLE,
+                NoteIndex.FIELD_NOTE_TYPE,
+                NoteIndex.FIELD_NOTE_VIDEO_URI,
+                NoteIndex.FIELD_NOTE_UPDATE_TIME,
+                NoteIndex.FIELD_NOTE_AVATAR,
+                NoteIndex.FIELD_NOTE_NICKNAME,
+                NoteIndex.FIELD_NOTE_LIKE_TOTAL,
+                NoteIndex.FIELD_NOTE_COMMENT_TOTAL,
+                NoteIndex.FIELD_NOTE_COLLECT_TOTAL
+        }, null);
 
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery().must(
                 QueryBuilders.multiMatchQuery(keyword)
@@ -194,17 +209,23 @@ public class NoteServiceImpl implements NoteService {
             log.debug("==> 命中文档总数, hits: {}", total);
 
             SearchHits hits = searchResponse.getHits();
-            List<Long> creatorIds = Lists.newArrayList();
+            List<Long> missingCreatorIds = Lists.newArrayList();
             for (SearchHit hit : hits) {
                 Map<String, Object> map = hit.getSourceAsMap();
-                if (map != null && map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n) {
-                    creatorIds.add(n.longValue());
+                if (map != null) {
+                    String avatar = (String) map.get(NoteIndex.FIELD_NOTE_AVATAR);
+                    String nickname = (String) map.get(NoteIndex.FIELD_NOTE_NICKNAME);
+                    if (StringUtils.isBlank(avatar) || StringUtils.isBlank(nickname)) {
+                        if (map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n) {
+                            missingCreatorIds.add(n.longValue());
+                        }
+                    }
                 }
             }
 
             Map<Long, FindUserByIdRspDTO> userMap = Collections.emptyMap();
-            if (CollUtil.isNotEmpty(creatorIds)) {
-                List<FindUserByIdRspDTO> userDTOs = userClient.findByIds(creatorIds.stream().distinct().toList());
+            if (CollUtil.isNotEmpty(missingCreatorIds)) {
+                List<FindUserByIdRspDTO> userDTOs = userClient.findByIds(missingCreatorIds.stream().distinct().toList());
                 if (CollUtil.isNotEmpty(userDTOs)) {
                     userMap = userDTOs.stream()
                             .filter(Objects::nonNull)
@@ -242,9 +263,19 @@ public class NoteServiceImpl implements NoteService {
         Long creatorId = getLong(map, NoteIndex.FIELD_NOTE_CREATOR_ID);
         Integer noteType = getInteger(map, NoteIndex.FIELD_NOTE_TYPE);
 
-        FindUserByIdRspDTO author = creatorId != null ? userMap.get(creatorId) : null;
-        String avatar = author != null ? author.getAvatar() : null;
-        String nickname = author != null ? author.getNickName() : null;
+        String avatar = (String) map.get(NoteIndex.FIELD_NOTE_AVATAR);
+        String nickname = (String) map.get(NoteIndex.FIELD_NOTE_NICKNAME);
+        if (StringUtils.isBlank(avatar) || StringUtils.isBlank(nickname)) {
+            FindUserByIdRspDTO author = creatorId != null ? userMap.get(creatorId) : null;
+            if (author != null) {
+                if (StringUtils.isBlank(avatar)) {
+                    avatar = author.getAvatar();
+                }
+                if (StringUtils.isBlank(nickname)) {
+                    nickname = author.getNickName();
+                }
+            }
+        }
 
         return SearchNoteRspVO.builder()
                 .noteId(noteId)
