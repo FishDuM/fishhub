@@ -2,11 +2,12 @@ package hk.ljx.fishhub.comment.biz.consumer;
 
 import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.comment.biz.constant.MQConstants;
+import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentContentPrimaryKey;
 import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
+import hk.ljx.fishhub.comment.biz.domain.repository.CommentContentRepository;
 import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
-import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,23 +28,25 @@ import static org.mockito.Mockito.when;
 class CommentChangedContentSyncConsumerTest {
 
     @Mock
-    private KeyValueRpcService keyValueRpcService;
+    private CommentContentRepository commentContentRepository;
     @Mock
     private CommentDOMapper commentDOMapper;
     @InjectMocks
     private CommentChangedContentSyncConsumer consumer;
 
+    private static final String UUID_TEXT = "a0000000-0000-0000-0000-000000000001";
+
     @Test
     void shouldSkipImageOnlyCommentAndSyncTextCommentInSameBatch() {
         CommentItemMqDTO imageItem = item(1L, true, null, null);
-        CommentItemMqDTO textItem = item(2L, false, "uuid-text", "hello");
+        CommentItemMqDTO textItem = item(2L, false, UUID_TEXT, "hello");
         when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(List.of(
-                CommentDO.builder().id(2L).contentUuid("uuid-text").build()));
+                CommentDO.builder().id(2L).contentUuid(UUID_TEXT).build()));
 
         consumer.onMessage(body(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH, List.of(imageItem, textItem)));
 
-        verify(keyValueRpcService).batchSaveCommentContent(anyList());
-        verify(keyValueRpcService, never()).deleteCommentContent(any(), any(), any());
+        verify(commentContentRepository).saveAll(anyList());
+        verify(commentContentRepository, never()).deleteById(any(CommentContentPrimaryKey.class));
     }
 
     @Test
@@ -51,21 +54,21 @@ class CommentChangedContentSyncConsumerTest {
         when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(List.of());
 
         consumer.onMessage(body(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH,
-                List.of(item(2L, false, "uuid-text", "hello"))));
+                List.of(item(2L, false, UUID_TEXT, "hello"))));
 
-        verify(keyValueRpcService).deleteCommentContent(10L, LocalDateTime.of(2026, 8, 16, 12, 0), "uuid-text");
-        verify(keyValueRpcService, never()).batchSaveCommentContent(anyList());
+        verify(commentContentRepository).deleteById(any(CommentContentPrimaryKey.class));
+        verify(commentContentRepository, never()).saveAll(anyList());
     }
 
     @Test
     void shouldSkipImageOnlyCommentInDeleteEvent() {
         CommentItemMqDTO imageItem = item(1L, true, null, null);
-        CommentItemMqDTO textItem = item(2L, false, "uuid-text", null);
+        CommentItemMqDTO textItem = item(2L, false, UUID_TEXT, null);
 
         consumer.onMessage(body(MQConstants.COMMENT_CHANGE_TYPE_DELETE, List.of(imageItem, textItem)));
 
-        verify(keyValueRpcService).deleteCommentContent(textItem.getNoteId(), textItem.getCreateTime(), "uuid-text");
-        verify(keyValueRpcService, never()).batchSaveCommentContent(anyList());
+        verify(commentContentRepository).deleteById(any(CommentContentPrimaryKey.class));
+        verify(commentContentRepository, never()).saveAll(anyList());
     }
 
     @Test

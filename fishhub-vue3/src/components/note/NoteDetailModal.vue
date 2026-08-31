@@ -82,7 +82,7 @@
                   <li v-for="(topic, index) in currNote.topics" :key="index" class="cursor-pointer">#{{topic.name}}</li>
                 </ul>
                 <div class="text-gray-500 text-[14px] mt-[12px]">
-                  编辑于 {{ currNote.updateTime }}
+                  编辑于 {{ formatRelativeTime(currNote.updateTime) }}
                 </div>
               </div>
 
@@ -316,12 +316,13 @@ import ImageCarousel from '@/components/common/ImageCarousel.vue'
 import VideoPlayer from '@/components/common/VideoPlayer.vue'
 import LikeIcon from '@/components/common/LikeIcon.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
-import { getNoteDetail, getNoteInteractionState, likeNote, unlikeNote, collectNote, uncollectNote, updateNoteVisibility } from '@/api/note'
+import { getNoteDetail, likeNote, unlikeNote, collectNote, uncollectNote, updateNoteVisibility } from '@/api/note'
 import { getCommentList, publishComment, getChildCommentList, likeComment, unlikeComment, getLikedCommentIds, deleteComment } from '@/api/comment'
 import { followUser, unfollowUser, checkFollowing } from '@/api/relation'
 import { useUserStore } from '@/stores/user'
 import { message } from '@/utils/message'
 import { uploadFile } from '@/api/file'
+import { formatRelativeTime } from '@/utils/date'
 
 const userStore = useUserStore()
 
@@ -345,7 +346,7 @@ const mergeNoteDetail = (detail = {}) => ({
   topics: detail.topics || (detail.topicName ? [{ id: detail.topicId, name: detail.topicName }] : []),
   likeTotal: detail.likeTotal ?? props.note.likeTotal ?? 0,
   collectTotal: detail.collectTotal ?? props.note.collectTotal ?? 0,
-  commentTotal: detail.commentTotal ?? props.note.commentTotal ?? 0
+  commentTotal: Number(detail.commentTotal ?? props.note.commentTotal ?? 0) || 0
 })
 
 const emit = defineEmits(['update:visible', 'interaction-change'])
@@ -432,12 +433,26 @@ const hasMoreComments = computed(() => currCommentPageNo.value < totalCommentPag
 const isLoadingMoreComments = ref(false)
 
 const normalizeComment = (comment) => {
-  const childComments = [...(comment.childComments || [])]
+  if (!comment) return comment
+  const childComments = [...(comment.childComments || [])].map(child => ({
+    ...child,
+    likeTotal: Number(child.likeTotal) || 0,
+    childCommentTotal: Number(child.childCommentTotal) || 0
+  }))
   if (comment.firstReplyComment &&
       !childComments.some(child => String(child.commentId) === String(comment.firstReplyComment.commentId))) {
-    childComments.unshift(comment.firstReplyComment)
+    childComments.unshift({
+      ...comment.firstReplyComment,
+      likeTotal: Number(comment.firstReplyComment.likeTotal) || 0,
+      childCommentTotal: Number(comment.firstReplyComment.childCommentTotal) || 0
+    })
   }
-  return { ...comment, childComments }
+  return {
+    ...comment,
+    likeTotal: Number(comment.likeTotal) || 0,
+    childCommentTotal: Number(comment.childCommentTotal) || 0,
+    childComments
+  }
 }
 
 const loadMoreComments = () => {
@@ -471,14 +486,15 @@ const handleVisibilityToggle = async () => {
   try {
     const res = await updateNoteVisibility(currNoteId.value, visible)
     if (!res.success) {
-      message.show(res.message || '修改可见性失败')
+      message.error(res.message || res.errorMessage || '修改可见性失败')
       return
     }
     currNote.value.visible = visible
-    message.show(visible === 1 ? '已设为仅自己可见' : '已公开笔记')
+    message.success(visible === 1 ? '已设为仅自己可见' : '已公开笔记')
   } catch (error) {
     console.error('修改笔记可见性失败:', error)
-    message.show('修改可见性失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || error.message || '修改可见性失败')
   }
 }
 
@@ -582,16 +598,7 @@ watch(() => props.visible, (newVisible) => {
         if (res.data.commentTotal != null) {
           commentTotal.value = Number(res.data.commentTotal) || 0
         }
-      }
-    })
-
-    if (isLoggedIn.value) {
-      checkFollowing(props.note.creatorId).then(res => {
-        if (res.success) isCreatorFollowed.value = Boolean(res.data)
-      }).catch(error => console.error('查询关注状态失败:', error))
-
-      getNoteInteractionState(props.note.id).then(res => {
-        if (res.success && res.data) {
+        if (isLoggedIn.value && res.data.isLiked != null) {
           isNoteLiked.value = Boolean(res.data.isLiked)
           isNoteCollected.value = Boolean(res.data.isCollected)
           emit('interaction-change', {
@@ -602,18 +609,24 @@ watch(() => props.visible, (newVisible) => {
             isCollected: isNoteCollected.value
           })
         }
-      })
+      }
+    })
+
+    if (isLoggedIn.value) {
+      checkFollowing(props.note.creatorId).then(res => {
+        if (res.success) isCreatorFollowed.value = Boolean(res.data)
+      }).catch(error => console.error('查询关注状态失败:', error))
     }
 
     getCommentList(props.note.id, 1).then(res => {
       if (res.success) {
         comments.value = (res.data || []).map(normalizeComment)
         hydrateCommentLikeState(comments.value)
-        currCommentPageNo.value = res.pageNo
-        totalCommentPage.value = res.totalPage
-        if (commentTotal.value === 0 && res.totalCount) {
-          commentTotal.value = res.totalCount
-          currNote.value.commentTotal = res.totalCount
+        currCommentPageNo.value = Number(res.pageNo) || 1
+        totalCommentPage.value = Number(res.totalPage) || 1
+        if (Number(commentTotal.value) === 0 && res.totalCount != null) {
+          commentTotal.value = Number(res.totalCount) || 0
+          currNote.value.commentTotal = commentTotal.value
         }
       }
     })
@@ -739,7 +752,7 @@ const findParentComment = (commentId, commentsList) => {
 
 const handlePublishComment = () => {
   if (!commentContent.value.trim() && !commentImage.value) {
-    message.show('请输入评论内容或上传图片')
+    message.warning('请输入评论内容或上传图片')
     return
   }
 
@@ -750,7 +763,7 @@ const handlePublishComment = () => {
     imageUrl: commentImage.value
   }).then(res => {
     if (res.success) {
-      message.show('评论成功')
+      message.success('评论成功')
 
       let commentId = res.data || null
 
@@ -758,7 +771,7 @@ const handlePublishComment = () => {
         commentId: commentId,
         userId: userStore.profile.userId,
         content: commentContent.value,
-        createTime: '刚刚',
+        createTime: new Date().toISOString(),
         nickname: userStore.profile.nickname,
         avatar: userStore.profile.avatar,
         likeTotal: 0,
@@ -774,15 +787,12 @@ const handlePublishComment = () => {
             newComment.replyUserName = replyTo.value.nickname
             newComment.replyUserId = replyTo.value.userId
             result.parentComment.childComments.splice(result.childIndex + 1, 0, newComment)
-            result.parentComment.childCommentTotal = (result.parentComment.childCommentTotal || 0) + 1
+            result.parentComment.childCommentTotal = (Number(result.parentComment.childCommentTotal) || 0) + 1
           } else {
             if (!result.parentComment.childComments) {
               result.parentComment.childComments = []
             }
-            if (!result.parentComment.childCommentTotal) {
-              result.parentComment.childCommentTotal = 0
-            }
-            result.parentComment.childCommentTotal += 1
+            result.parentComment.childCommentTotal = (Number(result.parentComment.childCommentTotal) || 0) + 1
 
             if (!result.parentComment.childComments.length) {
               result.parentComment.childComments = [newComment]
@@ -799,7 +809,7 @@ const handlePublishComment = () => {
         }
       }
 
-      commentTotal.value += 1
+      commentTotal.value = (Number(commentTotal.value) || 0) + 1
       currNote.value.commentTotal = commentTotal.value
 
 
@@ -819,7 +829,13 @@ const handlePublishComment = () => {
           replyTo.value = null
         }
       })
+    } else {
+      message.error(res.message || res.errorMessage || '评论发布失败')
     }
+  }).catch(err => {
+    console.error('评论发布失败:', err)
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || err.message || '评论发布失败')
   })
 }
 
@@ -836,13 +852,14 @@ const loadChildComments = (parentComment, pageNo = 1) => {
   getChildCommentList(parentComment.commentId, parentComment.currChildCommentPage + 1).then(res => {
     if (res.success) {
       if (res.data && res.data.length > 0) {
-        parentComment.childComments.push(...res.data)
-        hydrateCommentLikeState(res.data)
+        const normalizedChildren = res.data.map(normalizeComment)
+        parentComment.childComments.push(...normalizedChildren)
+        hydrateCommentLikeState(normalizedChildren)
 
-        parentComment.childCommentTotal = res.totalCount
-        parentComment.currChildCommentPage = res.pageNo
-        parentComment.totalChildCommentPage = res.totalPage
-        parentComment.hasMoreChildComments = res.pageNo < res.totalPage
+        parentComment.childCommentTotal = Number(res.totalCount) || 0
+        parentComment.currChildCommentPage = Number(res.pageNo) || 1
+        parentComment.totalChildCommentPage = Number(res.totalPage) || 1
+        parentComment.hasMoreChildComments = Number(res.pageNo || 0) < Number(res.totalPage || 0)
       } else {
         parentComment.hasMoreChildComments = false
       }
@@ -898,10 +915,11 @@ const handleNoteLike = () => {
         isNoteLiked.value = true
         updateInteractionTotal('likeTotal', 1)
       } else {
-        message.show(res.message)
+        message.error(res.message || res.errorMessage || '点赞失败')
       }
-    }).catch(() => {
-      message.show('点赞失败，请稍后重试')
+    }).catch(err => {
+      const errData = err?.response?.data
+      message.error(errData?.message || errData?.errorMessage || '点赞失败，请稍后重试')
     }).finally(() => {
       isNoteLikeSubmitting.value = false
     })
@@ -913,10 +931,11 @@ const handleNoteLike = () => {
       isNoteLiked.value = false
       updateInteractionTotal('likeTotal', -1)
     } else {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || '取消点赞失败')
     }
-  }).catch(() => {
-    message.show('取消点赞失败，请稍后重试')
+  }).catch(err => {
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || '取消点赞失败，请稍后重试')
   }).finally(() => {
     isNoteLikeSubmitting.value = false
   })
@@ -932,7 +951,7 @@ const handleCommentLike = async ({ comment, liked }) => {
   try {
     const res = await (liked ? likeComment(comment.commentId) : unlikeComment(comment.commentId))
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || (liked ? '评论点赞失败' : '取消评论点赞失败'))
       return
     }
     comment.isLiked = liked
@@ -940,7 +959,8 @@ const handleCommentLike = async ({ comment, liked }) => {
     comment.likeTotal = Math.max(0, total + (liked ? 1 : -1))
   } catch (error) {
     console.error(liked ? '评论点赞失败:' : '取消评论点赞失败:', error)
-    message.show(liked ? '评论点赞失败' : '取消评论点赞失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || (liked ? '评论点赞失败' : '取消评论点赞失败'))
   } finally {
     comment.likeSubmitting = false
   }
@@ -950,7 +970,7 @@ const handleDeleteComment = async (comment) => {
   try {
     const res = await deleteComment(comment.commentId)
     if (!res.success) {
-      message.show(res.message || '删除失败')
+      message.error(res.message || res.errorMessage || '删除失败')
       return
     }
     const located = findParentComment(comment.commentId, comments.value)
@@ -966,11 +986,12 @@ const handleDeleteComment = async (comment) => {
       commentTotal.value = Math.max(0, Number(commentTotal.value || 0) - removedTotal)
     }
     currNote.value.commentTotal = commentTotal.value
-    message.show('删除成功')
+    message.success('删除成功')
 
   } catch (error) {
     console.error('删除评论失败:', error)
-    message.show('删除评论失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || '删除评论失败')
   }
 }
 
@@ -990,10 +1011,11 @@ const handleNoteCollect = () => {
         isNoteCollected.value = true
         updateInteractionTotal('collectTotal', 1)
       } else {
-        message.show(res.message)
+        message.error(res.message || res.errorMessage || '收藏失败')
       }
-    }).catch(() => {
-      message.show('收藏失败，请稍后重试')
+    }).catch(err => {
+      const errData = err?.response?.data
+      message.error(errData?.message || errData?.errorMessage || '收藏失败，请稍后重试')
     }).finally(() => {
       isNoteCollectSubmitting.value = false
     })
@@ -1005,10 +1027,11 @@ const handleNoteCollect = () => {
       isNoteCollected.value = false
       updateInteractionTotal('collectTotal', -1)
     } else {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || '取消收藏失败')
     }
-  }).catch(() => {
-    message.show('取消收藏失败，请稍后重试')
+  }).catch(err => {
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || '取消收藏失败，请稍后重试')
   }).finally(() => {
     isNoteCollectSubmitting.value = false
   })
@@ -1025,14 +1048,15 @@ const handleFollow = async () => {
       ? unfollowUser(currNote.value.creatorId)
       : followUser(currNote.value.creatorId))
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || (wasFollowing ? '取消关注失败' : '关注失败'))
       return
     }
     isCreatorFollowed.value = !wasFollowing
-    message.show(wasFollowing ? '已取消关注' : '关注成功')
+    message.success(wasFollowing ? '已取消关注' : '关注成功')
   } catch (error) {
     console.error(wasFollowing ? '取消关注失败:' : '关注失败:', error)
-    message.show(wasFollowing ? '取消关注失败' : '关注失败')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || (wasFollowing ? '取消关注失败' : '关注失败'))
   }
 }
 </script>

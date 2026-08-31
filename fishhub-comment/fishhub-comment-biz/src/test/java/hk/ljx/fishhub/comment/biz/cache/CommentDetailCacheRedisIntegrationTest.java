@@ -62,6 +62,11 @@ class CommentDetailCacheRedisIntegrationTest {
         context.registerBean(LettuceConnectionFactory.class, this::connectionFactory);
         context.registerBean(StringRedisTemplate.class,
                 () -> new StringRedisTemplate(context.getBean(LettuceConnectionFactory.class)));
+        context.registerBean(hk.ljx.framework.common.util.SafeRedisUtil.class,
+                () -> new hk.ljx.framework.common.util.SafeRedisUtil(context.getBean(StringRedisTemplate.class)));
+        context.registerBean(org.redisson.api.RedissonClient.class,
+                () -> org.mockito.Mockito.mock(org.redisson.api.RedissonClient.class));
+        context.register(hk.ljx.fishhub.comment.biz.service.impl.CommentCacheServiceImpl.class);
         context.register(CommentDetailCache.class);
         context.refresh();
         return context;

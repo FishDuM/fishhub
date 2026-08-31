@@ -6,11 +6,13 @@ import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.LikeUnlikeNoteTypeEnum;
 import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
-import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
-import hk.ljx.framework.mq.consumer.BatchPushConsumer;
+import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
+import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -18,32 +20,37 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * 笔记点赞/取消点赞计数消费者
+ * 笔记点赞/取消点赞计数微批消费者
  */
 @Component
 @Slf4j
-public class CountNoteLikeConsumer extends AbstractNoteCountAggregationConsumer {
+@RocketMQMessageListener(
+        consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_NOTE_LIKE,
+        topic = MQConstants.TOPIC_COUNT_NOTE_LIKE,
+        consumeMode = ConsumeMode.CONCURRENTLY
+)
+public class CountNoteLikeConsumer extends AbstractNoteCountAggregationConsumer implements RocketMQListener<List<MessageExt>> {
 
     /** 每批最多拉取的消息数 */
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
-
-    private final BatchPushConsumer batchPushConsumer;
 
     public CountNoteLikeConsumer(NoteCountDOMapper noteCountDOMapper,
                                  UserCountDOMapper userCountDOMapper,
                                  MqIdempotentExecutor mqIdempotentExecutor,
                                  StringRedisTemplate stringRedisTemplate,
-                                 UserCountCacheVersionService userCountCacheVersionService,
-                                 BatchConsumerFactory batchConsumerFactory) throws MQClientException {
+                                 UserCountCacheVersionService userCountCacheVersionService) {
         super(noteCountDOMapper, userCountDOMapper, mqIdempotentExecutor, stringRedisTemplate, userCountCacheVersionService);
-        this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
-                "fishhub_group_" + MQConstants.TOPIC_COUNT_NOTE_LIKE,
-                MQConstants.TOPIC_COUNT_NOTE_LIKE,
-                "*",
-                CONSUME_BATCH_MAX_SIZE,
-                0,
-                BatchConsumerFactory.Mode.CONCURRENTLY,
-                this::consumeBatch);
+    }
+
+    @Override
+    public void onMessage(List<MessageExt> msgs) {
+        if (CollUtil.isEmpty(msgs)) {
+            return;
+        }
+        boolean success = consumeBatch(msgs);
+        if (!success) {
+            throw new RuntimeException("笔记点赞计数微批消费失败，触发 RocketMQ 重试");
+        }
     }
 
     private boolean consumeBatch(List<org.apache.rocketmq.common.message.MessageExt> msgs) {

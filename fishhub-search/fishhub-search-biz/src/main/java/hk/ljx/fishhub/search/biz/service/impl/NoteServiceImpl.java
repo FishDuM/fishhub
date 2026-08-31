@@ -42,6 +42,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.util.concurrent.TimeUnit;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
@@ -57,6 +60,13 @@ public class NoteServiceImpl implements NoteService {
     private static final Logger log = LoggerFactory.getLogger(NoteServiceImpl.class);
     private final RestHighLevelClient restHighLevelClient;
     private final UserClient userClient;
+
+    /** 笔记搜索本地短缓存（3 秒）：极大降低高并发相同关键词检索时的 ES 分词与高亮开销 */
+    private static final Cache<String, PageResponse<SearchNoteRspVO>> SEARCH_NOTE_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(100)
+            .maximumSize(1000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
 
     public NoteServiceImpl(RestHighLevelClient restHighLevelClient, UserClient userClient) {
         this.restHighLevelClient = restHighLevelClient;
@@ -77,11 +87,32 @@ public class NoteServiceImpl implements NoteService {
         Integer sort = searchNoteReqVO.getSort();
         Integer publishTimeRange = searchNoteReqVO.getPublishTimeRange();
 
+        String localCacheKey = String.format("%s:%s:%s:%s:%s", keyword, pageNo, type, sort, publishTimeRange);
+        PageResponse<SearchNoteRspVO> localCached = SEARCH_NOTE_LOCAL_CACHE.getIfPresent(localCacheKey);
+        if (localCached != null) {
+            return localCached;
+        }
+
         SearchRequest searchRequest = new SearchRequest(NoteIndex.NAME);
         // 新环境尚未产生公开笔记时，note 索引不存在应视为无搜索结果，而不是服务异常。
         searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
 
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.trackTotalHitsUpTo(10000);
+        sourceBuilder.fetchSource(new String[]{
+                NoteIndex.FIELD_NOTE_ID,
+                NoteIndex.FIELD_NOTE_CREATOR_ID,
+                NoteIndex.FIELD_NOTE_COVER,
+                NoteIndex.FIELD_NOTE_TITLE,
+                NoteIndex.FIELD_NOTE_TYPE,
+                NoteIndex.FIELD_NOTE_VIDEO_URI,
+                NoteIndex.FIELD_NOTE_UPDATE_TIME,
+                NoteIndex.FIELD_NOTE_AVATAR,
+                NoteIndex.FIELD_NOTE_NICKNAME,
+                NoteIndex.FIELD_NOTE_LIKE_TOTAL,
+                NoteIndex.FIELD_NOTE_COMMENT_TOTAL,
+                NoteIndex.FIELD_NOTE_COLLECT_TOTAL
+        }, null);
 
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery().must(
                 QueryBuilders.multiMatchQuery(keyword)
@@ -178,17 +209,23 @@ public class NoteServiceImpl implements NoteService {
             log.debug("==> 命中文档总数, hits: {}", total);
 
             SearchHits hits = searchResponse.getHits();
-            List<Long> creatorIds = Lists.newArrayList();
+            List<Long> missingCreatorIds = Lists.newArrayList();
             for (SearchHit hit : hits) {
                 Map<String, Object> map = hit.getSourceAsMap();
-                if (map != null && map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n) {
-                    creatorIds.add(n.longValue());
+                if (map != null) {
+                    String avatar = (String) map.get(NoteIndex.FIELD_NOTE_AVATAR);
+                    String nickname = (String) map.get(NoteIndex.FIELD_NOTE_NICKNAME);
+                    if (StringUtils.isBlank(avatar) || StringUtils.isBlank(nickname)) {
+                        if (map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n) {
+                            missingCreatorIds.add(n.longValue());
+                        }
+                    }
                 }
             }
 
             Map<Long, FindUserByIdRspDTO> userMap = Collections.emptyMap();
-            if (CollUtil.isNotEmpty(creatorIds)) {
-                List<FindUserByIdRspDTO> userDTOs = userClient.findByIds(creatorIds.stream().distinct().toList());
+            if (CollUtil.isNotEmpty(missingCreatorIds)) {
+                List<FindUserByIdRspDTO> userDTOs = userClient.findByIds(missingCreatorIds.stream().distinct().toList());
                 if (CollUtil.isNotEmpty(userDTOs)) {
                     userMap = userDTOs.stream()
                             .filter(Objects::nonNull)
@@ -204,7 +241,9 @@ public class NoteServiceImpl implements NoteService {
             throw new IllegalStateException("Elasticsearch 查询失败", e);
         }
 
-        return PageResponse.success(searchNoteRspVOS, pageNo, total);
+        PageResponse<SearchNoteRspVO> response = PageResponse.success(searchNoteRspVOS, pageNo, total);
+        SEARCH_NOTE_LOCAL_CACHE.put(localCacheKey, response);
+        return response;
     }
 
     private static SearchNoteRspVO buildSearchNoteRspVO(SearchHit hit, Map<Long, FindUserByIdRspDTO> userMap) {
@@ -217,16 +256,26 @@ public class NoteServiceImpl implements NoteService {
             highlightedTitle = hit.getHighlightFields().get(NoteIndex.FIELD_NOTE_TITLE).fragments()[0].string();
         }
 
-        long likeTotal = map.get(NoteIndex.FIELD_NOTE_LIKE_TOTAL) instanceof Number n ? n.longValue() : 0L;
-        long commentTotal = map.get(NoteIndex.FIELD_NOTE_COMMENT_TOTAL) instanceof Number n ? n.longValue() : 0L;
-        long collectTotal = map.get(NoteIndex.FIELD_NOTE_COLLECT_TOTAL) instanceof Number n ? n.longValue() : 0L;
-        Long noteId = map.get(NoteIndex.FIELD_NOTE_ID) instanceof Number n ? n.longValue() : null;
-        Long creatorId = map.get(NoteIndex.FIELD_NOTE_CREATOR_ID) instanceof Number n ? n.longValue() : null;
-        Integer noteType = map.get(NoteIndex.FIELD_NOTE_TYPE) instanceof Number n ? n.intValue() : null;
+        long likeTotal = getLongValue(map, NoteIndex.FIELD_NOTE_LIKE_TOTAL);
+        long commentTotal = getLongValue(map, NoteIndex.FIELD_NOTE_COMMENT_TOTAL);
+        long collectTotal = getLongValue(map, NoteIndex.FIELD_NOTE_COLLECT_TOTAL);
+        Long noteId = getLong(map, NoteIndex.FIELD_NOTE_ID);
+        Long creatorId = getLong(map, NoteIndex.FIELD_NOTE_CREATOR_ID);
+        Integer noteType = getInteger(map, NoteIndex.FIELD_NOTE_TYPE);
 
-        FindUserByIdRspDTO author = creatorId != null ? userMap.get(creatorId) : null;
-        String avatar = author != null ? author.getAvatar() : null;
-        String nickname = author != null ? author.getNickName() : null;
+        String avatar = (String) map.get(NoteIndex.FIELD_NOTE_AVATAR);
+        String nickname = (String) map.get(NoteIndex.FIELD_NOTE_NICKNAME);
+        if (StringUtils.isBlank(avatar) || StringUtils.isBlank(nickname)) {
+            FindUserByIdRspDTO author = creatorId != null ? userMap.get(creatorId) : null;
+            if (author != null) {
+                if (StringUtils.isBlank(avatar)) {
+                    avatar = author.getAvatar();
+                }
+                if (StringUtils.isBlank(nickname)) {
+                    nickname = author.getNickName();
+                }
+            }
+        }
 
         return SearchNoteRspVO.builder()
                 .noteId(noteId)
@@ -238,7 +287,7 @@ public class NoteServiceImpl implements NoteService {
                 .highlightTitle(highlightedTitle)
                 .avatar(avatar)
                 .nickname(nickname)
-                .updateTime(DateUtils.formatRelativeTime(updateTime))
+                .updateTime(DateUtils.localDateTime2String(updateTime))
                 .likeTotal(NumberUtils.formatNumberString(likeTotal))
                 .commentTotal(NumberUtils.formatNumberString(commentTotal))
                 .collectTotal(NumberUtils.formatNumberString(collectTotal))
@@ -246,22 +295,22 @@ public class NoteServiceImpl implements NoteService {
     }
 
     private static LocalDateTime parseUpdateTime(String updateTimeStr) {
-        if (StringUtils.isBlank(updateTimeStr)) {
-            return LocalDateTime.now();
-        }
-        try {
-            return LocalDateTime.parse(updateTimeStr, DateConstants.DATE_FORMAT_Y_M_D_H_M_S);
-        } catch (Exception ignored) {
-        }
-        try {
-            return LocalDateTime.parse(updateTimeStr, DateTimeFormatter.ISO_DATE_TIME);
-        } catch (Exception ignored) {
-        }
-        try {
-            return LocalDateTime.parse(updateTimeStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        } catch (Exception ignored) {
-        }
-        return LocalDateTime.now();
+        return DateUtils.parseFlexibleLocalDateTime(updateTimeStr, LocalDateTime.now());
+    }
+
+    private static Long getLong(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        return val instanceof Number n ? n.longValue() : null;
+    }
+
+    private static long getLongValue(Map<String, Object> map, String key) {
+        Long val = getLong(map, key);
+        return val != null ? val : 0L;
+    }
+
+    private static Integer getInteger(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        return val instanceof Number n ? n.intValue() : null;
     }
 
 }

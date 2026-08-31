@@ -5,9 +5,7 @@ import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
-import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.framework.mq.tx.TxLocalTransaction;
@@ -45,8 +43,6 @@ class Comment2DBConsumerTest {
     @Mock
     private CommentDOMapper commentDOMapper;
     @Mock
-    private NoteRpcService noteRpcService;
-    @Mock
     private TransactionTemplate transactionTemplate;
     @Mock
     private TransactionalMqSender transactionalMqSender;
@@ -58,32 +54,8 @@ class Comment2DBConsumerTest {
     private Comment2DBConsumer consumer;
 
     @Test
-    void shouldDiscardCommentWhenCurrentNoteWriteAccessIsRejected() {
-        when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(Collections.emptyList());
-        when(noteRpcService.findWritableNoteAccesses(anyList())).thenReturn(Collections.emptyList());
-        MessageExt message = new MessageExt();
-        message.setBody(JsonUtils.toJsonString(PublishCommentMqDTO.builder()
-                .commentId(1L)
-                .noteId(2L)
-                .creatorId(3L)
-                .createTime(LocalDateTime.of(2026, 8, 16, 12, 0))
-                .content("测试评论")
-                .build()).getBytes(StandardCharsets.UTF_8));
-
-        boolean success = consumer.consume(List.of(message));
-
-        assertEquals(true, success);
-        verify(noteRpcService).findWritableNoteAccesses(anyList());
-        verify(commentDOMapper, never()).batchInsert(anyList());
-    }
-
-    @Test
     void shouldBatchInsertWholeBatchInSingleMapperCall() {
         when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(Collections.emptyList());
-        List<NoteWriteAccessCheckReqDTO> accesses = List.of(
-                NoteWriteAccessCheckReqDTO.builder().noteId(2L).userId(3L).build(),
-                NoteWriteAccessCheckReqDTO.builder().noteId(4L).userId(5L).build());
-        when(noteRpcService.findWritableNoteAccesses(anyList())).thenReturn(accesses);
         when(commentDOMapper.batchInsert(anyList())).thenReturn(2);
         when(transactionTemplate.execute(any())).thenAnswer(inv -> {
             TransactionCallback<Object> callback = inv.getArgument(0);
@@ -125,8 +97,6 @@ class Comment2DBConsumerTest {
     @Test
     void shouldDiscardBatchWhenAllReplyTargetsAreInvalid() {
         when(commentDOMapper.selectByCommentIds(eq(List.of(10L)))).thenReturn(Collections.emptyList());
-        when(noteRpcService.findWritableNoteAccesses(anyList()))
-                .thenReturn(List.of(NoteWriteAccessCheckReqDTO.builder().noteId(2L).userId(3L).build()));
 
         MessageExt message = new MessageExt();
         message.setReconsumeTimes(4); // 超过重试阈值，直接校验丢弃

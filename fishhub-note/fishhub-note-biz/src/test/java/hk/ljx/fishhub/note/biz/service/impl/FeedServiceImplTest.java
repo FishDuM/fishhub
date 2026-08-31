@@ -62,13 +62,18 @@ class FeedServiceImplTest {
     @InjectMocks
     private FeedServiceImpl service;
 
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "safeRedisUtil", new hk.ljx.framework.common.util.SafeRedisUtil(stringRedisTemplate));
+    }
+
     @Test
     void shouldRequestCountsOnceWhenCursorPageCacheMisses() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
@@ -90,7 +95,7 @@ class FeedServiceImplTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn("{");
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
@@ -108,7 +113,7 @@ class FeedServiceImplTest {
     void shouldFallBackToMySqlWhenDiscoverRedisIsUnavailable() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenThrow(new IllegalStateException("redis unavailable"));
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L)).thenReturn(List.of(
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
                 FindUserByIdRspDTO.builder().id(10L).nickName("作者").build()));
@@ -120,7 +125,7 @@ class FeedServiceImplTest {
         var response = service.findDiscoverNoteList(request);
 
         assertEquals(1, response.getData().size());
-        verify(noteDOMapper).selectDiscoverPageListByCursor(null, null, 11L);
+        verify(noteDOMapper).selectDiscoverPageListByCursor(null, null, 21L);
     }
 
     @Test
@@ -158,23 +163,21 @@ class FeedServiceImplTest {
     }
 
     @Test
-    void shouldRefreshCountsWhenDiscoverSnapshotIsHit() {
+    void shouldUseBakedCountsWithoutFeignWhenDiscoverSnapshotIsHit() {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey))
                 .thenReturn("{\"notes\":[{\"noteId\":101,\"type\":0,\"title\":\"标题\",\"likeTotal\":\"5\",\"isLiked\":false}],\"nextCursor\":null}");
-        when(countClient.findByNoteIds(List.of(101L))).thenReturn(List.of(
-                FindNoteCountsByIdRspDTO.builder().noteId(101L).likeTotal(8L).build()));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
         var response = service.findDiscoverNoteList(request);
 
         assertEquals(1, response.getData().size());
-        assertEquals("8", response.getData().get(0).getLikeTotal());
-        // 快照命中时也实时通过 countClient 刷新最新点赞数
-        verify(countClient, times(1)).findByNoteIds(List.of(101L));
+        assertEquals("5", response.getData().get(0).getLikeTotal());
+        // 快照命中时直接使用烘焙的点赞数，零 Feign RPC 调用
+        verify(countClient, never()).findByNoteIds(any());
     }
 
     @Test
@@ -215,12 +218,12 @@ class FeedServiceImplTest {
     @Test
     void shouldUseDoubleCheckAfterAcquiringDiscoverPageRebuildLock() throws InterruptedException {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
+        String lockKey = "lock:feed:discover:cursor:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null, "{\"notes\":[],\"nextCursor\":null}");
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
@@ -233,19 +236,19 @@ class FeedServiceImplTest {
     @Test
     void shouldNotRetryMySqlWhenDiscoverPageRebuildFails() throws InterruptedException {
         String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        String lockKey = "lock:feed:discover:cursor:v1:channel:0:cursor:first";
+        String lockKey = "lock:feed:discover:cursor:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 5L, TimeUnit.SECONDS)).thenReturn(true);
-        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 11L))
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
+        when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L))
                 .thenThrow(new IllegalStateException("mysql unavailable"));
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
         request.setCursor(0L);
 
         assertThrows(IllegalStateException.class, () -> service.findDiscoverNoteList(request));
 
-        verify(noteDOMapper, times(1)).selectDiscoverPageListByCursor(null, null, 11L);
+        verify(noteDOMapper, times(1)).selectDiscoverPageListByCursor(null, null, 21L);
     }
 }

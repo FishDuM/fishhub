@@ -108,7 +108,7 @@ public abstract class AbstractNoteCountAggregationConsumer {
             if (freshEvents.isEmpty()) {
                 return false;
             }
-            // 1. 按 noteId 升序聚合并更新笔记计数
+            // 按 noteId 升序聚合并更新笔记计数
             Map<Long, Integer> noteDeltas = new TreeMap<>();
             for (CountNoteMqDTO event : freshEvents) {
                 if (event.getNoteId() != null) {
@@ -121,7 +121,7 @@ public abstract class AbstractNoteCountAggregationConsumer {
                 }
             });
 
-            // 2. 按 creatorId 升序聚合并更新用户计数
+            // 按 creatorId 升序聚合并更新用户计数
             Map<Long, Integer> creatorDeltas = new TreeMap<>();
             for (CountNoteMqDTO event : freshEvents) {
                 if (event.getNoteCreatorId() != null) {

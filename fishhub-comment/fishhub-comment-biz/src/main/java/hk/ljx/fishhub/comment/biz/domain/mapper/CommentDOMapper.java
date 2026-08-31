@@ -16,12 +16,8 @@ public interface CommentDOMapper {
     /** 批量删除评论 */
     int deleteByIds(@Param("commentIds") List<Long> commentIds);
 
-    int insert(CommentDO record);
-
     /** 批量插入评论 */
     int batchInsert(@Param("comments") List<CommentBO> comments);
-
-    int insertSelective(CommentDO record);
 
     CommentDO selectByPrimaryKey(Long id);
 
@@ -75,10 +71,6 @@ public interface CommentDOMapper {
 
     /** 查询一级评论下子评论总数 */
     Long selectChildCommentTotalById(Long commentId);
-
-    int updateByPrimaryKeySelective(CommentDO record);
-
-    int updateByPrimaryKey(CommentDO record);
 
     /** 批量更新热度值 */
     int batchUpdateHeatByCommentIds(@Param("commentIds") List<Long> commentIds,

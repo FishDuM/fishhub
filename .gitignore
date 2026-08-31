@@ -46,10 +46,6 @@ build/
 **/application-dev.yml
 **/application-dev.yaml
 
-# 随项目维护的 XXL-JOB 管理端：仅提交可复现构建所需源码
-/xxl-job/**/target/
-/xxl-job/executor-logs/
-
 # 本地服务输出
 *.log
 *.log.*
@@ -57,7 +53,6 @@ build/
 *.err
 /ops/
 /.zcode/
-/.smoke/
 /docs/
 
 # Python
@@ -68,3 +63,4 @@ __pycache__/
 
 /scripts/
 /benchmark/
+/smoke/reports/

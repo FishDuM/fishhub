@@ -1,9 +1,12 @@
 server:
-  port: 8082 # 项目启动的端口
+  port: 8001 # 项目启动的端口
 
 spring:
   profiles:
     active: dev # 默认激活 dev 本地开发环境
+  threads:
+    virtual:
+      enabled: true # 开启 JDK 21 虚拟线程支持（Tomcat 与 Async 线程池）
   servlet:
     multipart:
       enabled: true
@@ -22,4 +25,4 @@ sa-token:
   is-concurrent: true
   is-share: true
   token-style: random-128
-  is-log: true
+  is-log: false

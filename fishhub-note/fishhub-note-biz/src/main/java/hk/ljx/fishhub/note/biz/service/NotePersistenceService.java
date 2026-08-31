@@ -21,12 +21,22 @@ public class NotePersistenceService {
     private final TxJournalStore txJournalStore;
 
     /**
-     * 发布笔记。
+     * 发布笔记（本地单事务写入）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void savePublishedNote(NoteDO note) {
+        noteDOMapper.insert(note);
+    }
+
+    /**
+     * 发布笔记（带事务消息登记）。
      */
     @Transactional(rollbackFor = Exception.class)
     public void savePublishedNote(NoteDO note, String txId) {
         noteDOMapper.insert(note);
-        txJournalStore.record(txId);
+        if (txId != null) {
+            txJournalStore.record(txId);
+        }
     }
 
     /**

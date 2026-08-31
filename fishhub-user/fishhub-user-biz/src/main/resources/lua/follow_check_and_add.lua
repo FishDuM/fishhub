@@ -11,6 +11,11 @@ if exists == 0 then
     return -1
 end
 
+-- 若存在 "-1" 哨兵元素，先将其移除，避免污染真实成员总数与物理分页
+if redis.call('ZSCORE', key, '-1') then
+    redis.call('ZREM', key, '-1')
+end
+
 -- 校验关注人数是否上限（最多关注 2000 人）
 local size = redis.call('ZCARD', key)
 if size >= 2000 then

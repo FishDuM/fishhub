@@ -23,18 +23,26 @@ import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.elasticsearch.search.sort.FieldSortBuilder;
 import org.elasticsearch.search.sort.SortBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.stereotype.Service;
-
+import java.util.concurrent.TimeUnit;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
 
 @Service
 public class UserServiceImpl implements UserService {
 
     private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
     private final RestHighLevelClient restHighLevelClient;
+
+    /** 用户搜索本地短缓存（3 秒） */
+    private static final Cache<String, PageResponse<SearchUserRspVO>> SEARCH_USER_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(100)
+            .maximumSize(1000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
 
     public UserServiceImpl(RestHighLevelClient restHighLevelClient) {
         this.restHighLevelClient = restHighLevelClient;
@@ -53,6 +61,12 @@ public class UserServiceImpl implements UserService {
         // 当前页码
         Integer pageNo = searchUserReqVO.getPageNo();
 
+        String localCacheKey = keyword + ":" + pageNo;
+        PageResponse<SearchUserRspVO> localCached = SEARCH_USER_LOCAL_CACHE.getIfPresent(localCacheKey);
+        if (localCached != null) {
+            return localCached;
+        }
+
         // 构建 SearchRequest，指定索引
         SearchRequest searchRequest = new SearchRequest(UserIndex.NAME);
         // 新环境尚未注册用户时，user 索引不存在应视为无搜索结果，而不是服务异常。
@@ -60,6 +74,15 @@ public class UserServiceImpl implements UserService {
 
         // 构建查询内容
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+        sourceBuilder.trackTotalHitsUpTo(10000);
+        sourceBuilder.fetchSource(new String[]{
+                UserIndex.FIELD_USER_ID,
+                UserIndex.FIELD_USER_NICKNAME,
+                UserIndex.FIELD_USER_AVATAR,
+                UserIndex.FIELD_USER_FISHHUB_ID,
+                UserIndex.FIELD_USER_NOTE_TOTAL,
+                UserIndex.FIELD_USER_FANS_TOTAL
+        }, null);
 
         // 构建 multi_match 查询，查询 nickname 和 fishhub_id 字段
         sourceBuilder.query(QueryBuilders.multiMatchQuery(
@@ -142,7 +165,9 @@ public class UserServiceImpl implements UserService {
             throw new IllegalStateException("Elasticsearch 查询失败", e);
         }
 
-        return PageResponse.success(searchUserRspVOS, pageNo, total);
+        PageResponse<SearchUserRspVO> response = PageResponse.success(searchUserRspVOS, pageNo, total);
+        SEARCH_USER_LOCAL_CACHE.put(localCacheKey, response);
+        return response;
     }
 
 }

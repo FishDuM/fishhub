@@ -47,7 +47,8 @@ public class DeleteCommentConsumer implements RocketMQListener<String> {
     public void onMessage(String body) {
         CommentDO payload = JsonUtils.parseObject(body, CommentDO.class);
         if (payload == null || payload.getId() == null) {
-            throw new IllegalArgumentException("评论删除消息格式错误");
+            log.error("丢弃无法解析的评论删除消息: {}", body);
+            return;
         }
 
         // 主评论已不存在说明上一次已整体提交，缓存失效事件已由 outbox 保证投递，直接 ACK。

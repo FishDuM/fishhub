@@ -155,7 +155,32 @@ const loadNotes = async (channelId = '0', isFirstPage = true) => {
     if (isFirstPage) {
       loadingRef.value?.hide()
     }
+    checkAndFillScreen(channelId, requestId)
   }
+}
+
+const checkAndFillScreen = (channelId, requestId) => {
+  nextTick(() => {
+    if (requestId && !isCurrentRequest(requestId)) return
+    if (!hasMore.value || isLoading.value) return
+
+    const columnElements = document.querySelectorAll('.masonry-column')
+    let minColumnBottom = Infinity
+    if (columnElements.length > 0) {
+      columnElements.forEach(col => {
+        const bottom = col.getBoundingClientRect().bottom
+        if (bottom < minColumnBottom) minColumnBottom = bottom
+      })
+    }
+
+    const windowHeight = window.innerHeight
+    const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
+
+    // 若最短列尚未铺满窗口底部（或整个页面高度未超过视口 + 300px 缓冲），自动继续加载下一页
+    if (minColumnBottom <= windowHeight + 100 || scrollHeight <= windowHeight + 300) {
+      loadNotes(channelId, false)
+    }
+  })
 }
 
 const loadMoreNotes = () => {
@@ -210,7 +235,7 @@ const handleScroll = () => {
     const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
     const clientHeight = document.documentElement.clientHeight || window.innerHeight
 
-    if (scrollHeight - scrollTop - clientHeight < 150) {
+    if (scrollHeight - scrollTop - clientHeight < 300) {
       loadMoreNotes()
     }
   }, 100)

@@ -1,8 +1,6 @@
 package hk.ljx.fishhub.comment.biz.service.impl;
 
-import hk.ljx.framework.common.util.CacheRebuildSupport;
 import hk.ljx.framework.common.util.CacheTtl;
-import hk.ljx.framework.common.util.RebuildLock;
 
 import cn.hutool.core.collection.CollUtil;
 import com.google.common.base.Preconditions;
@@ -26,15 +24,15 @@ import hk.ljx.fishhub.comment.biz.enums.*;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.model.vo.*;
+import hk.ljx.fishhub.comment.biz.domain.dataobject.CommentContentDO;
+import hk.ljx.fishhub.comment.biz.domain.repository.CommentContentRepository;
 import hk.ljx.fishhub.comment.biz.rpc.DistributedIdGeneratorRpcService;
-import hk.ljx.fishhub.comment.biz.rpc.KeyValueRpcService;
 import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
+import hk.ljx.fishhub.comment.biz.service.CommentCacheService;
 import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
 import hk.ljx.fishhub.comment.biz.service.CommentService;
-import hk.ljx.fishhub.comment.biz.kv.dto.req.FindCommentContentReqDTO;
-import hk.ljx.fishhub.comment.biz.kv.dto.rsp.FindCommentContentRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +49,9 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.util.concurrent.TimeUnit;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -66,22 +67,32 @@ public class CommentServiceImpl implements CommentService {
 
     private final NoteRpcService noteRpcService;
     private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-    private final KeyValueRpcService keyValueRpcService;
+    private final CommentContentRepository commentContentRepository;
     private final UserClient userClient;
     private final CommentDOMapper commentDOMapper;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final CommentCacheService commentCacheService;
     private final CommentDetailCache commentDetailCache;
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
     private final RocketMQTemplate rocketMQTemplate;
     private final TransactionTemplate transactionTemplate;
-    private final RedissonClient redissonClient;
     private final CommentLikeRealtimeService commentLikeRealtimeService;
 
-    private static final int CACHE_REBUILD_RETRY_TIMES = 3;
-    private static final long CACHE_REBUILD_RETRY_INTERVAL_MILLIS = 20L;
-    private static final long ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS = 2L;
-    private static final long COMMENT_LIST_REBUILD_LOCK_SECONDS = 5L;
+    /** 一级热点评论分页本地短缓存（3 秒）：极大降低高并发下对同一笔记热度评论的重复锁竞争与 Feign/DB 穿透 */
+    private static final Cache<String, PageResponse<FindCommentItemRspVO>> COMMENT_PAGE_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(500)
+            .maximumSize(5000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
+
+    /** 二级子评论分页本地短缓存（3 秒） */
+    private static final Cache<String, PageResponse<FindChildCommentItemRspVO>> CHILD_COMMENT_PAGE_LOCAL_CACHE = Caffeine.newBuilder()
+            .initialCapacity(500)
+            .maximumSize(5000)
+            .expireAfterWrite(3, TimeUnit.SECONDS)
+            .build();
+
+
 
 
     /**
@@ -136,33 +147,54 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public PageResponse<FindCommentItemRspVO> findCommentPageList(FindCommentPageListReqVO findCommentPageListReqVO) {
         Long noteId = findCommentPageListReqVO.getNoteId();
-        ensureNoteAccessible(noteId);
         Integer pageNo = findCommentPageListReqVO.getPageNo();
         long pageSize = 10;
 
+        String localCacheKey = noteId + ":" + pageNo;
+        PageResponse<FindCommentItemRspVO> localCached = COMMENT_PAGE_LOCAL_CACHE.getIfPresent(localCacheKey);
+        if (localCached != null) {
+            return localCached;
+        }
+
+        ensureNoteAccessible(noteId);
+
+        PageResponse<FindCommentItemRspVO> response = doFindCommentPageList(noteId, pageNo, pageSize);
+        if (response != null && CollUtil.isNotEmpty(response.getData())) {
+            COMMENT_PAGE_LOCAL_CACHE.put(localCacheKey, response);
+        }
+        return response;
+    }
+
+    private PageResponse<FindCommentItemRspVO> doFindCommentPageList(Long noteId, Integer pageNo, long pageSize) {
         // 一级评论数单独缓存；不能拿包含回复数的笔记评论总数替代。
-        long count = getOneLevelCommentTotal(noteId);
+        long count = commentCacheService.getOneLevelCommentTotal(noteId, () -> queryOneLevelCommentTotal(noteId));
 
         if (count == 0) {
             return PageResponse.success(Collections.emptyList(), pageNo, 0, pageSize);
         }
 
         List<FindCommentItemRspVO> commentRspVOS = Lists.newArrayList();
-
         long offset = PageResponse.getOffset(pageNo, pageSize);
 
-        String commentZSetKey = RedisKeyConstants.buildCommentListKey(noteId);
-        boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(commentZSetKey));
+        boolean hasKey = commentCacheService.hasCommentListZSet(noteId);
 
         // 若不存在且查询前 50 页热点数据，单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
         if (!hasKey && offset < 500) {
-            rebuildCommentListZSetWithLock(commentZSetKey, noteId);
-            hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(commentZSetKey));
+            if (commentCacheService.tryLockCommentListRebuild(noteId)) {
+                try {
+                    if (!commentCacheService.hasCommentListZSet(noteId)) {
+                        List<CommentDO> heatComments = commentDOMapper.selectHeatComments(noteId);
+                        commentCacheService.syncHeatComments(noteId, heatComments);
+                    }
+                } finally {
+                    commentCacheService.unlockCommentListRebuild(noteId);
+                }
+            }
+            hasKey = commentCacheService.hasCommentListZSet(noteId);
         }
 
         if (hasKey && offset < 500) {
-            Set<String> commentIds = stringRedisTemplate.<String>opsForZSet()
-                    .reverseRangeByScore(commentZSetKey, -Double.MAX_VALUE, Double.MAX_VALUE, offset, pageSize);
+            Set<String> commentIds = commentCacheService.getCommentIdsByZSet(noteId, offset, pageSize);
 
             if (CollUtil.isNotEmpty(commentIds)) {
                 List<Long> commentIdList = commentIds.stream()
@@ -173,7 +205,7 @@ public class CommentServiceImpl implements CommentService {
                         .map(RedisKeyConstants::buildCommentDetailKey)
                         .toList();
 
-                List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
+                List<String> commentsJsonList = commentCacheService.multiGetCommentDetails(commentIdKeys);
 
                 Map<Long, FindCommentItemRspVO> detailMap = new HashMap<>();
                 List<Long> expiredCommentIds = Lists.newArrayList();
@@ -235,18 +267,31 @@ public class CommentServiceImpl implements CommentService {
     @Override
     public PageResponse<FindChildCommentItemRspVO> findChildCommentPageList(FindChildCommentPageListReqVO findChildCommentPageListReqVO) {
         Long parentCommentId = findChildCommentPageListReqVO.getParentCommentId();
+        Integer pageNo = findChildCommentPageListReqVO.getPageNo();
+        long pageSize = 6;
+
+        String localCacheKey = parentCommentId + ":" + pageNo;
+        PageResponse<FindChildCommentItemRspVO> localCached = CHILD_COMMENT_PAGE_LOCAL_CACHE.getIfPresent(localCacheKey);
+        if (localCached != null) {
+            return localCached;
+        }
+
         CommentDO parentComment = commentDOMapper.selectByPrimaryKey(parentCommentId);
         if (parentComment == null) {
             throw new BizException(ResponseCodeEnum.PARENT_COMMENT_NOT_FOUND);
         }
         ensureNoteAccessible(parentComment.getNoteId());
-        Integer pageNo = findChildCommentPageListReqVO.getPageNo();
-        long pageSize = 6;
 
-        String countCommentKey = CountKeyConstants.buildCountCommentKey(parentCommentId);
-        String redisCount = stringRedisTemplate.<String, String>opsForHash()
-                .get(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL);
-        long count = Objects.isNull(redisCount) ? 0L : Long.parseLong(redisCount);
+        PageResponse<FindChildCommentItemRspVO> response = doFindChildCommentPageList(parentCommentId, pageNo, pageSize);
+        if (response != null && CollUtil.isNotEmpty(response.getData())) {
+            CHILD_COMMENT_PAGE_LOCAL_CACHE.put(localCacheKey, response);
+        }
+        return response;
+    }
+
+    private PageResponse<FindChildCommentItemRspVO> doFindChildCommentPageList(Long parentCommentId, Integer pageNo, long pageSize) {
+        Long redisCount = commentCacheService.getChildCommentTotal(parentCommentId);
+        long count = Objects.isNull(redisCount) ? 0L : redisCount;
 
         if (Objects.isNull(redisCount)) {
             // 查询一级评论下子评论的总数 (直接查询 t_comment 表的 child_comment_total 字段，提升查询性能, 避免 count(*))
@@ -259,7 +304,7 @@ public class CommentServiceImpl implements CommentService {
 
             Long childTotal = countRecord.getChildCommentTotal();
             count = Objects.isNull(childTotal) ? 0L : childTotal;
-            threadPoolTaskExecutor.execute(() -> syncCommentCount2Redis(countCommentKey, countRecord));
+            threadPoolTaskExecutor.execute(() -> commentCacheService.putCommentCount(parentCommentId, countRecord.getChildCommentTotal(), countRecord.getLikeTotal()));
         }
 
         if (count == 0) {
@@ -271,27 +316,31 @@ public class CommentServiceImpl implements CommentService {
         // 计算分页查询的偏移量 offset (需要 +1，因为最早回复的二级评论已经被展示了)
         long offset = PageResponse.getOffset(pageNo, pageSize) + 1;
 
-        String childCommentZSetKey = RedisKeyConstants.buildChildCommentListKey(parentCommentId);
-        boolean hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
+        boolean hasKey = commentCacheService.hasChildCommentListZSet(parentCommentId);
 
         // 若不存在且查询的是热点页（前 10 页且落在缓存窗口内），单飞抢锁重建或等待已抢锁线程建好，防止并发击穿数据库
-        // 缓存窗口 = 最新 CHILD_COMMENT_LIST_MAX_SIZE 条；爆款评论翻到窗口之前的页不需要重建缓存（直接走 DB）
         if (!hasKey && offset < 6 * 10
                 && offset >= Math.max(0L, count - CommentChangedLocalHandler.CHILD_COMMENT_LIST_MAX_SIZE)) {
-            rebuildChildCommentListZSetWithLock(parentCommentId, childCommentZSetKey);
-            hasKey = Boolean.TRUE.equals(stringRedisTemplate.hasKey(childCommentZSetKey));
+            if (commentCacheService.tryLockChildCommentListRebuild(parentCommentId)) {
+                try {
+                    if (!commentCacheService.hasChildCommentListZSet(parentCommentId)) {
+                        List<CommentDO> childCommentDOS = commentDOMapper.selectLatestChildCommentsByParentIdAndLimit(
+                                parentCommentId, (int) CommentChangedLocalHandler.CHILD_COMMENT_LIST_MAX_SIZE);
+                        commentCacheService.syncChildComments(parentCommentId, childCommentDOS);
+                    }
+                } finally {
+                    commentCacheService.unlockChildCommentListRebuild(parentCommentId);
+                }
+            }
+            hasKey = commentCacheService.hasChildCommentListZSet(parentCommentId);
         }
 
-        // 缓存为"最新 N 条"滑动窗口，覆盖 [count - cachedSize, count) 的升序区间：
-        // 仅当请求页落在该区间内才可命中 ZSET；否则（爆款评论翻到窗口之前的页）回源 DB 全量分页，
-        // 保证任意 offset 可达且与 DB 全量口径一致。
         if (hasKey && offset < count) {
-            Long cachedSize = stringRedisTemplate.opsForZSet().zCard(childCommentZSetKey);
+            Long cachedSize = commentCacheService.getChildCommentZSetCard(parentCommentId);
             long cacheStart = Math.max(0L, count - (cachedSize == null ? 0L : cachedSize));
             if (offset >= cacheStart) {
                 long rank = offset - cacheStart;
-                Set<String> childCommentIds = stringRedisTemplate.<String>opsForZSet()
-                        .rangeByScore(childCommentZSetKey, 0, Double.MAX_VALUE, rank, pageSize);
+                Set<String> childCommentIds = commentCacheService.getChildCommentIdsByZSet(parentCommentId, rank, pageSize);
 
                 if (CollUtil.isNotEmpty(childCommentIds)) {
                     List<String> childCommentIdList = Lists.newArrayList(childCommentIds);
@@ -300,7 +349,7 @@ public class CommentServiceImpl implements CommentService {
                             .map(RedisKeyConstants::buildCommentDetailKey)
                             .toList();
 
-                    List<String> commentsJsonList = commentDetailCache.multiGet(commentIdKeys);
+                    List<String> commentsJsonList = commentCacheService.multiGetCommentDetails(commentIdKeys);
 
                     List<Long> expiredChildCommentIds = Lists.newArrayList();
 
@@ -380,7 +429,8 @@ public class CommentServiceImpl implements CommentService {
 
         String destination = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_LIKE;
 
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一评论操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(commentId);
 
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markLiked(userId, commentId);
@@ -428,7 +478,8 @@ public class CommentServiceImpl implements CommentService {
 
         String destination = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE + ":" + MQConstants.TAG_UNLIKE;
 
-        String hashKey = String.valueOf(userId);
+        // 分区键：同一评论操作路由到同一队列，保证消费端串行物理消除死锁
+        String hashKey = String.valueOf(commentId);
 
         // 先更新实时状态，再发送 MQ；发送彻底失败时由 rollback 清缓存回源。
         commentLikeRealtimeService.markUnliked(userId, commentId);
@@ -516,7 +567,7 @@ public class CommentServiceImpl implements CommentService {
                     .nickname(author != null ? author.getNickName() : null)
                     .content(content)
                     .imageUrl(comment.getImageUrl())
-                    .likeTime(DateUtils.formatRelativeTime(comment.getCreateTime()))
+                    .likeTime(DateUtils.localDateTime2String(comment.getCreateTime()))
                     .likeTotal(comment.getLikeTotal())
                     .build();
         }).toList();
@@ -525,33 +576,50 @@ public class CommentServiceImpl implements CommentService {
     }
 
     /**
-     * 按笔记分组批量从 KV 取评论正文，返回 contentUuid -> content
+     * 按笔记分组批量从 Cassandra 取评论正文，返回 contentUuid -> content
      */
     private Map<String, String> batchFindCommentContents(List<CommentDO> comments) {
         Map<String, String> contentByUuid = Maps.newHashMap();
         Map<Long, List<CommentDO>> byNote = comments.stream()
                 .collect(Collectors.groupingBy(CommentDO::getNoteId));
         byNote.forEach((noteId, noteComments) -> {
-            List<FindCommentContentReqDTO> reqs = Lists.newArrayList();
-            noteComments.forEach(comment -> {
-                if (!Boolean.TRUE.equals(comment.getIsContentEmpty())
-                        && StringUtils.isNotBlank(comment.getContentUuid())
-                        && comment.getCreateTime() != null) {
-                    reqs.add(FindCommentContentReqDTO.builder()
-                            .contentId(comment.getContentUuid())
-                            .yearMonth(DateConstants.DATE_FORMAT_Y_M.format(comment.getCreateTime()))
-                            .build());
-                }
-            });
-            if (CollUtil.isNotEmpty(reqs)) {
-                List<FindCommentContentRspDTO> rsps =
-                        keyValueRpcService.batchFindCommentContent(noteId, reqs);
-                if (CollUtil.isNotEmpty(rsps)) {
-                    rsps.forEach(rsp -> contentByUuid.put(rsp.getContentId(), rsp.getContent()));
+            contentByUuid.putAll(findCommentContentMap(noteId, noteComments));
+        });
+        return contentByUuid;
+    }
+
+    private Map<String, String> findCommentContentMap(Long noteId, List<CommentDO> comments) {
+        if (CollUtil.isEmpty(comments)) {
+            return Collections.emptyMap();
+        }
+        Map<String, List<UUID>> contentIdsByYearMonth = comments.stream()
+                .filter(c -> !Boolean.TRUE.equals(c.getIsContentEmpty())
+                        && StringUtils.isNotBlank(c.getContentUuid())
+                        && c.getCreateTime() != null)
+                .collect(Collectors.groupingBy(
+                        c -> DateConstants.DATE_FORMAT_Y_M.format(c.getCreateTime()),
+                        Collectors.mapping(c -> UUID.fromString(c.getContentUuid()), Collectors.toList())
+                ));
+
+        Map<String, String> resultMap = Maps.newHashMap();
+        contentIdsByYearMonth.forEach((yearMonth, uuids) -> {
+            if (CollUtil.isNotEmpty(uuids)) {
+                try {
+                    List<CommentContentDO> contentDOs = commentContentRepository
+                            .findByNoteIdAndYearMonthAndContentIdIn(noteId, yearMonth, uuids);
+                    if (CollUtil.isNotEmpty(contentDOs)) {
+                        for (CommentContentDO doc : contentDOs) {
+                            if (doc != null && doc.getPrimaryKey() != null && doc.getPrimaryKey().getContentId() != null) {
+                                resultMap.put(doc.getPrimaryKey().getContentId().toString(), doc.getContent());
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Cassandra 查询评论内容异常或超时，执行优雅降级, noteId={}, yearMonth={}, msg={}", noteId, yearMonth, e.getMessage());
                 }
             }
         });
-        return contentByUuid;
+        return resultMap;
     }
 
     /**
@@ -640,65 +708,33 @@ public class CommentServiceImpl implements CommentService {
      * @return
      */
     private Map<Long, Map<String, String>> getCommentCountDataAndSync2RedisHash(List<Long> notExpiredCommentIds) {
-        List<Long> expiredCountCommentIds = Lists.newArrayList();
-        List<String> commentCountKeys = notExpiredCommentIds.stream()
-                .map(CountKeyConstants::buildCountCommentKey).toList();
-
-        List<Object> results = stringRedisTemplate.executePipelined(new SessionCallback<>() {
-            @Override
-            public Object execute(RedisOperations operations) {
-                commentCountKeys.forEach(key ->
-                        operations.opsForHash().entries(key));
-                return null;
-            }
-        });
-
-        Map<Long, Map<String, String>> commentIdAndCountMap = Maps.newHashMap();
-        for (int i = 0; i < notExpiredCommentIds.size(); i++) {
-            Long currCommentId = notExpiredCommentIds.get(i);
-            Map<String, String> hash = (Map<String, String>) results.get(i);
-            if (CollUtil.isEmpty(hash)) {
-                expiredCountCommentIds.add(currCommentId);
-                continue;
-            }
-            commentIdAndCountMap.put(currCommentId, hash);
+        if (CollUtil.isEmpty(notExpiredCommentIds)) {
+            return Collections.emptyMap();
         }
 
-        if (CollUtil.size(expiredCountCommentIds) > 0) {
+        Map<Long, Map<String, String>> commentIdAndCountMap = new HashMap<>(commentCacheService.batchGetCommentCounts(notExpiredCommentIds));
+        List<Long> expiredCountCommentIds = notExpiredCommentIds.stream()
+                .filter(id -> !commentIdAndCountMap.containsKey(id))
+                .toList();
+
+        if (CollUtil.isNotEmpty(expiredCountCommentIds)) {
             List<CommentDO> commentDOS = commentDOMapper.selectCommentCountByIds(expiredCountCommentIds);
-
-            commentDOS.forEach(commentDO -> {
-                Integer level = commentDO.getLevel();
-                Map<String, String> map = Maps.newHashMap();
-                map.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
-                // 只有一级评论需要统计子评论总数
-                if (Objects.equals(level, CommentLevelEnum.ONE.getCode())) {
-                    map.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
-                }
-                commentIdAndCountMap.put(commentDO.getId(), map);
-            });
-
-            threadPoolTaskExecutor.execute(() -> {
-                stringRedisTemplate.executePipelined(new SessionCallback<>() {
-                    @Override
-                    public Object execute(RedisOperations operations) {
-                        commentDOS.forEach(commentDO -> {
-                            String key = CountKeyConstants.buildCountCommentKey(commentDO.getId());
-                            Integer level = commentDO.getLevel();
-                            Map<String, String> fieldsMap = new HashMap<>();
-                            fieldsMap.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
-                            if (Objects.equals(level, CommentLevelEnum.ONE.getCode())) {
-                                fieldsMap.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
-                            }
-                            operations.opsForHash().putAll(key, fieldsMap);
-
-                            long expireTime = CacheTtl.hours(1, 4);
-                            operations.expire(key, expireTime, TimeUnit.SECONDS);
-                        });
-                        return null;
+            if (CollUtil.isNotEmpty(commentDOS)) {
+                Map<Long, Map<String, String>> freshCounts = new HashMap<>(commentDOS.size());
+                commentDOS.forEach(commentDO -> {
+                    Integer level = commentDO.getLevel();
+                    Map<String, String> map = Maps.newHashMap();
+                    map.put(CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(commentDO.getLikeTotal()));
+                    // 只有一级评论需要统计子评论总数
+                    if (Objects.equals(level, CommentLevelEnum.ONE.getCode())) {
+                        map.put(CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL, String.valueOf(commentDO.getChildCommentTotal()));
                     }
+                    freshCounts.put(commentDO.getId(), map);
+                    commentIdAndCountMap.put(commentDO.getId(), map);
                 });
-            });
+
+                threadPoolTaskExecutor.execute(() -> commentCacheService.batchPutCommentCounts(freshCounts));
+            }
         }
         return commentIdAndCountMap;
     }
@@ -709,22 +745,11 @@ public class CommentServiceImpl implements CommentService {
      * @param childCommentRspVOS
      */
     private void getChildCommentDataAndSync2Redis(List<CommentDO> childCommentDOS, List<FindChildCommentItemRspVO> childCommentRspVOS) {
-        List<FindCommentContentReqDTO> findCommentContentReqDTOS = Lists.newArrayList();
         Set<Long> userIds = Sets.newHashSet();
-
         Long noteId = null;
 
         for (CommentDO childCommentDO : childCommentDOS) {
             noteId = childCommentDO.getNoteId();
-            boolean isContentEmpty = childCommentDO.getIsContentEmpty();
-            if (!isContentEmpty) {
-                FindCommentContentReqDTO findCommentContentReqDTO = FindCommentContentReqDTO.builder()
-                        .contentId(childCommentDO.getContentUuid())
-                        .yearMonth(DateConstants.DATE_FORMAT_Y_M.format(childCommentDO.getCreateTime()))
-                        .build();
-                findCommentContentReqDTOS.add(findCommentContentReqDTO);
-            }
-
             userIds.add(childCommentDO.getUserId());
 
             Long parentId = childCommentDO.getParentId();
@@ -734,14 +759,7 @@ public class CommentServiceImpl implements CommentService {
             }
         }
 
-        List<FindCommentContentRspDTO> findCommentContentRspDTOS =
-                keyValueRpcService.batchFindCommentContent(noteId, findCommentContentReqDTOS);
-
-        Map<String, String> commentUuidAndContentMap = null;
-        if (CollUtil.isNotEmpty(findCommentContentRspDTOS)) {
-            commentUuidAndContentMap = findCommentContentRspDTOS.stream()
-                    .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent, (a, b) -> a));
-        }
+        Map<String, String> commentUuidAndContentMap = findCommentContentMap(noteId, childCommentDOS);
 
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds.stream().toList());
 
@@ -758,7 +776,7 @@ public class CommentServiceImpl implements CommentService {
                     .userId(userId)
                     .commentId(childCommentDO.getId())
                     .imageUrl(childCommentDO.getImageUrl())
-                    .createTime(DateUtils.formatRelativeTime(childCommentDO.getCreateTime()))
+                    .createTime(DateUtils.localDateTime2String(childCommentDO.getCreateTime()))
                     .likeTotal(childCommentDO.getLikeTotal())
                     .build();
 
@@ -801,163 +819,8 @@ public class CommentServiceImpl implements CommentService {
         });
     }
 
-    /**
-     * 同步子评论到 Redis 中
-     * @param parentCommentId
-     * @param childCommentZSetKey
-     */
-    private void syncChildComments2Redis(Long parentCommentId, String childCommentZSetKey) {
-        // 重建与增量 trim 同向：都保留最新 CHILD_COMMENT_LIST_MAX 条（取最新 5000 后倒序写入，ZSET 内保持时间升序）
-        List<CommentDO> childCommentDOS = commentDOMapper.selectLatestChildCommentsByParentIdAndLimit(
-                parentCommentId, (int) CommentChangedLocalHandler.CHILD_COMMENT_LIST_MAX_SIZE);
-        if (CollUtil.isNotEmpty(childCommentDOS)) {
-            stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                ZSetOperations<String, String> zSetOps = stringRedisTemplate.opsForZSet();
-
-                // 遍历子评论数据并批量写入 ZSet（最新优先取回，倒序后按时间升序写入）
-                List<CommentDO> ascending = new ArrayList<>(childCommentDOS);
-                Collections.reverse(ascending);
-                for (CommentDO childCommentDO : ascending) {
-                    Long commentId = childCommentDO.getId();
-                    long commentTimestamp = DateUtils.localDateTime2Timestamp(childCommentDO.getCreateTime());
-                    zSetOps.add(childCommentZSetKey, String.valueOf(commentId), commentTimestamp);
-                }
-
-                long randomExpiryTime = CacheTtl.hours(1, 4); // 5小时以内
-                stringRedisTemplate.expire(childCommentZSetKey, randomExpiryTime, TimeUnit.SECONDS);
-                return null; // 无返回值
-            });
-        }
-    }
-
-    /**
-     * 同步评论计数到 Redis 中
-     * @param countCommentKey
-     * @param countRecord
-     */
-    private void syncCommentCount2Redis(String countCommentKey, CommentDO countRecord) {
-        stringRedisTemplate.executePipelined(new SessionCallback<>() {
-            @Override
-            public Object execute(RedisOperations operations) {
-                operations.opsForHash()
-                        .put(countCommentKey, CountKeyConstants.FIELD_CHILD_COMMENT_TOTAL,
-                                String.valueOf(countRecord.getChildCommentTotal()));
-                operations.opsForHash()
-                        .put(countCommentKey, CountKeyConstants.FIELD_LIKE_TOTAL, String.valueOf(countRecord.getLikeTotal()));
-
-                long expireTime = CacheTtl.hours(1, 4);
-                operations.expire(countCommentKey, expireTime, TimeUnit.SECONDS);
-                return null;
-            }
-        });
-    }
-
-    private long getOneLevelCommentTotal(Long noteId) {
-        String version;
-        try {
-            version = readOneLevelCommentTotalCacheVersion(noteId);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，一级评论总数跳过缓存并回源 MySQL，noteId={}", noteId, e);
-            return queryOneLevelCommentTotal(noteId);
-        }
-        String key = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId, version);
-        String lockKey = RedisKeyConstants.buildOneLevelCommentTotalCacheLockKey(noteId);
-        Long cached;
-        try {
-            cached = readOneLevelCommentTotalFromCache(key);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，一级评论总数缓存读取失败，回源 MySQL，noteId={}", noteId, e);
-            return queryOneLevelCommentTotal(noteId);
-        }
-        if (cached != null) {
-            return cached;
-        }
-        return CacheRebuildSupport.getOrRebuild(
-                redissonRebuildLock(lockKey, ONE_LEVEL_COMMENT_TOTAL_REBUILD_LOCK_SECONDS),
-                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
-                () -> readOneLevelCommentTotalFromCache(key),
-                () -> {
-                    long total = queryOneLevelCommentTotal(noteId);
-                    cacheOneLevelCommentTotal(key, total);
-                    return total;
-                },
-                () -> queryOneLevelCommentTotal(noteId));
-    }
-
-    private RebuildLock redissonRebuildLock(String lockKey, long leaseSeconds) {
-        return new RebuildLock() {
-            private RLock held;
-
-            @Override
-            public boolean tryLock() {
-                try {
-                    held = CommentServiceImpl.this.tryAcquireRebuildLock(lockKey, leaseSeconds);
-                } catch (Exception e) {
-                    log.warn("Redis 不可用，缓存重建锁获取失败，回源 MySQL，key={}", lockKey, e);
-                    throw e;
-                }
-                return held != null;
-            }
-
-            @Override
-            public void unlock() {
-                releaseRebuildLock(held, lockKey);
-            }
-        };
-    }
-
-    private String readOneLevelCommentTotalCacheVersion(Long noteId) {
-        String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-        String version = stringRedisTemplate.opsForValue().get(versionKey);
-        if (version != null) {
-            // 每次读取版本均续期，确保版本存活时间始终覆盖对应数据缓存的最大 TTL。
-            stringRedisTemplate.expire(versionKey,
-                    RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
-        }
-        return version == null ? "0" : version;
-    }
-
-    private Long readOneLevelCommentTotalFromCache(String key) {
-        String cached = stringRedisTemplate.opsForValue().get(key);
-        if (cached != null && StringUtils.isNumeric(cached)) {
-            return Long.parseLong(cached);
-        }
-        return null;
-    }
-
     private long queryOneLevelCommentTotal(Long noteId) {
         return Objects.requireNonNullElse(commentDOMapper.selectOneLevelCountByNoteId(noteId), 0L);
-    }
-
-    private void cacheOneLevelCommentTotal(String key, long total) {
-        long expireSeconds = CacheTtl.minutes(10, 5);
-        try {
-            stringRedisTemplate.opsForValue().set(key, String.valueOf(total), expireSeconds, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("Redis 不可用，一级评论总数缓存写入失败，响应将继续返回，key={}", key, e);
-        }
-    }
-
-    private RLock tryAcquireRebuildLock(String lockKey, long leaseSeconds) {
-        RLock lock = redissonClient.getLock(lockKey);
-        if (lock == null) {
-            return null;
-        }
-        try {
-            return lock.tryLock(0, leaseSeconds, TimeUnit.SECONDS) ? lock : null;
-        } catch (Exception e) {
-            throw new IllegalStateException("Redis 不可用，缓存重建锁获取失败, lockKey=" + lockKey, e);
-        }
-    }
-
-    private void releaseRebuildLock(RLock lock, String lockKey) {
-        try {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        } catch (Exception e) {
-            log.warn("Redis 不可用，缓存重建锁释放失败，key={}", lockKey, e);
-        }
     }
 
 
@@ -1029,7 +892,6 @@ public class CommentServiceImpl implements CommentService {
                     .collect(Collectors.toMap(CommentDO::getId, commentDO -> commentDO, (a, b) -> a));
         }
 
-        List<FindCommentContentReqDTO> findCommentContentReqDTOS = Lists.newArrayList();
         List<Long> userIds = Lists.newArrayList();
 
         List<CommentDO> allCommentDOS = Lists.newArrayList();
@@ -1037,26 +899,10 @@ public class CommentServiceImpl implements CommentService {
         CollUtil.addAll(allCommentDOS, twoLevelCommonDOS);
 
         allCommentDOS.forEach(commentDO -> {
-            boolean isContentEmpty = commentDO.getIsContentEmpty();
-            if (!isContentEmpty) {
-                FindCommentContentReqDTO findCommentContentReqDTO = FindCommentContentReqDTO.builder()
-                        .contentId(commentDO.getContentUuid())
-                        .yearMonth(DateConstants.DATE_FORMAT_Y_M.format(commentDO.getCreateTime()))
-                        .build();
-                findCommentContentReqDTOS.add(findCommentContentReqDTO);
-            }
-
             userIds.add(commentDO.getUserId());
         });
 
-        List<FindCommentContentRspDTO> findCommentContentRspDTOS =
-                keyValueRpcService.batchFindCommentContent(noteId, findCommentContentReqDTOS);
-
-        Map<String, String> commentUuidAndContentMap = null;
-        if (CollUtil.isNotEmpty(findCommentContentRspDTOS)) {
-            commentUuidAndContentMap = findCommentContentRspDTOS.stream()
-                    .collect(Collectors.toMap(FindCommentContentRspDTO::getContentId, FindCommentContentRspDTO::getContent, (a, b) -> a));
-        }
+        Map<String, String> commentUuidAndContentMap = findCommentContentMap(noteId, allCommentDOS);
 
         List<Long> distinctUserIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
         List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(distinctUserIds);
@@ -1094,49 +940,7 @@ public class CommentServiceImpl implements CommentService {
         });
     }
 
-    /** 评论列表 ZSET 单飞重建：抢锁者二次检查后重建，未抢锁者轮询等待，锁在任务内释放 */
-    private void rebuildCommentListZSetWithLock(String key, Long noteId) {
-        String lockKey = RedisKeyConstants.buildCommentListRebuildLockKey(noteId);
-        CacheRebuildSupport.rebuildIfMissing(
-                redissonRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS),
-                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
-                () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
-                () -> syncHeatComments2Redis(key, noteId));
-    }
 
-    /** 子评论列表 ZSET 单飞重建：抢锁者二次检查后重建，未抢锁者轮询等待，锁在任务内释放 */
-    private void rebuildChildCommentListZSetWithLock(Long parentCommentId, String key) {
-        String lockKey = RedisKeyConstants.buildChildCommentListRebuildLockKey(parentCommentId);
-        CacheRebuildSupport.rebuildIfMissing(
-                redissonRebuildLock(lockKey, COMMENT_LIST_REBUILD_LOCK_SECONDS),
-                CACHE_REBUILD_RETRY_TIMES, CACHE_REBUILD_RETRY_INTERVAL_MILLIS,
-                () -> Boolean.TRUE.equals(stringRedisTemplate.hasKey(key)),
-                () -> syncChildComments2Redis(parentCommentId, key));
-    }
-
-    /**
-     * 同步热点评论至 Redis
-     * @param key
-     * @param noteId
-     */
-    private void syncHeatComments2Redis(String key, Long noteId) {
-        List<CommentDO> commentDOS = commentDOMapper.selectHeatComments(noteId);
-        if (CollUtil.isNotEmpty(commentDOS)) {
-            stringRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                ZSetOperations<String, String> zSetOps = stringRedisTemplate.opsForZSet();
-
-                for (CommentDO commentDO : commentDOS) {
-                    Long commentId = commentDO.getId();
-                    Double commentHeat = commentDO.getHeat();
-                    zSetOps.add(key, String.valueOf(commentId), commentHeat);
-                }
-
-                long randomExpiryTime = CacheTtl.hours(1, 4); // 1~5小时
-                stringRedisTemplate.expire(key, randomExpiryTime, TimeUnit.SECONDS);
-                return null; // 无返回值
-            });
-        }
-    }
 
     private static FindCommentItemRspVO toCommentItemVO(CommentDO commentDO,
                                                         Map<Long, FindUserByIdRspDTO> userIdAndDTOMap,
@@ -1145,7 +949,7 @@ public class CommentServiceImpl implements CommentService {
                 .userId(commentDO.getUserId())
                 .commentId(commentDO.getId())
                 .imageUrl(commentDO.getImageUrl())
-                .createTime(DateUtils.formatRelativeTime(commentDO.getCreateTime()))
+                .createTime(DateUtils.localDateTime2String(commentDO.getCreateTime()))
                 .likeTotal(commentDO.getLikeTotal())
                 .childCommentTotal(commentDO.getChildCommentTotal())
                 .heat(commentDO.getHeat())

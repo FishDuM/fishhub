@@ -52,7 +52,7 @@ class NoteServiceImplAccessTest {
     @Mock
     private org.springframework.data.redis.core.HashOperations<String, Object, Object> hashOperations;
     @Mock
-    private hk.ljx.fishhub.note.biz.kv.KeyValueClient keyValueClient;
+    private hk.ljx.fishhub.note.biz.domain.repository.NoteContentRepository noteContentRepository;
     @Mock
     private RedissonClient redissonClient;
     @Mock
@@ -68,10 +68,20 @@ class NoteServiceImplAccessTest {
 
     @BeforeEach
     void clearLocalCache() {
+        ReflectionTestUtils.setField(service, "safeRedisUtil", new hk.ljx.framework.common.util.SafeRedisUtil(stringRedisTemplate));
         @SuppressWarnings("unchecked")
         Cache<Long, String> localCache = (Cache<Long, String>) ReflectionTestUtils.getField(NoteServiceImpl.class, "LOCAL_CACHE");
         if (localCache != null) {
             localCache.invalidateAll();
+        }
+        if (threadPoolTaskExecutor != null) {
+            org.mockito.Mockito.lenient().doAnswer(invocation -> {
+                Runnable runnable = invocation.getArgument(0);
+                if (runnable != null) {
+                    runnable.run();
+                }
+                return null;
+            }).when(threadPoolTaskExecutor).execute(any(Runnable.class));
         }
     }
 
@@ -113,8 +123,7 @@ class NoteServiceImplAccessTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get("note:access:11")).thenReturn("{", "{");
         when(redissonClient.getLock(RedisKeyConstants.buildNoteAccessRebuildLockKey(11L))).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 2L, TimeUnit.SECONDS)).thenReturn(true);
-        when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).build());
 
@@ -132,7 +141,7 @@ class NoteServiceImplAccessTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(key)).thenReturn(null, null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 2L, TimeUnit.SECONDS)).thenReturn(true);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
@@ -150,10 +159,10 @@ class NoteServiceImplAccessTest {
         String key = RedisKeyConstants.buildNoteAccessKey(11L);
         String lockKey = RedisKeyConstants.buildNoteAccessRebuildLockKey(11L);
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        // 首次读 miss + 轮询 3 次 miss（抢不到锁的等待者）
-        when(valueOperations.get(key)).thenReturn(null, null, null, null);
+        // 首次读 miss + 抢不到锁后读 miss
+        when(valueOperations.get(key)).thenReturn(null, null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
-        when(rebuildLock.tryLock(0, 2L, TimeUnit.SECONDS)).thenReturn(false);
+        when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
                 NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
 

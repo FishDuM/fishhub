@@ -4,6 +4,8 @@ server:
   # 真实 IP 由 AddUserId2HeaderFilter 统一解析清洗后写入 X-Real-IP
   forward-headers-strategy: none
 spring:
+  profiles:
+    active: dev
   codec:
     max-in-memory-size: 50MB
   cloud:
@@ -70,7 +72,7 @@ spring:
       database: 0 # Redis 数据库索引（默认为 0）
       host: 127.0.0.1 # Redis 服务器地址
       port: 6379 # Redis 服务器连接端口
-      password: 3057433102 # Redis 服务器连接密码
+      password: ${REDIS_PASSWORD:} # Redis 服务器连接密码
       timeout: 5s # 读超时时间
       connect-timeout: 5s # 链接超时时间
       lettuce:
@@ -99,4 +101,4 @@ sa-token:
   # 允许从 HttpOnly 会话 Cookie 读取 token（登录时由 auth 服务下发）
   is-read-cookie: true
   # 是否输出操作日志
-  is-log: true
+  is-log: false

@@ -74,4 +74,46 @@ public class DateUtils {
         return period.getYears();
     }
 
+    /**
+     * 复合自适应解析时间字符串为 LocalDateTime
+     * 支持 "yyyy-MM-dd HH:mm:ss"、"yyyy-MM-dd'T'HH:mm:ss"、"yyyy-MM-dd'T'HH:mm:ss.SSS"、ISO_DATE_TIME 带时区等格式
+     *
+     * @param timeStr 时间字符串
+     * @return 解析后的 LocalDateTime，若解析失败或为空则返回 null
+     */
+    public static LocalDateTime parseFlexibleLocalDateTime(String timeStr) {
+        return parseFlexibleLocalDateTime(timeStr, null);
+    }
+
+    /**
+     * 复合自适应解析时间字符串为 LocalDateTime，支持提供默认值兜底
+     *
+     * @param timeStr 时间字符串
+     * @param defaultVal 兜底默认值
+     * @return 解析后的 LocalDateTime
+     */
+    public static LocalDateTime parseFlexibleLocalDateTime(String timeStr, LocalDateTime defaultVal) {
+        if (timeStr == null || timeStr.trim().isEmpty()) {
+            return defaultVal;
+        }
+        try {
+            java.time.temporal.TemporalAccessor accessor = DateConstants.DATE_FORMAT_FLEXIBLE.parseBest(
+                    timeStr.trim(),
+                    ZonedDateTime::from,
+                    LocalDateTime::from,
+                    Instant::from
+            );
+            if (accessor instanceof ZonedDateTime zdt) {
+                return zdt.withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
+            } else if (accessor instanceof LocalDateTime ldt) {
+                return ldt;
+            } else if (accessor instanceof Instant instant) {
+                return LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+            }
+            return defaultVal;
+        } catch (Exception e) {
+            return defaultVal;
+        }
+    }
+
 }

@@ -22,10 +22,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Objects;
 
+import cn.hutool.core.collection.CollUtil;
+import org.apache.rocketmq.common.message.MessageExt;
+
 /**
- * 关注 / 取关消费者。
+ * 关注 / 取关微批消费者。
  * 借助事务消息保证数据库关系表与下游计数消息原子提交，避免重试时计数消息永久丢失。
  */
 @Component
@@ -35,7 +39,7 @@ import java.util.Objects;
 )
 @Slf4j
 @RequiredArgsConstructor
-public class FollowUnfollowConsumer implements RocketMQListener<Message> {
+public class FollowUnfollowConsumer implements RocketMQListener<List<MessageExt>> {
 
     private final FollowingDOMapper followingDOMapper;
     private final TransactionTemplate transactionTemplate;
@@ -44,7 +48,21 @@ public class FollowUnfollowConsumer implements RocketMQListener<Message> {
     private final TxJournalStore txJournalStore;
 
     @Override
+    public void onMessage(List<MessageExt> messages) {
+        if (CollUtil.isEmpty(messages)) {
+            return;
+        }
+        log.info("微批消费关注关系事件，batchSize={}", messages.size());
+        for (MessageExt message : messages) {
+            consumeSingleMessage(message);
+        }
+    }
+
     public void onMessage(Message message) {
+        consumeSingleMessage(message);
+    }
+
+    private void consumeSingleMessage(Message message) {
         // 消息体
         String bodyJsonStr = new String(message.getBody(), StandardCharsets.UTF_8);
         // 标签

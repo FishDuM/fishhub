@@ -38,7 +38,7 @@ class RocketMqHelperTest {
         RocketMqHelper.syncSend(template, "topic:tag", message, "biz");
 
         verify(template).syncSend(eq("topic:tag"), payloadCaptor.capture());
-        assertEquals(message, payloadCaptor.getValue());
+        assertEquals("payload", payloadCaptor.getValue());
     }
 
     @Test
@@ -70,7 +70,7 @@ class RocketMqHelperTest {
         RocketMqHelper.syncSendOrderly(template, "topic:tag", message, "hash", "biz");
 
         verify(template).syncSendOrderly(eq("topic:tag"), payloadCaptor.capture(), eq("hash"));
-        assertEquals(message, payloadCaptor.getValue());
+        assertEquals("payload", payloadCaptor.getValue());
     }
 
     @Test
@@ -92,6 +92,6 @@ class RocketMqHelperTest {
         RocketMqHelper.asyncSend(template, "topic:tag", message, "biz");
 
         verify(template).asyncSend(eq("topic:tag"), payloadCaptor.capture(), any(SendCallback.class));
-        assertEquals(message, payloadCaptor.getValue());
+        assertEquals("payload", payloadCaptor.getValue());
     }
 }

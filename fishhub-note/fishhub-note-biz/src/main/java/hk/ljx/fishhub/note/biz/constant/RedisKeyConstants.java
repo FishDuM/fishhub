@@ -36,16 +36,6 @@ public class RedisKeyConstants {
     private static final String PUBLISHED_NOTE_LIST_KEY = "note:published:list:";
 
     /**
-     * 用户笔记点赞状态 Set 前缀
-     */
-    private static final String USER_NOTE_LIKE_SET_KEY = "set:note:likes:";
-
-    /**
-     * 用户笔记收藏状态 Set 前缀
-     */
-    private static final String USER_NOTE_COLLECT_SET_KEY = "set:note:collects:";
-
-    /**
      * 用户笔记点赞列表 ZSet 前缀
      */
     public static final String USER_NOTE_LIKE_ZSET_KEY = "user:note:likes:";
@@ -94,8 +84,8 @@ public class RedisKeyConstants {
                 + ":cursor:" + (cursor == null ? "first" : cursor);
     }
 
-    public static String buildDiscoverFeedCursorLockKey(String version, Long channelId, Long cursor) {
-        return DISCOVER_FEED_CURSOR_LOCK_KEY + version + ":channel:" + (channelId == null ? 0 : channelId)
+    public static String buildDiscoverFeedCursorLockKey(Long channelId, Long cursor) {
+        return DISCOVER_FEED_CURSOR_LOCK_KEY + "channel:" + (channelId == null ? 0 : channelId)
                 + ":cursor:" + (cursor == null ? "first" : cursor);
     }
 
@@ -109,11 +99,11 @@ public class RedisKeyConstants {
 
 
     public static String buildUserNoteLikeSetKey(Long userId) {
-        return USER_NOTE_LIKE_SET_KEY + userId;
+        return buildUserNoteLikeZSetKey(userId);
     }
 
     public static String buildUserNoteCollectSetKey(Long userId) {
-        return USER_NOTE_COLLECT_SET_KEY + userId;
+        return buildUserNoteCollectZSetKey(userId);
     }
 
     /**

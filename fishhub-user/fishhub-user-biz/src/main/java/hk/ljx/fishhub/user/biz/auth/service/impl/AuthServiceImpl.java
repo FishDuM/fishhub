@@ -83,14 +83,11 @@ public class AuthServiceImpl implements AuthService {
         String captchaKey = userRegisterReqVO.getCaptchaKey();
         String captchaCode = userRegisterReqVO.getCaptchaCode();
 
-        // 1. 校验并消费图形验证码（5分钟有效，错误超10次自动失效）
         verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
-        // 2. 密码加密并在数据库中创建用户（内置手机号查重与防并发插入机制）
         String encodePassword = passwordEncoder.encode(password);
         Long userId = userRpcService.registerUser(phone, encodePassword);
 
-        // 3. 注册成功后自动执行登录
         return performLogin(userId);
     }
 
@@ -107,16 +104,13 @@ public class AuthServiceImpl implements AuthService {
         String captchaKey = userLoginReqVO.getCaptchaKey();
         String captchaCode = userLoginReqVO.getCaptchaCode();
 
-        // 1. 校验并消费图形验证码（5分钟有效，错误超10次自动失效）
         verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
-        // 2. 查询用户
         FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
         if (Objects.isNull(findUserByPhoneRspDTO)) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
 
-        // 3. 校验密码
         String encodePassword = findUserByPhoneRspDTO.getPassword();
         boolean isPasswordCorrect = StringUtils.isNotBlank(encodePassword)
                 && passwordEncoder.matches(password, encodePassword);
@@ -125,8 +119,6 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Long userId = findUserByPhoneRspDTO.getId();
-
-        // 4. 执行登录
         return performLogin(userId);
     }
 
@@ -179,31 +171,20 @@ public class AuthServiceImpl implements AuthService {
     }
 
     /**
-     * 图形验证码原子校验与消费（5分钟有效，错误超10次旧码自动作废）
+     * 图形验证码校验与消费（5分钟有效）
      */
     private void verifyAndConsumeCaptcha(String captchaKey, String captchaCode) {
         Preconditions.checkArgument(StringUtils.isNotBlank(captchaKey), "验证码标识不能为空");
         Preconditions.checkArgument(StringUtils.isNotBlank(captchaCode), "验证码不能为空");
 
         String key = RedisKeyConstants.buildCaptchaKey(captchaKey);
-        String normalizedCode = captchaCode.trim().toLowerCase();
-
-        Long result = stringRedisTemplate.execute(
-                VERIFY_AND_CONSUME_CAPTCHA_SCRIPT,
-                Collections.singletonList(key),
-                normalizedCode,
-                String.valueOf(CAPTCHA_MAX_ATTEMPTS)
-        );
-
-        if (Objects.equals(result, 1L)) {
-            return; // 校验成功并已删除
-        }
-        if (Objects.equals(result, -2L)) {
-            throw new BizException(ResponseCodeEnum.CAPTCHA_TOO_MANY_ATTEMPTS);
-        }
-        if (Objects.equals(result, -1L)) {
+        String cachedCode = stringRedisTemplate.opsForValue().get(key);
+        if (StringUtils.isBlank(cachedCode)) {
             throw new BizException(ResponseCodeEnum.CAPTCHA_NOT_FOUND_OR_EXPIRED);
         }
-        throw new BizException(ResponseCodeEnum.CAPTCHA_ERROR);
+        if (!cachedCode.equalsIgnoreCase(captchaCode.trim())) {
+            throw new BizException(ResponseCodeEnum.CAPTCHA_ERROR);
+        }
+        stringRedisTemplate.delete(key); // 校验成功立即删除
     }
 }

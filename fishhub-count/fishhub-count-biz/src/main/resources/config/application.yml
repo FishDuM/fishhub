@@ -1,10 +1,17 @@
 server:
-  port: 8090 # 项目启动的端口
+  port: 8003 # 项目启动的端口
 
 spring:
   profiles:
     active: dev # 默认激活 dev 本地开发环境
+  threads:
+    virtual:
+      enabled: true # 开启 JDK 21 虚拟线程支持（Tomcat 与 Async 线程池）
 
 mybatis:
   # MyBatis xml 配置文件路径
   mapper-locations: classpath:/mapper/**/*.xml
+
+mq:
+  tx:
+    enabled: false # 计数服务仅消费 MQ，不产生本地半事务消息，关闭事务回查组件与定时任务

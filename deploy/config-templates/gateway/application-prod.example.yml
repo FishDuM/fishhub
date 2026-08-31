@@ -1,0 +1,38 @@
+spring:
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 8s
+    sentinel:
+      transport:
+        dashboard: ${SENTINEL_DASHBOARD:127.0.0.1:8858}
+        port: 8719
+      datasource:
+        nacos:
+          server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+          group-id: DEFAULT_GROUP
+          rule-data-id: fishhub-gateway-flow-rules
+
+  data:
+    redis:
+      database: ${REDIS_DATABASE:0}
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:123456}
+      timeout: ${REDIS_TIMEOUT:5s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:5s}
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:200}
+          max-wait: ${REDIS_POOL_MAX_WAIT:2000}
+          min-idle: ${REDIS_POOL_MIN_IDLE:0}
+          max-idle: ${REDIS_POOL_MAX_IDLE:10}
+
+sa-token:
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: random-128
+  is-read-cookie: true

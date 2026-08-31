@@ -30,9 +30,9 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
     protected SessionBuilderConfigurer getSessionBuilderConfigurer() {
         return builder -> builder.withConfigLoader(
                 DriverConfigLoader.programmaticBuilder()
-                        .withDuration(DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(15))
-                        .withDuration(DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofSeconds(15))
-                        .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(15))
+                        .withDuration(DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(3))
+                        .withDuration(DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofSeconds(3))
+                        .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofMillis(1000))
                         .build()
         );
     }

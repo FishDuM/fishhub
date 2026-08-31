@@ -8,12 +8,32 @@
 
 ```
 deploy/
+├── docker-compose.yml                   # 全套基础中间件一键启动编排（MySQL/Redis/Nacos/MQ/Cassandra/ES/MinIO/Sentinel）
+├── config-templates/                    # 微服务配置模板
+│   ├── dev/                             # 本地开发配置模板（可一键同步至各模块）
+│   └── prod/ (各模块目录)               # 生产环境配置模板（支持全环境变量注入）
 ├── nginx/
 │   └── nginx.conf                       # Nginx 反向代理与前端静态资源托管模版
 ├── sentinel/
 │   └── fishhub-gateway-flow-rules.json  # Sentinel 网关流控规则模版（可直接导入 Nacos）
 └── README.md                            # 部署指南说明
 ```
+
+---
+
+## 零、一键启动全套基础中间件（Docker Compose）
+
+在 `deploy` 目录下执行即可一键拉起开发所需全部 7+ 中间件（已自动挂载 `sql/create.sql` 初始化数据库，自动创建 Nacos `fishhub` 命名空间）：
+
+```bash
+cd deploy
+docker compose up -d
+```
+
+> **可选：初始化 Cassandra 存储**（仅当需要本地持久化正文时执行一次）：
+> ```bash
+> docker exec -i fishhub-cassandra cqlsh < ../sql/cassandra_init.cql
+> ```
 
 ---
 
@@ -75,8 +95,8 @@ FishHub 网关（`fishhub-gateway`）已集成 Sentinel 网关限流并支持通
 |---|---|---|
 | NACOS_ADDR | Nacos 注册/配置中心地址（所有 bootstrap.yml 已参数化） | 127.0.0.1:8848 |
 | SENTINEL_DASHBOARD | Sentinel 控制台地址（业务服务 8060 / 网关 8858） | 127.0.0.1:8060 或 :8858 |
-| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（各服务库名：fishhub_user/fishhub_note/fishhub_comment/fishhub_count） | localhost / 3306 / root / 3057433102 |
-| REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE | Redis | localhost / 6379 / 3057433102 / 0 |
+| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（各服务库名：fishhub_user/fishhub_note/fishhub_comment/fishhub_count） | localhost / 3306 / root / 123456 |
+| REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE | Redis | localhost / 6379 / 123456 / 0 |
 | ROCKETMQ_NAMESRV | RocketMQ NameServer | localhost:9876 |
 | ELASTICSEARCH_ADDRESS | ES 地址（search） | localhost:9200 |
 | CASSANDRA_HOST / CASSANDRA_PORT / CASSANDRA_KEYSPACE / CASSANDRA_DATACENTER | Cassandra（note / comment 正文直存） | 127.0.0.1 / 9042 / fishhub / datacenter1 |
@@ -110,5 +130,24 @@ SPRING_PROFILES_ACTIVE=prod NACOS_ADDR=10.0.0.5:8848 MYSQL_HOST=10.0.0.6 REDIS_H
 - `/comment/comment/publish`、`/user/relation/follow`、`/user/user/...`、`/oss/file/...`（由 user 服务承接）、`/search/search/...`
 - `/auth/login`（auth 控制器在根路径，单前缀）
 
-网关 `StripPrefix=1` 与此约定一致，**无需修改**；直连服务内部调试时才用服务自身路径（如 `:8086/note/like`）。
+网关 `StripPrefix=1` 与此约定一致，**无需修改**；直连服务内部调试时才用服务自身路径（如 `:8002/note/like`）。
+
+---
+
+## 七、微服务 Docker 镜像构建指南
+
+各微服务均已配备针对 JDK 21 运行时优化的轻量 `Dockerfile`。全量编译打包后，可使用以下命令构建容器镜像：
+
+```bash
+# 1. 根目录下统一打包构建 jar
+mvn clean package -DskipTests
+
+# 2. 构建各微服务 Docker 镜像
+docker build -t fishhub-gateway:latest fishhub-gateway
+docker build -t fishhub-user:latest fishhub-user/fishhub-user-biz
+docker build -t fishhub-note:latest fishhub-note/fishhub-note-biz
+docker build -t fishhub-count:latest fishhub-count/fishhub-count-biz
+docker build -t fishhub-search:latest fishhub-search/fishhub-search-biz
+docker build -t fishhub-comment:latest fishhub-comment/fishhub-comment-biz
+```
 

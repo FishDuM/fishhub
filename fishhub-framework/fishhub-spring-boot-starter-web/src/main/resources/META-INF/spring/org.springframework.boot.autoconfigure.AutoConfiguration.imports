@@ -4,3 +4,4 @@ hk.ljx.framework.biz.context.config.TaskExecutorAutoConfiguration
 hk.ljx.framework.biz.context.config.VirtualThreadAutoConfiguration
 hk.ljx.framework.biz.operationlog.config.ApiOperationLogAutoConfiguration
 hk.ljx.framework.jackson.config.JacksonAutoConfiguration
+hk.ljx.framework.biz.redis.config.SafeRedisAutoConfiguration

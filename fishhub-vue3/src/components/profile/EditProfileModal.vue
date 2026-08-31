@@ -348,7 +348,7 @@ const handleConfirm = async () => {
 
     const res = await updateUserProfile(profileData)
     if (!res.success) {
-      message.show(res.message || '更新失败，请重试')
+      message.error(res.message || res.errorMessage || '更新失败，请重试')
       return
     }
 
@@ -360,10 +360,12 @@ const handleConfirm = async () => {
 
     emit('update-success', latestProfile)
     emit('update:visible', false)
+    message.success('个人资料更新成功')
 
   } catch (error) {
     console.error('更新资料出错:', error)
-    message.show('更新失败，请重试')
+    const errData = error.response?.data
+    message.error(errData?.message || errData?.errorMessage || error.message || '更新失败，请重试')
   }
 }
 

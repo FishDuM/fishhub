@@ -343,8 +343,25 @@ const performSearch = async (isFirstPage = true) => {
   } catch {
     if (searchId === latestSearchId) handleSearchFailure()
   } finally {
-    if (searchId === latestSearchId) isLoading.value = false
+    if (searchId === latestSearchId) {
+      isLoading.value = false
+      checkAndFillScreen(searchId)
+    }
   }
+}
+
+const checkAndFillScreen = (searchId) => {
+  nextTick(() => {
+    if (searchId && searchId !== latestSearchId) return
+    if (!hasMore.value || isLoading.value) return
+
+    const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight
+    const clientHeight = document.documentElement.clientHeight || window.innerHeight
+
+    if (scrollHeight <= clientHeight + 200) {
+      performSearch(false)
+    }
+  })
 }
 
 watch(() => route.query.keyword, (newKeyword, oldKeyword) => {
@@ -369,7 +386,7 @@ const handleScroll = () => {
   const windowHeight = window.innerHeight
   const documentHeight = document.documentElement.scrollHeight
   
-  if (documentHeight - scrollTop - windowHeight < 200) {
+  if (documentHeight - scrollTop - windowHeight < 300) {
     loadMore()
   }
 }
@@ -411,14 +428,14 @@ const handleFollowUser = (userId) => {
   const request = isFollowed ? unfollowUser(userId) : followUser(userId)
   request.then(res => {
     if (!res.success) {
-      message.show(res.message || (isFollowed ? '取消关注失败' : '关注失败'))
+      message.error(res.message || (isFollowed ? '取消关注失败' : '关注失败'))
       return
     }
     user.isFollowed = !isFollowed
-    message.show(isFollowed ? '已取消关注' : '关注成功')
+    message.success(isFollowed ? '已取消关注' : '关注成功')
   }).catch(error => {
     console.error(isFollowed ? '取消关注失败:' : '关注失败:', error)
-    message.show(isFollowed ? '取消关注失败' : '关注失败')
+    message.error(isFollowed ? '取消关注失败' : '关注失败')
   })
 }
 

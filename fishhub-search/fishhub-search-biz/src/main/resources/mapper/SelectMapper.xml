@@ -10,9 +10,12 @@
                DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
                 IFNULL(nc.like_total, 0) as like_total,
                 IFNULL(nc.collect_total, 0) as collect_total,
-                IFNULL(nc.comment_total, 0) as comment_total
+                IFNULL(nc.comment_total, 0) as comment_total,
+                u.avatar as avatar,
+                u.nickname as nickname
         from fishhub_note.t_note n
                       left join fishhub_count.t_note_count nc on n.id = nc.note_id
+                      left join fishhub_user.t_user u on n.creator_id = u.id
         where n.visible = 0 and n.`status` = 1
           <if test="noteId != null">
               and n.id = #{noteId} limit 1
@@ -42,9 +45,12 @@
                DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
                 IFNULL(nc.like_total, 0) as like_total,
                 IFNULL(nc.collect_total, 0) as collect_total,
-                IFNULL(nc.comment_total, 0) as comment_total
+                IFNULL(nc.comment_total, 0) as comment_total,
+                u.avatar as avatar,
+                u.nickname as nickname
         from fishhub_note.t_note n
                       left join fishhub_count.t_note_count nc on n.id = nc.note_id
+                      left join fishhub_user.t_user u on n.creator_id = u.id
         where n.visible = 0 and n.`status` = 1
         <if test="noteIds != null and noteIds.size() > 0">
           and n.id in

@@ -45,7 +45,7 @@
         :images="[comment.imageUrl]"
       />
 
-      <div class="info my-[8px]">{{ comment.createTime }}</div>
+      <div class="info my-[8px]">{{ formatRelativeTime(comment.createTime) }}</div>
 
       <!-- 评论底部操作区 -->
       <div class="flex items-center gap-2 text-gray-500 text-[12px] interactions">
@@ -85,7 +85,7 @@
       </div>
 
       <!-- 子评论区域 -->
-      <template v-if="comment.childCommentTotal > 0">
+      <template v-if="Number(comment.childCommentTotal) > 0">
         <!-- 已加载的子评论列表 -->
         <div v-if="comment.childComments && comment.childComments.length > 0" class="mt-2">
           <div>
@@ -103,13 +103,13 @@
         
         <!-- 展开回复按钮 -->
         <div 
-          v-if="comment.childCommentTotal > 1 && 
-                (!comment.childComments || comment.childComments.length < comment.childCommentTotal) && 
+          v-if="Number(comment.childCommentTotal) > 1 && 
+                (!comment.childComments || comment.childComments.length < Number(comment.childCommentTotal)) && 
                 comment.hasMoreChildComments !== false"
           class="show-more mt-2"
           @click="handleExpandReplies(comment)"
         >
-          {{ comment.childComments?.length > 1 ? '展开更多回复' : `展开 ${comment.childCommentTotal - 1} 条回复` }}
+          {{ comment.childComments?.length > 1 ? '展开更多回复' : `展开 ${Number(comment.childCommentTotal) - 1} 条回复` }}
         </div>
       </template>
     </div>
@@ -122,6 +122,7 @@ import ImagePreview from '@/components/common/ImagePreview.vue'
 import LikeIcon from '@/components/common/LikeIcon.vue'
 import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useUserStore } from '@/stores/user'
+import { formatRelativeTime } from '@/utils/date'
 
 const userStore = useUserStore()
 

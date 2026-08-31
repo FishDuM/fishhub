@@ -13,7 +13,12 @@ public class IdGeneratorProperties {
     private Long workerId;
 
     /**
-     * 数据中心 ID (0~31)
+     * 数据中心 ID (0~31)，默认为 1
      */
     private Long datacenterId = 1L;
+
+    /**
+     * 是否使用 System.currentTimeMillis()
+     */
+    private boolean useSystemClock = false;
 }

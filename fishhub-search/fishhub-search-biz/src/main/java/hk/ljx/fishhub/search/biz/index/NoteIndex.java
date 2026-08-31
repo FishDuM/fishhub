@@ -27,7 +27,17 @@ public class NoteIndex {
     public static final String FIELD_NOTE_VIDEO_URI = "video_uri";
 
     /**
-     * 头像
+     * 发布者头像
+     */
+    public static final String FIELD_NOTE_AVATAR = "avatar";
+
+    /**
+     * 发布者昵称
+     */
+    public static final String FIELD_NOTE_NICKNAME = "nickname";
+
+    /**
+     * 标题
      */
     public static final String FIELD_NOTE_TITLE = "title";
 

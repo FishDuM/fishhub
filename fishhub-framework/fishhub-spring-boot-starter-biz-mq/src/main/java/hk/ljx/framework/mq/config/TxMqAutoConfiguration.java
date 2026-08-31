@@ -1,64 +1,69 @@
 package hk.ljx.framework.mq.config;
 
-import hk.ljx.framework.mq.tx.TransactionalMqSender;
-import hk.ljx.framework.mq.tx.TxJournalPurgeJob;
 import hk.ljx.framework.mq.idempotent.MqConsumeRecordPurgeJob;
 import hk.ljx.framework.mq.idempotent.MqConsumeRecordStore;
-import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
+import hk.ljx.framework.mq.idempotent.mapper.MqConsumeRecordDOMapper;
+import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
+import hk.ljx.framework.mq.tx.TransactionalMqSender;
+import hk.ljx.framework.mq.tx.TxJournalPurgeJob;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import hk.ljx.framework.mq.tx.TxMqLocalTransactionListener;
+import hk.ljx.framework.mq.tx.mapper.TxJournalDOMapper;
 import org.apache.rocketmq.spring.autoconfigure.RocketMQAutoConfiguration;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
+import org.mybatis.spring.annotation.MapperScan;
+import org.mybatis.spring.boot.autoconfigure.MybatisAutoConfiguration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 
 @AutoConfiguration
-@ConditionalOnClass(RocketMQTemplate.class)
-@AutoConfigureAfter({RocketMQAutoConfiguration.class, DataSourceAutoConfiguration.class})
+@ConditionalOnClass({RocketMQTemplate.class, MqConsumeRecordDOMapper.class})
+@AutoConfigureAfter({RocketMQAutoConfiguration.class, DataSourceAutoConfiguration.class, MybatisAutoConfiguration.class})
+@MapperScan(basePackages = {"hk.ljx.framework.mq.idempotent.mapper", "hk.ljx.framework.mq.tx.mapper"})
 public class TxMqAutoConfiguration {
 
     @Bean
-    @ConditionalOnBean(DataSource.class)
     @ConditionalOnMissingBean
-    public TxJournalStore txJournalStore(DataSource dataSource) {
-        return new TxJournalStore(new JdbcTemplate(dataSource));
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
+    public TxJournalStore txJournalStore(TxJournalDOMapper txJournalDOMapper) {
+        return new TxJournalStore(txJournalDOMapper);
     }
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
     public TransactionalMqSender transactionalMqSender(RocketMQTemplate rocketMQTemplate) {
         return new TransactionalMqSender(rocketMQTemplate);
     }
 
     @Bean
-    @ConditionalOnBean(TxJournalStore.class)
     @ConditionalOnMissingBean(TxMqLocalTransactionListener.class)
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
     public TxMqLocalTransactionListener txMqLocalTransactionListener(TxJournalStore txJournalStore) {
         return new TxMqLocalTransactionListener(txJournalStore);
     }
 
     @Bean
-    @ConditionalOnBean(DataSource.class)
     @ConditionalOnMissingBean
-    public MqConsumeRecordStore mqConsumeRecordStore(DataSource dataSource) {
-        return new MqConsumeRecordStore(new JdbcTemplate(dataSource));
+    public MqConsumeRecordStore mqConsumeRecordStore(MqConsumeRecordDOMapper mqConsumeRecordDOMapper) {
+        return new MqConsumeRecordStore(mqConsumeRecordDOMapper);
     }
 
     @Bean
     @ConditionalOnMissingBean
-    public BatchConsumerFactory batchConsumerFactory(@Value("${rocketmq.name-server}") String namesrvAddr) {
+    public BatchConsumerFactory batchConsumerFactory(@Value("${rocketmq.name-server:127.0.0.1:9876}") String namesrvAddr) {
         return new BatchConsumerFactory(namesrvAddr);
     }
 
@@ -70,7 +75,6 @@ public class TxMqAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(MqConsumeRecordStore.class)
     @ConditionalOnMissingBean
     public MqConsumeRecordPurgeJob mqConsumeRecordPurgeJob(MqConsumeRecordStore mqConsumeRecordStore,
             @Value("${mq.consume-record.retention-days:7}") int retentionDays) {
@@ -78,10 +82,10 @@ public class TxMqAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnBean(DataSource.class)
     @ConditionalOnMissingBean
-    public TxJournalPurgeJob txJournalPurgeJob(DataSource dataSource,
+    @ConditionalOnProperty(name = "mq.tx.enabled", havingValue = "true", matchIfMissing = true)
+    public TxJournalPurgeJob txJournalPurgeJob(TxJournalDOMapper txJournalDOMapper,
             @Value("${mq.tx-journal.retention-hours:24}") int retentionHours) {
-        return new TxJournalPurgeJob(new JdbcTemplate(dataSource), retentionHours);
+        return new TxJournalPurgeJob(txJournalDOMapper, retentionHours);
     }
 }

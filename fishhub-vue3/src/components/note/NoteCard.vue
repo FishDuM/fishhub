@@ -32,20 +32,16 @@
       <h3 class="note-title" v-if="note.highlightTitle" v-html="note.highlightTitle"></h3>
       <h3 class="note-title" v-else>{{ note.title }}</h3>
       <div class="flex items-center">
-        <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
+        <component
+          :is="note.creatorId ? 'router-link' : 'div'"
+          :to="note.creatorId ? `/user/profile/${note.creatorId}` : undefined"
+        >
           <UserAvatar
             :src="note.avatar"
             :alt="`${note.nickname || '用户'}的头像`"
             class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 object-cover"
           />
-        </router-link>
-        <div v-else>
-          <UserAvatar
-            :src="note.avatar"
-            :alt="`${note.nickname || '用户'}的头像`"
-            class="w-[20px] h-[20px] mr-[6px] rounded-full border border-gray-200 object-cover"
-          />
-        </div>
+        </component>
         <span class="text-[12px] text-gray-600 hover:text-gray-800 flex-1 truncate">
           <router-link v-if="note.creatorId" :to="`/user/profile/${note.creatorId}`">
             {{ note.nickname }}
@@ -143,14 +139,15 @@ const toggleLike = () => {
 
   request.then(res => {
     if (!res.success) {
-      message.show(res.message)
+      message.error(res.message || res.errorMessage || (wasLiked ? '取消点赞失败' : '点赞失败'))
       return
     }
 
     const likeTotal = formatLikeTotal(Math.max(0, parseLikeTotal(likeCount.value) + (wasLiked ? -1 : 1)))
     emit('like-change', { noteId, isLiked: !wasLiked, likeTotal })
-  }).catch(() => {
-    message.show(wasLiked ? '取消点赞失败，请稍后重试' : '点赞失败，请稍后重试')
+  }).catch(err => {
+    const errData = err?.response?.data
+    message.error(errData?.message || errData?.errorMessage || (wasLiked ? '取消点赞失败，请稍后重试' : '点赞失败，请稍后重试'))
   }).finally(() => {
     isLikeSubmitting.value = false
   })

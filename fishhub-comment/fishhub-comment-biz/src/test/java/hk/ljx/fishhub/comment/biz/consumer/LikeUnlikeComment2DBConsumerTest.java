@@ -7,10 +7,8 @@ import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.enums.CommentLevelEnum;
 import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
-import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
-import hk.ljx.fishhub.note.api.NoteWriteAccessCheckReqDTO;
 import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,8 +45,6 @@ class LikeUnlikeComment2DBConsumerTest {
     @Mock
     private CommentDOMapper commentDOMapper;
     @Mock
-    private NoteRpcService noteRpcService;
-    @Mock
     private CommentLikeRealtimeService commentLikeRealtimeService;
     @Mock
     private RocketMQTemplate rocketMQTemplate;
@@ -56,14 +52,12 @@ class LikeUnlikeComment2DBConsumerTest {
     private LikeUnlikeComment2DBConsumer consumer;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         consumer = new LikeUnlikeComment2DBConsumer(
                 persistenceService,
                 commentDOMapper,
-                noteRpcService,
                 commentLikeRealtimeService,
-                rocketMQTemplate,
-                null
+                rocketMQTemplate
         );
     }
 
@@ -83,7 +77,6 @@ class LikeUnlikeComment2DBConsumerTest {
     void shouldAllowUnlikePersistWhenCommentAlreadyDeletedInDb() {
         // comment 100 已在 t_comment 中删除 (查出 emptyList)
         when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(Collections.emptyList());
-        when(noteRpcService.findWritableNoteAccesses(anyList())).thenReturn(Collections.emptyList());
         when(persistenceService.applyBatch(anyList())).thenReturn(List.of(100L));
 
         MessageExt message = createMessage(100L, 2L, LikeUnlikeCommentTypeEnum.UNLIKE.getCode());
@@ -107,7 +100,6 @@ class LikeUnlikeComment2DBConsumerTest {
     void shouldDiscardAndRollbackLikeWhenCommentAlreadyDeletedInDb() {
         // comment 100 已在 t_comment 中删除 (查出 emptyList)
         when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(Collections.emptyList());
-        when(noteRpcService.findWritableNoteAccesses(anyList())).thenReturn(Collections.emptyList());
 
         MessageExt message = createMessage(100L, 2L, LikeUnlikeCommentTypeEnum.LIKE.getCode());
         boolean success = ReflectionTestUtils.invokeMethod(consumer, "consumeBatch", List.of(message));
@@ -120,30 +112,13 @@ class LikeUnlikeComment2DBConsumerTest {
     }
 
     @Test
-    void shouldDiscardAndRollbackLikeWhenNoteNotWritable() {
-        // comment 100 存在，但所属 note 50 不可写
-        CommentDO commentDO = CommentDO.builder().id(100L).noteId(50L).build();
-        when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(List.of(commentDO));
-        when(noteRpcService.findWritableNoteAccesses(anyList())).thenReturn(Collections.emptyList());
-
-        MessageExt message = createMessage(100L, 2L, LikeUnlikeCommentTypeEnum.LIKE.getCode());
-        boolean success = ReflectionTestUtils.invokeMethod(consumer, "consumeBatch", List.of(message));
-
-        assertTrue(success);
-        verify(persistenceService, never()).applyBatch(anyList());
-        verify(commentLikeRealtimeService, times(1)).markUnliked(2L, 100L);
-    }
-
-    @Test
-    void shouldPersistFirstLevelLikeWhenNoteWritable() {
+    void shouldPersistFirstLevelLike() {
         CommentDO commentDO = CommentDO.builder()
                 .id(100L)
                 .noteId(50L)
                 .level(CommentLevelEnum.ONE.getCode())
                 .build();
         when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(List.of(commentDO));
-        when(noteRpcService.findWritableNoteAccesses(anyList()))
-                .thenReturn(List.of(NoteWriteAccessCheckReqDTO.builder().noteId(50L).userId(2L).build()));
         when(persistenceService.applyBatch(anyList())).thenReturn(List.of(100L));
 
         MessageExt message = createMessage(100L, 2L, LikeUnlikeCommentTypeEnum.LIKE.getCode());
@@ -162,8 +137,6 @@ class LikeUnlikeComment2DBConsumerTest {
                 .level(CommentLevelEnum.TWO.getCode())
                 .build();
         when(commentDOMapper.selectNoteIdsByCommentIds(eq(List.of(100L)))).thenReturn(List.of(commentDO));
-        when(noteRpcService.findWritableNoteAccesses(anyList()))
-                .thenReturn(List.of(NoteWriteAccessCheckReqDTO.builder().noteId(50L).userId(2L).build()));
         when(persistenceService.applyBatch(anyList())).thenReturn(List.of(100L));
 
         MessageExt message = createMessage(100L, 2L, LikeUnlikeCommentTypeEnum.LIKE.getCode());

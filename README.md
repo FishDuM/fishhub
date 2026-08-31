@@ -46,7 +46,7 @@ fishhub
 ├── fishhub-search                        # 搜索域服务（Elasticsearch 笔记与用户检索、高亮、多维权重打分）
 │
 ├── fishhub-vue3                          # 前端 SPA 应用（Vue 3 + Vite 5 + Pinia + Tailwind CSS）
-├── scripts                               # 启动与运维脚本（一键启动脚本 start-all.bat / start-services.ps1）
+├── smoke                                 # 全链路高并发压力测试套件（一键双击压测 / 数据安全分批清理）
 ├── deploy                                # 部署配置（Nginx 模版、Sentinel 规则、环境变量配置指南）
 └── sql                                   # 数据库初始化全量脚本（create.sql）
 ```
@@ -58,13 +58,14 @@ fishhub
 | 服务名称 | 端口 | 模块架构 | 核心职责 | 持久化 / 存储组件 |
 | :--- | :---: | :---: | :--- | :--- |
 | **Gateway** | **8000** | 单层 | 统一接入网关（流量路由、Sa-Token 鉴权、Sentinel 限流、IP 透传） | Redis（Token 会话） |
-| **User** | **8082** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub_user`) + Redis + MinIO/OSS |
-| **Note** | **8086** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub_note`) + **Cassandra (`fishhub`)** + Redis |
-| **Comment** | **8093** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub_comment`) + **Cassandra (`fishhub`)** + Redis |
-| **Count** | **8090** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub_count`) + Redis Hash + RocketMQ |
-| **Search** | **8092** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL |
+| **User** | **8001** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub_user`) + Redis + MinIO/OSS |
+| **Note** | **8002** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub_note`) + **Cassandra (`fishhub`)** + Redis |
+| **Count** | **8003** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub_count`) + Redis Hash + RocketMQ |
+| **Search** | **8004** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL |
+| **Comment** | **8005** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub_comment`) + **Cassandra (`fishhub`)** + Redis |
+| **Frontend** | **8006** | `fishhub-vue3` | Vue 3 前端开发工程 | Vite + Pinia + TailwindCSS |
 
-> **安全说明**：除 Gateway（8000）对外开放外，其余微服务均为内网 RPC 服务，跨服务调用一律走 OpenFeign 或 RocketMQ 异步通知。
+> **安全说明**：除 Gateway（8000）与 Frontend（8006）外，其余微服务均为内网 RPC 服务，跨服务调用一律走 OpenFeign 或 RocketMQ 异步通知。
 
 ---
 
@@ -74,47 +75,50 @@ fishhub
 - **JDK**：21（Java 21 LTS）
 - **Maven**：3.8+
 - **Node.js**：18+
-- **基础中间件**：
-  - MySQL 8.0+
-  - Redis 6.0+（支持基础 Hash / Set / ZSet 操作）
-  - Nacos 2.x（默认连接配置见各模块 `bootstrap.yml`）
-  - RocketMQ 4.x / 5.x
-  - Elasticsearch 7.x / 8.x
-  - MinIO（对象存储）
-  - Cassandra（KV 存储）
+- **Docker & Docker Compose**（推荐，一键搞定全套中间件）
 
-### 2. 初始化数据库
-执行 `sql/create.sql` 单文件全量脚本（自动创建各独立业务库及表结构）：
+---
+
+### 2. 启动基础中间件与数据库
+项目提供了一键容器化编排，会自动拉起 MySQL（**自动执行建表建库脚本**）、Redis、Nacos（**自动创建 fishhub 命名空间**）、RocketMQ、Cassandra、ES、MinIO 及 Sentinel 控制台：
+
 ```bash
-mysql -h 127.0.0.1 -u root -p < sql/create.sql
+docker compose -f deploy/docker-compose.yml up -d
 ```
+
+> **可选：初始化 Cassandra 存储**（若需本地持久化正文数据）：
+> ```bash
+> docker exec -i fishhub-cassandra cqlsh < sql/cassandra_init.cql
+> ```
+
+---
 
 ### 3. 编译后端工程
 ```bash
 mvn clean package -DskipTests
 ```
 
-### 4. 启动微服务
+---
 
-可以通过提供的脚本一键拉起或由 IDE 启动各 Application：
-
-- **Windows 批处理启动**：
-  ```cmd
-  scripts\start-all.bat
+### 4. 启动微服务与前端
+- **启动微服务**：在 IDE（IntelliJ IDEA）中依次启动 `GatewayApplication`、`UserApplication`、`NoteApplication`、`CountApplication`、`SearchApplication`、`CommentApplication`；
+- **启动前端 Vue 3 工程**：
+  ```bash
+  cd fishhub-vue3
+  npm install
+  npm run dev
   ```
-- **PowerShell 启动**：
-  ```powershell
-  .\scripts\start-services.ps1
-  ```
-- **IDE 启动**：直接在 IntelliJ IDEA 或 VS Code 中运行各微服务的 `*Application.java`。
+  启动成功后访问：`http://localhost:8006`。
 
-### 5. 启动前端应用
-```bash
-cd fishhub-vue3
-npm install
-npm run dev
-```
-启动成功后访问：`http://localhost:5173`。
+---
+
+## 🔥 全链路高并发压力测试 (Smoke Stress Suite)
+
+项目内置了开箱即用的高并发极限压测与数据闭环自愈套件：
+- **Windows 一键双击运行**：进入 [`smoke/`](file:///D:/AAAPorject/main/fishhub/smoke) 目录直接双击 [`run_smoke_stress.bat`](file:///D:/AAAPorject/main/fishhub/smoke/run_smoke_stress.bat)，即可拉起覆盖全项目 7 大业务域（用户、关系、笔记、评论、搜索、计数、混合大促）的高并发压力测试；
+- **数据分批安全清理**：压测完毕后控制台自动提示清理，或随时双击 [`smoke/clean_data.bat`](file:///D:/AAAPorject/main/fishhub/smoke/clean_data.bat)，采用 `LIMIT 500` 分批物理清除沙箱数据和 Redis 缓存，安全不锁表。
+
+详细压测文档请参阅 [smoke/README.md](file:///D:/AAAPorject/main/fishhub/smoke/README.md)。
 
 ---
 

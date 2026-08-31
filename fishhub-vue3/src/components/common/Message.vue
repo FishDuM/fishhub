@@ -2,8 +2,9 @@
   <Transition name="fade">
     <div 
       v-if="visible"
+      :key="toastKey"
       :class="typeClass"
-      class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] px-6 py-3 rounded-full whitespace-nowrap font-bold text-white"
+      class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] px-6 py-3 rounded-full whitespace-nowrap font-bold text-white shadow-lg select-none"
     >
       {{ message }}
     </div>
@@ -16,6 +17,7 @@ import { computed, ref } from 'vue'
 const visible = ref(false)
 const message = ref('')
 const type = ref('info')
+const toastKey = ref(0)
 let dismissTimer
 
 const typeClass = computed(() => ({
@@ -29,6 +31,7 @@ const show = ({ content, type: nextType = 'info', duration = 2000 }) => {
   if (dismissTimer) {
     clearTimeout(dismissTimer)
   }
+  toastKey.value++
   message.value = content
   type.value = nextType
   visible.value = true

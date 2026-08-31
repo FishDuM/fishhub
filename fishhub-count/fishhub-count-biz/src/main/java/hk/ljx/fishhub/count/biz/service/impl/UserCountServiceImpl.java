@@ -30,9 +30,11 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -80,14 +82,12 @@ public class UserCountServiceImpl implements UserCountService {
     @Override
     @SentinelResource(value = "findUserCountData", blockHandler = "blockHandler4findUserCountData")
     public Response<FindUserCountsByIdRspDTO> findUserCountData(FindUserCountsByIdReqDTO findUserCountsByIdReqDTO) {
-        // 目标用户 ID
         Long userId = findUserCountsByIdReqDTO.getUserId();
 
         FindUserCountsByIdRspDTO findUserCountByIdRspDTO = FindUserCountsByIdRspDTO.builder()
                 .userId(userId)
                 .build();
 
-        // 先从 Redis 中查询
         long cacheVersion = userCountCacheVersionService.currentVersion(userId);
         String userCountHashKey = CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
 
@@ -96,7 +96,6 @@ public class UserCountServiceImpl implements UserCountService {
 
         Map<String, String> countMap = toCountMap(counts);
 
-        // 若 Hash 中计数不为空，优先以其为主（实时性更高）
         String collectTotal = countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL);
         String fansTotal = countMap.get(CountKeyConstants.FIELD_FANS_TOTAL);
         String noteTotal = countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL);
@@ -109,14 +108,9 @@ public class UserCountServiceImpl implements UserCountService {
         findUserCountByIdRspDTO.setFollowingTotal(NumberUtil.parseLong(followingTotal, 0L));
         findUserCountByIdRspDTO.setLikeTotal(NumberUtil.parseLong(likeTotal, 0L));
 
-        // 若 Hash 中有任何一个计数为空
         boolean isAnyNull = counts == null || counts.stream().anyMatch(Objects::isNull);
-
         if (isAnyNull) {
-            // 从数据库查询该用户的计数
             UserCountDO userCountDO = userCountDOMapper.selectByUserId(userId);
-
-            // 判断 Redis 中对应计数，若为空，则使用 DO 中的计数
             if (Objects.nonNull(userCountDO)) {
                 if (Objects.isNull(collectTotal)) {
                     findUserCountByIdRspDTO.setCollectTotal(Counts.clamp0(userCountDO.getCollectTotal()));
@@ -135,7 +129,6 @@ public class UserCountServiceImpl implements UserCountService {
                 }
             }
 
-            // 异步同步到 Redis 缓存中, 以便下次查询能够命中缓存
             syncHashCount2Redis(userCountHashKey, userCountDO, collectTotal, fansTotal, noteTotal, followingTotal, likeTotal);
         }
 
@@ -149,10 +142,7 @@ public class UserCountServiceImpl implements UserCountService {
             return Response.success(List.of());
         }
 
-        // 去重
         userIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
-
-        // 1. 查询 Redis
         List<Long> cacheVersions = userCountCacheVersionService.currentVersions(userIds);
         List<String> hashKeys = new ArrayList<>(userIds.size());
         for (int i = 0; i < userIds.size(); i++) {
@@ -169,13 +159,15 @@ public class UserCountServiceImpl implements UserCountService {
             }
         });
 
-        List<FindUserCountsByIdRspDTO> resultList = new ArrayList<>();
+        List<FindUserCountsByIdRspDTO> resultList = new ArrayList<>(userIds.size());
+        List<Map<String, String>> countMaps = new ArrayList<>(userIds.size());
         List<Long> userIdsNeedQuery = new ArrayList<>();
 
         for (int i = 0; i < userIds.size(); i++) {
             Long userId = userIds.get(i);
             List<?> rawCounts = (countHashes.get(i) instanceof List<?> list) ? list : Collections.emptyList();
             Map<String, String> countMap = toCountMap(rawCounts);
+            countMaps.add(countMap);
 
             String collectTotal = countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL);
             String fansTotal = countMap.get(CountKeyConstants.FIELD_FANS_TOTAL);
@@ -198,29 +190,21 @@ public class UserCountServiceImpl implements UserCountService {
             resultList.add(dto);
         }
 
-        // 2. 如果都有缓存，直接返回
         if (userIdsNeedQuery.isEmpty()) {
             return Response.success(resultList);
         }
 
-        // 3. 查数据库兜底
+        // 缓存未命中时查库兜底
         List<UserCountDO> userCountDOS = userCountDOMapper.selectByUserIds(userIdsNeedQuery);
         Map<Long, UserCountDO> countDOMap = CollUtil.isEmpty(userCountDOS) ? Collections.emptyMap()
                 : userCountDOS.stream().collect(Collectors.toMap(UserCountDO::getUserId, Function.identity(), (a, b) -> a));
 
-        // 4. 回填并异步写缓存
+        Set<Long> needQuerySet = new HashSet<>(userIdsNeedQuery);
         for (int i = 0; i < resultList.size(); i++) {
             FindUserCountsByIdRspDTO dto = resultList.get(i);
             Long userId = dto.getUserId();
             UserCountDO userCountDO = countDOMap.get(userId);
-
-            List<?> rawCounts = (countHashes.get(i) instanceof List<?> list) ? list : Collections.emptyList();
-            Map<String, String> countMap = toCountMap(rawCounts);
-            String rawCollect = countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL);
-            String rawFans = countMap.get(CountKeyConstants.FIELD_FANS_TOTAL);
-            String rawNote = countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL);
-            String rawFollowing = countMap.get(CountKeyConstants.FIELD_FOLLOWING_TOTAL);
-            String rawLike = countMap.get(CountKeyConstants.FIELD_LIKE_TOTAL);
+            Map<String, String> countMap = countMaps.get(i);
 
             if (dto.getCollectTotal() == null) {
                 dto.setCollectTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getCollectTotal()));
@@ -238,9 +222,13 @@ public class UserCountServiceImpl implements UserCountService {
                 dto.setLikeTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getLikeTotal()));
             }
 
-            if (userIdsNeedQuery.contains(userId)) {
+            if (needQuerySet.contains(userId)) {
                 syncHashCount2Redis(CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(i)), userCountDO,
-                        rawCollect, rawFans, rawNote, rawFollowing, rawLike);
+                        countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL),
+                        countMap.get(CountKeyConstants.FIELD_FANS_TOTAL),
+                        countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL),
+                        countMap.get(CountKeyConstants.FIELD_FOLLOWING_TOTAL),
+                        countMap.get(CountKeyConstants.FIELD_LIKE_TOTAL));
             }
         }
 

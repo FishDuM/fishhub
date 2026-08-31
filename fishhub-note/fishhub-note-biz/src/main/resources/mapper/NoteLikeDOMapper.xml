@@ -140,7 +140,7 @@
       (#{noteLike.userId}, #{noteLike.noteId}, #{noteLike.createTime}, #{noteLike.status})
     </foreach>
     ON DUPLICATE KEY UPDATE
-        create_time = IF(VALUES(create_time) >= create_time, VALUES(create_time), create_time),
-        status = IF(VALUES(create_time) >= create_time, VALUES(status), status)
+        status = VALUES(status),
+        create_time = VALUES(create_time)
   </insert>
 </mapper>
