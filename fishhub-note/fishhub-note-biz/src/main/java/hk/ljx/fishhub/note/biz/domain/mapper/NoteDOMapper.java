@@ -82,4 +82,18 @@ public interface NoteDOMapper {
 
     int updateIsTop(NoteDO noteDO);
 
+    /**
+     * 原子更新点赞数
+     */
+    int updateLikeCount(@Param("noteId") Long noteId, @Param("delta") Integer delta);
+
+    /**
+     * 原子更新收藏数
+     */
+    int updateCollectCount(@Param("noteId") Long noteId, @Param("delta") Integer delta);
+
+    /**
+     * 原子更新评论数
+     */
+    int updateCommentCount(@Param("noteId") Long noteId, @Param("delta") Integer delta);
 }

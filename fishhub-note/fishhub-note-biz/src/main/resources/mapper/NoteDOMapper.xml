@@ -14,6 +14,9 @@
     <result column="img_uris" jdbcType="VARCHAR" property="imgUris" />
     <result column="video_uri" jdbcType="VARCHAR" property="videoUri" />
     <result column="visible" jdbcType="TINYINT" property="visible" />
+    <result column="like_count" jdbcType="INTEGER" property="likeCount" />
+    <result column="collect_count" jdbcType="INTEGER" property="collectCount" />
+    <result column="comment_count" jdbcType="INTEGER" property="commentCount" />
     <result column="create_time" jdbcType="TIMESTAMP" property="createTime" />
     <result column="update_time" jdbcType="TIMESTAMP" property="updateTime" />
     <result column="status" jdbcType="TINYINT" property="status" />
@@ -24,7 +27,7 @@
   </resultMap>
   <sql id="Base_Column_List">
     id, title, is_content_empty, creator_id, channel_id, topic_id, topic_name, is_top, `type`, img_uris,
-    video_uri, visible, create_time, update_time, `status`, content_uuid, revision
+    video_uri, visible, like_count, collect_count, comment_count, create_time, update_time, `status`, content_uuid, revision
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
@@ -73,7 +76,7 @@
   </select>
 
   <select id="selectPublishedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
-    select id, title, creator_id, is_top, type, img_uris, video_uri from t_note
+    select id, title, creator_id, is_top, type, img_uris, video_uri, like_count, collect_count, comment_count from t_note
     where creator_id = #{creatorId} and status = 1
     <if test="!includePrivate">
       and visible = 0
@@ -81,16 +84,16 @@
     <if test="cursor != null and cursor &gt; 0">
       <![CDATA[ and id < #{cursor} ]]>
     </if>
-
     order by id desc
     limit 20
   </select>
 
   <select id="selectCollectedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
     select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri,
+           n.like_count, n.collect_count, n.comment_count,
            c.id as action_id, c.create_time as action_time
     from t_note_collection c join t_note n on n.id = c.note_id
-    where c.user_id = #{userId} and c.status = 1 and n.visible = 0 and n.status = 1
+    where c.user_id = #{userId} and n.visible = 0 and n.status = 1
     <if test="cursorId != null and cursorId &gt; 0">
       <![CDATA[ and c.id < #{cursorId} ]]>
     </if>
@@ -100,9 +103,10 @@
 
   <select id="selectLikedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
     select n.id, n.title, n.creator_id, n.channel_id, n.is_top, n.type, n.img_uris, n.video_uri,
+           n.like_count, n.collect_count, n.comment_count,
            l.id as action_id, l.create_time as action_time
     from t_note_like l join t_note n on n.id = l.note_id
-    where l.user_id = #{userId} and l.status = 1 and n.visible = 0 and n.status = 1
+    where l.user_id = #{userId} and n.visible = 0 and n.status = 1
     <if test="cursorId != null and cursorId &gt; 0">
       <![CDATA[ and l.id < #{cursorId} ]]>
     </if>
@@ -119,7 +123,6 @@
     <if test="cursor != null and cursor &gt; 0">
       <![CDATA[ and id < #{cursor} ]]>
     </if>
-
     order by id desc
     limit #{limit}
   </select>
@@ -132,12 +135,15 @@
     insert into t_note (id, title, is_content_empty, 
       creator_id, channel_id, topic_id, topic_name,
       is_top, `type`, img_uris, video_uri, 
-      visible, create_time, update_time, 
+      visible, like_count, collect_count, comment_count,
+      create_time, update_time, 
       `status`, content_uuid, revision)
     values (#{id,jdbcType=BIGINT}, #{title,jdbcType=VARCHAR}, #{isContentEmpty,jdbcType=BIT}, 
       #{creatorId,jdbcType=BIGINT}, #{channelId,jdbcType=BIGINT}, #{topicId,jdbcType=BIGINT}, #{topicName,jdbcType=VARCHAR},
       #{isTop,jdbcType=BIT}, #{type,jdbcType=TINYINT}, #{imgUris,jdbcType=VARCHAR}, #{videoUri,jdbcType=VARCHAR}, 
-      #{visible,jdbcType=TINYINT}, #{createTime,jdbcType=TIMESTAMP}, #{updateTime,jdbcType=TIMESTAMP}, 
+      #{visible,jdbcType=TINYINT}, IFNULL(#{likeCount,jdbcType=INTEGER}, 0), IFNULL(#{collectCount,jdbcType=INTEGER}, 0),
+      IFNULL(#{commentCount,jdbcType=INTEGER}, 0),
+      #{createTime,jdbcType=TIMESTAMP}, #{updateTime,jdbcType=TIMESTAMP}, 
       #{status,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR}, #{revision,jdbcType=BIGINT})
   </insert>
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
@@ -178,6 +184,15 @@
       </if>
       <if test="visible != null">
         visible,
+      </if>
+      <if test="likeCount != null">
+        like_count,
+      </if>
+      <if test="collectCount != null">
+        collect_count,
+      </if>
+      <if test="commentCount != null">
+        comment_count,
       </if>
       <if test="createTime != null">
         create_time,
@@ -232,6 +247,15 @@
       <if test="visible != null">
         #{visible,jdbcType=TINYINT},
       </if>
+      <if test="likeCount != null">
+        #{likeCount,jdbcType=INTEGER},
+      </if>
+      <if test="collectCount != null">
+        #{collectCount,jdbcType=INTEGER},
+      </if>
+      <if test="commentCount != null">
+        #{commentCount,jdbcType=INTEGER},
+      </if>
       <if test="createTime != null">
         #{createTime,jdbcType=TIMESTAMP},
       </if>
@@ -285,6 +309,15 @@
       <if test="visible != null">
         visible = #{visible,jdbcType=TINYINT},
       </if>
+      <if test="likeCount != null">
+        like_count = #{likeCount,jdbcType=INTEGER},
+      </if>
+      <if test="collectCount != null">
+        collect_count = #{collectCount,jdbcType=INTEGER},
+      </if>
+      <if test="commentCount != null">
+        comment_count = #{commentCount,jdbcType=INTEGER},
+      </if>
       <if test="createTime != null">
         create_time = #{createTime,jdbcType=TIMESTAMP},
       </if>
@@ -310,6 +343,9 @@
       `type` = #{type,jdbcType=TINYINT},
       img_uris = #{imgUris,jdbcType=VARCHAR},
       video_uri = #{videoUri,jdbcType=VARCHAR},
+      like_count = #{likeCount,jdbcType=INTEGER},
+      collect_count = #{collectCount,jdbcType=INTEGER},
+      comment_count = #{commentCount,jdbcType=INTEGER},
       update_time = #{updateTime,jdbcType=TIMESTAMP},
       content_uuid = #{contentUuid,jdbcType=VARCHAR}
     where id = #{id,jdbcType=BIGINT}
@@ -358,6 +394,22 @@
     where id = #{id,jdbcType=BIGINT} and creator_id = #{creatorId,jdbcType=BIGINT}
   </update>
 
+  <update id="updateLikeCount">
+    update t_note
+    set like_count = GREATEST(0, like_count + #{delta})
+    where id = #{noteId}
+  </update>
 
+  <update id="updateCollectCount">
+    update t_note
+    set collect_count = GREATEST(0, collect_count + #{delta})
+    where id = #{noteId}
+  </update>
+
+  <update id="updateCommentCount">
+    update t_note
+    set comment_count = GREATEST(0, comment_count + #{delta})
+    where id = #{noteId}
+  </update>
 
 </mapper>

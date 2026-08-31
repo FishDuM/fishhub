@@ -95,7 +95,7 @@ FishHub 网关（`fishhub-gateway`）已集成 Sentinel 网关限流并支持通
 |---|---|---|
 | NACOS_ADDR | Nacos 注册/配置中心地址（所有 bootstrap.yml 已参数化） | 127.0.0.1:8848 |
 | SENTINEL_DASHBOARD | Sentinel 控制台地址（业务服务 8060 / 网关 8858） | 127.0.0.1:8060 或 :8858 |
-| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（各服务库名：fishhub_user/fishhub_note/fishhub_comment/fishhub_count） | localhost / 3306 / root / 123456 |
+| MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD | MySQL 连接（统一主库名：fishhub） | localhost / 3306 / root / 123456 |
 | REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE | Redis | localhost / 6379 / 123456 / 0 |
 | ROCKETMQ_NAMESRV | RocketMQ NameServer | localhost:9876 |
 | ELASTICSEARCH_ADDRESS | ES 地址（search） | localhost:9200 |

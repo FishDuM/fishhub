@@ -8,14 +8,13 @@
                n.video_uri as video_uri,
                DATE_FORMAT(n.create_time, '%Y-%m-%d %H:%i:%s') AS create_time,
                DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
-                IFNULL(nc.like_total, 0) as like_total,
-                IFNULL(nc.collect_total, 0) as collect_total,
-                IFNULL(nc.comment_total, 0) as comment_total,
+                IFNULL(n.like_count, 0) as like_total,
+                IFNULL(n.collect_count, 0) as collect_total,
+                IFNULL(n.comment_count, 0) as comment_total,
                 u.avatar as avatar,
                 u.nickname as nickname
-        from fishhub_note.t_note n
-                      left join fishhub_count.t_note_count nc on n.id = nc.note_id
-                      left join fishhub_user.t_user u on n.creator_id = u.id
+        from t_note n
+        left join t_user u on n.creator_id = u.id
         where n.visible = 0 and n.`status` = 1
           <if test="noteId != null">
               and n.id = #{noteId} limit 1
@@ -27,10 +26,9 @@
 
     <select id="selectEsUserIndexData" resultType="map" parameterType="map">
         select u.id, u.nickname, u.avatar, u.fishhub_id,
-        IFNULL(uc.note_total, 0) as note_total,
-        IFNULL(uc.fans_total, 0) as fans_total
-        from fishhub_user.t_user u
-        left join fishhub_count.t_user_count uc on u.id = uc.user_id
+        IFNULL(u.note_count, 0) as note_total,
+        IFNULL(u.fans_count, 0) as fans_total
+        from t_user u
         where u.`status` = 0 and u.is_deleted = 0
         <if test="userId != null">
             and u.id = #{userId}
@@ -43,14 +41,13 @@
                n.video_uri as video_uri,
                DATE_FORMAT(n.create_time, '%Y-%m-%d %H:%i:%s') AS create_time,
                DATE_FORMAT(n.update_time, '%Y-%m-%d %H:%i:%s') AS update_time,
-                IFNULL(nc.like_total, 0) as like_total,
-                IFNULL(nc.collect_total, 0) as collect_total,
-                IFNULL(nc.comment_total, 0) as comment_total,
+                IFNULL(n.like_count, 0) as like_total,
+                IFNULL(n.collect_count, 0) as collect_total,
+                IFNULL(n.comment_count, 0) as comment_total,
                 u.avatar as avatar,
                 u.nickname as nickname
-        from fishhub_note.t_note n
-                      left join fishhub_count.t_note_count nc on n.id = nc.note_id
-                      left join fishhub_user.t_user u on n.creator_id = u.id
+        from t_note n
+        left join t_user u on n.creator_id = u.id
         where n.visible = 0 and n.`status` = 1
         <if test="noteIds != null and noteIds.size() > 0">
           and n.id in
@@ -65,10 +62,9 @@
 
     <select id="selectEsUserIndexDataByIds" resultType="map">
         select u.id, u.nickname, u.avatar, u.fishhub_id,
-        IFNULL(uc.note_total, 0) as note_total,
-        IFNULL(uc.fans_total, 0) as fans_total
-        from fishhub_user.t_user u
-        left join fishhub_count.t_user_count uc on u.id = uc.user_id
+        IFNULL(u.note_count, 0) as note_total,
+        IFNULL(u.fans_count, 0) as fans_total
+        from t_user u
         where u.`status` = 0 and u.is_deleted = 0
         <if test="userIds != null and userIds.size() > 0">
           and u.id in

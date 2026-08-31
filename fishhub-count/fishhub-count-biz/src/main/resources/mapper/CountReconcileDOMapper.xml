@@ -5,7 +5,7 @@
     <!-- ==================== 笔记对账 ==================== -->
 
     <select id="selectNextNoteIds" resultType="java.lang.Long">
-        SELECT id FROM fishhub_note.t_note
+        SELECT id FROM t_note
         WHERE id > #{lastId} AND status = 1
         ORDER BY id ASC
         LIMIT #{limit}
@@ -13,29 +13,27 @@
 
     <select id="countNoteLikes" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT note_id AS id, COUNT(*) AS count
-        FROM fishhub_note.t_note_like
+        FROM t_note_like
         WHERE note_id IN
         <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
             #{noteId}
         </foreach>
-        AND status = 1
         GROUP BY note_id
     </select>
 
     <select id="countNoteCollections" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT note_id AS id, COUNT(*) AS count
-        FROM fishhub_note.t_note_collection
+        FROM t_note_collection
         WHERE note_id IN
         <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
             #{noteId}
         </foreach>
-        AND status = 1
         GROUP BY note_id
     </select>
 
     <select id="countNoteComments" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT note_id AS id, COUNT(*) AS count
-        FROM fishhub_comment.t_comment
+        FROM t_comment
         WHERE note_id IN
         <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
             #{noteId}
@@ -44,22 +42,33 @@
         GROUP BY note_id
     </select>
 
-    <insert id="batchUpsertNoteCounts">
-        INSERT INTO t_note_count (note_id, like_total, collect_total, comment_total)
-        VALUES
-        <foreach collection="list" item="item" separator=",">
-            (#{item.noteId}, #{item.likeTotal}, #{item.collectTotal}, #{item.commentTotal})
+    <update id="batchUpsertNoteCounts">
+        UPDATE t_note
+        <trim prefix="SET like_count = CASE id" suffix="END,">
+            <foreach collection="list" item="item">
+                WHEN #{item.noteId} THEN #{item.likeTotal}
+            </foreach>
+        </trim>
+        <trim prefix="collect_count = CASE id" suffix="END,">
+            <foreach collection="list" item="item">
+                WHEN #{item.noteId} THEN #{item.collectTotal}
+            </foreach>
+        </trim>
+        <trim prefix="comment_count = CASE id" suffix="END">
+            <foreach collection="list" item="item">
+                WHEN #{item.noteId} THEN #{item.commentTotal}
+            </foreach>
+        </trim>
+        WHERE id IN
+        <foreach collection="list" item="item" open="(" separator="," close=")">
+            #{item.noteId}
         </foreach>
-        ON DUPLICATE KEY UPDATE
-            like_total = VALUES(like_total),
-            collect_total = VALUES(collect_total),
-            comment_total = VALUES(comment_total)
-    </insert>
+    </update>
 
     <!-- ==================== 用户对账 ==================== -->
 
     <select id="selectNextUserIds" resultType="java.lang.Long">
-        SELECT id FROM fishhub_user.t_user
+        SELECT id FROM t_user
         WHERE id > #{lastId} AND is_deleted = 0
         ORDER BY id ASC
         LIMIT #{limit}
@@ -67,7 +76,7 @@
 
     <select id="countUserFans" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT following_user_id AS id, COUNT(*) AS count
-        FROM fishhub_user.t_following
+        FROM t_following
         WHERE following_user_id IN
         <foreach collection="userIds" item="userId" open="(" separator="," close=")">
             #{userId}
@@ -77,7 +86,7 @@
 
     <select id="countUserFollowings" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT user_id AS id, COUNT(*) AS count
-        FROM fishhub_user.t_following
+        FROM t_following
         WHERE user_id IN
         <foreach collection="userIds" item="userId" open="(" separator="," close=")">
             #{userId}
@@ -87,7 +96,7 @@
 
     <select id="countUserNotes" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT creator_id AS id, COUNT(*) AS count
-        FROM fishhub_note.t_note
+        FROM t_note
         WHERE creator_id IN
         <foreach collection="userIds" item="userId" open="(" separator="," close=")">
             #{userId}
@@ -98,46 +107,65 @@
 
     <select id="countUserLikes" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT n.creator_id AS id, COUNT(*) AS count
-        FROM fishhub_note.t_note_like l
-        JOIN fishhub_note.t_note n ON l.note_id = n.id
+        FROM t_note_like l
+        JOIN t_note n ON l.note_id = n.id
         WHERE n.creator_id IN
         <foreach collection="userIds" item="userId" open="(" separator="," close=")">
             #{userId}
         </foreach>
-        AND l.status = 1 AND n.status = 1
+        AND n.status = 1
         GROUP BY n.creator_id
     </select>
 
     <select id="countUserCollections" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT n.creator_id AS id, COUNT(*) AS count
-        FROM fishhub_note.t_note_collection c
-        JOIN fishhub_note.t_note n ON c.note_id = n.id
+        FROM t_note_collection c
+        JOIN t_note n ON c.note_id = n.id
         WHERE n.creator_id IN
         <foreach collection="userIds" item="userId" open="(" separator="," close=")">
             #{userId}
         </foreach>
-        AND c.status = 1 AND n.status = 1
+        AND n.status = 1
         GROUP BY n.creator_id
     </select>
 
-    <insert id="batchUpsertUserCounts">
-        INSERT INTO t_user_count (user_id, fans_total, following_total, note_total, like_total, collect_total)
-        VALUES
-        <foreach collection="list" item="item" separator=",">
-            (#{item.userId}, #{item.fansTotal}, #{item.followingTotal}, #{item.noteTotal}, #{item.likeTotal}, #{item.collectTotal})
+    <update id="batchUpsertUserCounts">
+        UPDATE t_user
+        <trim prefix="SET fans_count = CASE id" suffix="END,">
+            <foreach collection="list" item="item">
+                WHEN #{item.userId} THEN #{item.fansTotal}
+            </foreach>
+        </trim>
+        <trim prefix="following_count = CASE id" suffix="END,">
+            <foreach collection="list" item="item">
+                WHEN #{item.userId} THEN #{item.followingTotal}
+            </foreach>
+        </trim>
+        <trim prefix="note_count = CASE id" suffix="END,">
+            <foreach collection="list" item="item">
+                WHEN #{item.userId} THEN #{item.noteTotal}
+            </foreach>
+        </trim>
+        <trim prefix="like_count = CASE id" suffix="END,">
+            <foreach collection="list" item="item">
+                WHEN #{item.userId} THEN #{item.likeTotal}
+            </foreach>
+        </trim>
+        <trim prefix="collect_count = CASE id" suffix="END">
+            <foreach collection="list" item="item">
+                WHEN #{item.userId} THEN #{item.collectTotal}
+            </foreach>
+        </trim>
+        WHERE id IN
+        <foreach collection="list" item="item" open="(" separator="," close=")">
+            #{item.userId}
         </foreach>
-        ON DUPLICATE KEY UPDATE
-            fans_total = VALUES(fans_total),
-            following_total = VALUES(following_total),
-            note_total = VALUES(note_total),
-            like_total = VALUES(like_total),
-            collect_total = VALUES(collect_total)
-    </insert>
+    </update>
 
     <!-- ==================== 评论对账 ==================== -->
 
     <select id="selectNextCommentIds" resultType="java.lang.Long">
-        SELECT id FROM fishhub_comment.t_comment
+        SELECT id FROM t_comment
         WHERE id > #{lastId}
         ORDER BY id ASC
         LIMIT #{limit}
@@ -145,7 +173,7 @@
 
     <select id="countCommentLikes" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT comment_id AS id, COUNT(*) AS count
-        FROM fishhub_comment.t_comment_like
+        FROM t_comment_like
         WHERE comment_id IN
         <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
             #{commentId}
@@ -155,7 +183,7 @@
 
     <select id="countChildComments" resultType="hk.ljx.fishhub.count.biz.domain.dataobject.IdCountBO">
         SELECT parent_id AS id, COUNT(*) AS count
-        FROM fishhub_comment.t_comment
+        FROM t_comment
         WHERE parent_id IN
         <foreach collection="parentIds" item="parentId" open="(" separator="," close=")">
             #{parentId}
@@ -165,15 +193,10 @@
     </select>
 
     <update id="batchUpdateCommentCounts">
-        UPDATE fishhub_comment.t_comment
-        <trim prefix="SET like_total = CASE id" suffix="END,">
+        UPDATE t_comment
+        <trim prefix="SET like_total = CASE id" suffix="END">
             <foreach collection="list" item="item">
                 WHEN #{item.commentId} THEN #{item.likeTotal}
-            </foreach>
-        </trim>
-        <trim prefix="child_comment_total = CASE id" suffix="END">
-            <foreach collection="list" item="item">
-                WHEN #{item.commentId} THEN #{item.childCommentTotal}
             </foreach>
         </trim>
         WHERE id IN

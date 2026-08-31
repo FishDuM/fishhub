@@ -6,10 +6,9 @@
     <result column="user_id" jdbcType="BIGINT" property="userId" />
     <result column="note_id" jdbcType="BIGINT" property="noteId" />
     <result column="create_time" jdbcType="TIMESTAMP" property="createTime" />
-    <result column="status" jdbcType="TINYINT" property="status" />
   </resultMap>
   <sql id="Base_Column_List">
-    id, user_id, note_id, create_time, `status`
+    id, user_id, note_id, create_time
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
@@ -19,26 +18,26 @@
   </select>
 
   <select id="selectCountByUserIdAndNoteId" resultType="int" parameterType="map">
-    select count(1) from t_note_like where user_id = #{userId} and note_id = #{noteId} and status = 1 limit 1
+    select count(1) from t_note_like where user_id = #{userId} and note_id = #{noteId} limit 1
   </select>
 
   <select id="selectByUserId" resultMap="BaseResultMap" parameterType="map">
     select note_id from t_note_like
-    where user_id = #{userId} and status = 1
+    where user_id = #{userId}
   </select>
 
   <select id="selectNoteIsLiked" parameterType="map" resultType="int">
-    select count(1) from t_note_like where user_id = #{userId} and note_id = #{noteId} and status = 1 limit 1
+    select count(1) from t_note_like where user_id = #{userId} and note_id = #{noteId} limit 1
   </select>
 
   <select id="selectLikedByUserIdAndLimit" resultMap="BaseResultMap" parameterType="map">
     select note_id, create_time from t_note_like
-    where user_id = #{userId} and status = 1 order by create_time desc limit #{limit}
+    where user_id = #{userId} order by create_time desc limit #{limit}
   </select>
 
   <select id="selectByUserIdAndNoteIds" resultMap="BaseResultMap" parameterType="map">
     select note_id, user_id from t_note_like
-    where user_id = #{userId} and status = 1
+    where user_id = #{userId}
       and note_id in
     <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
       #{noteId}
@@ -55,18 +54,22 @@
     where note_id = #{noteId}
   </delete>
   <insert id="insert" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
-    insert into t_note_like (id, user_id, note_id, 
-      create_time, `status`)
+    insert into t_note_like (id, user_id, note_id, create_time)
     values (#{id,jdbcType=BIGINT}, #{userId,jdbcType=BIGINT}, #{noteId,jdbcType=BIGINT}, 
-      #{createTime,jdbcType=TIMESTAMP}, #{status,jdbcType=TINYINT})
+      #{createTime,jdbcType=TIMESTAMP})
   </insert>
 
   <insert id="insertOrUpdate" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
-    INSERT INTO t_note_like (user_id, note_id, create_time, status)
-    VALUES (#{userId}, #{noteId}, #{createTime}, #{status})
-      ON DUPLICATE KEY UPDATE
-          create_time = IF(status &lt;&gt; VALUES(status), VALUES(create_time), create_time),
-          status = VALUES(status)
+    <choose>
+      <when test="status == 1 or status == null">
+        INSERT INTO t_note_like (user_id, note_id, create_time)
+        VALUES (#{userId}, #{noteId}, #{createTime})
+        ON DUPLICATE KEY UPDATE create_time = VALUES(create_time)
+      </when>
+      <otherwise>
+        DELETE FROM t_note_like WHERE user_id = #{userId} AND note_id = #{noteId}
+      </otherwise>
+    </choose>
   </insert>
 
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteLikeDO">
@@ -84,9 +87,6 @@
       <if test="createTime != null">
         create_time,
       </if>
-      <if test="status != null">
-        `status`,
-      </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
       <if test="id != null">
@@ -100,9 +100,6 @@
       </if>
       <if test="createTime != null">
         #{createTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="status != null">
-        #{status,jdbcType=TINYINT},
       </if>
     </trim>
   </insert>
@@ -118,9 +115,6 @@
       <if test="createTime != null">
         create_time = #{createTime,jdbcType=TIMESTAMP},
       </if>
-      <if test="status != null">
-        `status` = #{status,jdbcType=TINYINT},
-      </if>
     </set>
     where id = #{id,jdbcType=BIGINT}
   </update>
@@ -128,19 +122,16 @@
     update t_note_like
     set user_id = #{userId,jdbcType=BIGINT},
       note_id = #{noteId,jdbcType=BIGINT},
-      create_time = #{createTime,jdbcType=TIMESTAMP},
-      `status` = #{status,jdbcType=TINYINT}
+      create_time = #{createTime,jdbcType=TIMESTAMP}
     where id = #{id,jdbcType=BIGINT}
   </update>
 
   <insert id="insertOrUpdateBatch" parameterType="list">
-    INSERT INTO t_note_like (user_id, note_id, create_time, status)
+    INSERT INTO t_note_like (user_id, note_id, create_time)
     VALUES
     <foreach collection="noteLikes" item="noteLike" separator=",">
-      (#{noteLike.userId}, #{noteLike.noteId}, #{noteLike.createTime}, #{noteLike.status})
+      (#{noteLike.userId}, #{noteLike.noteId}, #{noteLike.createTime})
     </foreach>
-    ON DUPLICATE KEY UPDATE
-        status = VALUES(status),
-        create_time = VALUES(create_time)
+    ON DUPLICATE KEY UPDATE create_time = VALUES(create_time)
   </insert>
 </mapper>

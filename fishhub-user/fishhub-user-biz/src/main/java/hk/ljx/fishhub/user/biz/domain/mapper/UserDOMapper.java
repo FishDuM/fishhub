@@ -55,4 +55,29 @@ public interface UserDOMapper {
     int updateByPrimaryKeySelective(UserDO record);
 
     int updateByPrimaryKey(UserDO record);
+
+    /**
+     * 原子更新粉丝数
+     */
+    int updateFansCount(@Param("userId") Long userId, @Param("delta") Integer delta);
+
+    /**
+     * 原子更新关注数
+     */
+    int updateFollowingCount(@Param("userId") Long userId, @Param("delta") Integer delta);
+
+    /**
+     * 原子更新发帖数
+     */
+    int updateNoteCount(@Param("userId") Long userId, @Param("delta") Integer delta);
+
+    /**
+     * 原子更新获赞数
+     */
+    int updateLikeCount(@Param("userId") Long userId, @Param("delta") Integer delta);
+
+    /**
+     * 原子更新获收藏数
+     */
+    int updateCollectCount(@Param("userId") Long userId, @Param("delta") Integer delta);
 }

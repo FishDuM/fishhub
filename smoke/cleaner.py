@@ -100,26 +100,22 @@ def clean_via_db(
     db_port = int(port or os.getenv("MYSQL_PORT", 3306))
 
     clean_sqls = [
-        # 1. 评论服务表 (业务表 + 事务回查日志 + MQ 幂等消费记录)
-        "DELETE FROM fishhub_comment.t_comment WHERE id > 0",
-        "DELETE FROM fishhub_comment.t_comment_like WHERE id > 0",
-        "DELETE FROM fishhub_comment.t_tx_journal",
-        "DELETE FROM fishhub_comment.t_mq_consume_record",
-        # 2. 笔记服务表 (业务表 + 事务回查日志 + MQ 幂等消费记录)
-        "DELETE FROM fishhub_note.t_note WHERE title LIKE '%压测%' OR title LIKE '%Smoke%' OR title LIKE '%test%' OR creator_id >= 9000000",
-        "DELETE FROM fishhub_note.t_note_like WHERE user_id >= 9000000",
-        "DELETE FROM fishhub_note.t_note_collection WHERE user_id >= 9000000",
-        "DELETE FROM fishhub_note.t_tx_journal",
-        "DELETE FROM fishhub_note.t_mq_consume_record",
+        # 1. 评论服务表
+        "DELETE FROM fishhub.t_comment WHERE id > 0",
+        "DELETE FROM fishhub.t_comment_like WHERE id > 0",
+        # 2. 笔记服务表
+        "DELETE FROM fishhub.t_note WHERE title LIKE '%压测%' OR title LIKE '%Smoke%' OR title LIKE '%test%' OR creator_id >= 9000000",
+        "DELETE FROM fishhub.t_note_like WHERE user_id >= 9000000",
+        "DELETE FROM fishhub.t_note_collection WHERE user_id >= 9000000",
         # 3. 用户与社交关系表 (保留预置基准用户 13811110001, 13811110002)
-        "DELETE FROM fishhub_user.t_user WHERE phone LIKE '138%' AND phone NOT IN ('13811110001', '13811110002')",
-        "DELETE FROM fishhub_user.t_following WHERE user_id >= 9000000 OR following_user_id >= 9000000",
-        "DELETE FROM fishhub_user.t_tx_journal",
-        "DELETE FROM fishhub_user.t_mq_consume_record",
-        # 4. 计数服务表 (用户计数 + 孤儿笔记计数 + MQ 幂等消费记录)
-        "DELETE FROM fishhub_count.t_user_count WHERE user_id >= 9000000",
-        "DELETE FROM fishhub_count.t_note_count WHERE note_id NOT IN (SELECT id FROM fishhub_note.t_note)",
-        "DELETE FROM fishhub_count.t_mq_consume_record",
+        "DELETE FROM fishhub.t_user WHERE phone LIKE '138%' AND phone NOT IN ('13811110001', '13811110002')",
+        "DELETE FROM fishhub.t_following WHERE user_id >= 9000000 OR following_user_id >= 9000000",
+        # 4. 计数服务表
+        "DELETE FROM fishhub.t_user_count WHERE user_id >= 9000000",
+        "DELETE FROM fishhub.t_note_count WHERE note_id NOT IN (SELECT id FROM fishhub.t_note)",
+        # 5. 基础设施表
+        "DELETE FROM fishhub.t_tx_journal",
+        "DELETE FROM fishhub.t_mq_consume_record",
     ]
 
     # 尝试使用 pymysql 执行清理 (支持连接重试，应对高并发后连接池未释放的瞬态拥堵)

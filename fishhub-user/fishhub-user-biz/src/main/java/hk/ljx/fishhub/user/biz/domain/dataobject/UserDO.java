@@ -35,6 +35,31 @@ public class UserDO {
 
     private String introduction;
 
+    /**
+     * 粉丝总数
+     */
+    private Integer fansCount;
+
+    /**
+     * 关注总数
+     */
+    private Integer followingCount;
+
+    /**
+     * 发布笔记数
+     */
+    private Integer noteCount;
+
+    /**
+     * 笔记获得点赞总数
+     */
+    private Integer likeCount;
+
+    /**
+     * 笔记获得收藏总数
+     */
+    private Integer collectCount;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

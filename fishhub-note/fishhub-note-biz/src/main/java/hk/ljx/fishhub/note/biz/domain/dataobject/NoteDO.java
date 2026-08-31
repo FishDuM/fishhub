@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.Date;
+
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -35,6 +35,21 @@ public class NoteDO {
     private String videoUri;
 
     private Integer visible;
+
+    /**
+     * 点赞总数 (内聚自 t_note_count)
+     */
+    private Integer likeCount;
+
+    /**
+     * 收藏总数 (内聚自 t_note_count)
+     */
+    private Integer collectCount;
+
+    /**
+     * 评论总数 (内聚自 t_note_count)
+     */
+    private Integer commentCount;
 
     private LocalDateTime createTime;
 

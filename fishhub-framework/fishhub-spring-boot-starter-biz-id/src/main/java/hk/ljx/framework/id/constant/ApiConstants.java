@@ -8,20 +8,20 @@ public interface ApiConstants {
     /**
      * 笔记 ID 业务标识
      */
-    String BIZ_TAG_NOTE_ID = "leaf-segment-note-id";
+    String BIZ_TAG_NOTE_ID = "snowflake-note-id";
 
     /**
      * 用户 ID 业务标识
      */
-    String BIZ_TAG_USER_ID = "leaf-segment-user-id";
+    String BIZ_TAG_USER_ID = "snowflake-user-id";
 
     /**
      * 评论 ID 业务标识
      */
-    String BIZ_TAG_COMMENT_ID = "leaf-segment-comment-id";
+    String BIZ_TAG_COMMENT_ID = "snowflake-comment-id";
 
     /**
      * 社区号 ID 业务标识
      */
-    String BIZ_TAG_FISHHUB_ID = "leaf-segment-fishhub-id";
+    String BIZ_TAG_FISHHUB_ID = "snowflake-fishhub-id";
 }

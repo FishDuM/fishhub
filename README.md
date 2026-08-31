@@ -58,11 +58,11 @@ fishhub
 | 服务名称 | 端口 | 模块架构 | 核心职责 | 持久化 / 存储组件 |
 | :--- | :---: | :---: | :--- | :--- |
 | **Gateway** | **8000** | 单层 | 统一接入网关（流量路由、Sa-Token 鉴权、Sentinel 限流、IP 透传） | Redis（Token 会话） |
-| **User** | **8001** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub_user`) + Redis + MinIO/OSS |
-| **Note** | **8002** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub_note`) + **Cassandra (`fishhub`)** + Redis |
-| **Count** | **8003** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub_count`) + Redis Hash + RocketMQ |
-| **Search** | **8004** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL |
-| **Comment** | **8005** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub_comment`) + **Cassandra (`fishhub`)** + Redis |
+| **User** | **8001** | `api + biz` | 用户/认证/RBAC/图形验证码/关注与粉丝/MinIO & OSS 上传 | MySQL (`fishhub`) + Redis + MinIO/OSS |
+| **Note** | **8002** | `api + biz` | 笔记核心业务（发布、频道话题、点赞/收藏、Cassandra 正文存储） | MySQL (`fishhub`) + **Cassandra (`fishhub`)** + Redis |
+| **Count** | **8003** | `api + biz` | 全站计数中枢（Redis 实时缓冲 + 批量异步落库 + 每日对账） | MySQL (`fishhub`) + Redis Hash + RocketMQ |
+| **Search** | **8004** | `biz` | Elasticsearch 全文搜索、拼音分词、多维权重打分、高亮 | **Elasticsearch 7/8** + MySQL (`fishhub`) |
+| **Comment** | **8005** | `biz` | 评论、二级回复、热度权重、实时点赞、Cassandra 正文存储 | MySQL (`fishhub`) + **Cassandra (`fishhub`)** + Redis |
 | **Frontend** | **8006** | `fishhub-vue3` | Vue 3 前端开发工程 | Vite + Pinia + TailwindCSS |
 
 > **安全说明**：除 Gateway（8000）与 Frontend（8006）外，其余微服务均为内网 RPC 服务，跨服务调用一律走 OpenFeign 或 RocketMQ 异步通知。

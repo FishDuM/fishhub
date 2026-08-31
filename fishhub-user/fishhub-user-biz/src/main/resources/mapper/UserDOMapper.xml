@@ -13,13 +13,19 @@
     <result column="sex" jdbcType="TINYINT" property="sex" />
     <result column="status" jdbcType="TINYINT" property="status" />
     <result column="introduction" jdbcType="VARCHAR" property="introduction" />
+    <result column="fans_count" jdbcType="INTEGER" property="fansCount" />
+    <result column="following_count" jdbcType="INTEGER" property="followingCount" />
+    <result column="note_count" jdbcType="INTEGER" property="noteCount" />
+    <result column="like_count" jdbcType="INTEGER" property="likeCount" />
+    <result column="collect_count" jdbcType="INTEGER" property="collectCount" />
     <result column="create_time" jdbcType="TIMESTAMP" property="createTime" />
     <result column="update_time" jdbcType="TIMESTAMP" property="updateTime" />
     <result column="is_deleted" jdbcType="BIT" property="isDeleted" />
   </resultMap>
   <sql id="Base_Column_List">
     id, fishhub_id, `password`, nickname, avatar, birthday, background_img, phone, 
-    sex, `status`, introduction, create_time, update_time, is_deleted
+    sex, `status`, introduction, fans_count, following_count, note_count, like_count, collect_count,
+    create_time, update_time, is_deleted
   </sql>
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
@@ -48,7 +54,7 @@
   </select>
 
   <select id="selectByIds" resultMap="BaseResultMap">
-    select id, nickname, avatar, introduction from t_user
+    select id, nickname, avatar, introduction, fans_count, following_count, note_count, like_count, collect_count from t_user
     where status = 0 and is_deleted = 0
     and id in
     <foreach collection="ids" item="id" open="(" separator="," close=")">
@@ -57,7 +63,7 @@
   </select>
 
   <select id="selectActiveById" resultMap="BaseResultMap">
-    select id, nickname, avatar, introduction from t_user
+    select id, nickname, avatar, introduction, fans_count, following_count, note_count, like_count, collect_count from t_user
     where id = #{id,jdbcType=BIGINT}
       and status = 0
       and is_deleted = 0
@@ -71,24 +77,34 @@
     insert into t_user (id, fishhub_id, `password`, 
       nickname, avatar, birthday, 
       background_img, phone, sex, 
-      `status`, introduction, create_time, 
-      update_time, is_deleted)
+      `status`, introduction, fans_count, following_count,
+      note_count, like_count, collect_count,
+      create_time, update_time, is_deleted)
     values (#{id,jdbcType=BIGINT}, #{fishhubId,jdbcType=VARCHAR}, #{password,jdbcType=VARCHAR}, 
       #{nickname,jdbcType=VARCHAR}, #{avatar,jdbcType=VARCHAR}, #{birthday,jdbcType=DATE}, 
       #{backgroundImg,jdbcType=VARCHAR}, #{phone,jdbcType=VARCHAR}, #{sex,jdbcType=TINYINT}, 
-      #{status,jdbcType=TINYINT}, #{introduction,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP}, 
+      #{status,jdbcType=TINYINT}, #{introduction,jdbcType=VARCHAR},
+      IFNULL(#{fansCount,jdbcType=INTEGER}, 0), IFNULL(#{followingCount,jdbcType=INTEGER}, 0),
+      IFNULL(#{noteCount,jdbcType=INTEGER}, 0), IFNULL(#{likeCount,jdbcType=INTEGER}, 0),
+      IFNULL(#{collectCount,jdbcType=INTEGER}, 0),
+      #{createTime,jdbcType=TIMESTAMP}, 
       #{updateTime,jdbcType=TIMESTAMP}, #{isDeleted,jdbcType=BIT})
   </insert>
   <insert id="insertIfAbsent" parameterType="hk.ljx.fishhub.user.biz.domain.dataobject.UserDO">
     insert into t_user (id, fishhub_id, `password`,
       nickname, avatar, birthday,
       background_img, phone, sex,
-      `status`, introduction, create_time,
-      update_time, is_deleted)
+      `status`, introduction, fans_count, following_count,
+      note_count, like_count, collect_count,
+      create_time, update_time, is_deleted)
     values (#{id,jdbcType=BIGINT}, #{fishhubId,jdbcType=VARCHAR}, #{password,jdbcType=VARCHAR},
       #{nickname,jdbcType=VARCHAR}, #{avatar,jdbcType=VARCHAR}, #{birthday,jdbcType=DATE},
       #{backgroundImg,jdbcType=VARCHAR}, #{phone,jdbcType=VARCHAR}, #{sex,jdbcType=TINYINT},
-      #{status,jdbcType=TINYINT}, #{introduction,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP},
+      #{status,jdbcType=TINYINT}, #{introduction,jdbcType=VARCHAR},
+      IFNULL(#{fansCount,jdbcType=INTEGER}, 0), IFNULL(#{followingCount,jdbcType=INTEGER}, 0),
+      IFNULL(#{noteCount,jdbcType=INTEGER}, 0), IFNULL(#{likeCount,jdbcType=INTEGER}, 0),
+      IFNULL(#{collectCount,jdbcType=INTEGER}, 0),
+      #{createTime,jdbcType=TIMESTAMP},
       #{updateTime,jdbcType=TIMESTAMP}, #{isDeleted,jdbcType=BIT})
     on duplicate key update id = id
   </insert>
@@ -127,6 +143,21 @@
       </if>
       <if test="introduction != null">
         introduction,
+      </if>
+      <if test="fansCount != null">
+        fans_count,
+      </if>
+      <if test="followingCount != null">
+        following_count,
+      </if>
+      <if test="noteCount != null">
+        note_count,
+      </if>
+      <if test="likeCount != null">
+        like_count,
+      </if>
+      <if test="collectCount != null">
+        collect_count,
       </if>
       <if test="createTime != null">
         create_time,
@@ -172,6 +203,21 @@
       <if test="introduction != null">
         #{introduction,jdbcType=VARCHAR},
       </if>
+      <if test="fansCount != null">
+        #{fansCount,jdbcType=INTEGER},
+      </if>
+      <if test="followingCount != null">
+        #{followingCount,jdbcType=INTEGER},
+      </if>
+      <if test="noteCount != null">
+        #{noteCount,jdbcType=INTEGER},
+      </if>
+      <if test="likeCount != null">
+        #{likeCount,jdbcType=INTEGER},
+      </if>
+      <if test="collectCount != null">
+        #{collectCount,jdbcType=INTEGER},
+      </if>
       <if test="createTime != null">
         #{createTime,jdbcType=TIMESTAMP},
       </if>
@@ -216,6 +262,21 @@
       <if test="introduction != null">
         introduction = #{introduction,jdbcType=VARCHAR},
       </if>
+      <if test="fansCount != null">
+        fans_count = #{fansCount,jdbcType=INTEGER},
+      </if>
+      <if test="followingCount != null">
+        following_count = #{followingCount,jdbcType=INTEGER},
+      </if>
+      <if test="noteCount != null">
+        note_count = #{noteCount,jdbcType=INTEGER},
+      </if>
+      <if test="likeCount != null">
+        like_count = #{likeCount,jdbcType=INTEGER},
+      </if>
+      <if test="collectCount != null">
+        collect_count = #{collectCount,jdbcType=INTEGER},
+      </if>
       <if test="createTime != null">
         create_time = #{createTime,jdbcType=TIMESTAMP},
       </if>
@@ -240,9 +301,44 @@
       sex = #{sex,jdbcType=TINYINT},
       `status` = #{status,jdbcType=TINYINT},
       introduction = #{introduction,jdbcType=VARCHAR},
+      fans_count = #{fansCount,jdbcType=INTEGER},
+      following_count = #{followingCount,jdbcType=INTEGER},
+      note_count = #{noteCount,jdbcType=INTEGER},
+      like_count = #{likeCount,jdbcType=INTEGER},
+      collect_count = #{collectCount,jdbcType=INTEGER},
       create_time = #{createTime,jdbcType=TIMESTAMP},
       update_time = #{updateTime,jdbcType=TIMESTAMP},
       is_deleted = #{isDeleted,jdbcType=BIT}
     where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateFansCount">
+    update t_user
+    set fans_count = GREATEST(0, fans_count + #{delta})
+    where id = #{userId}
+  </update>
+
+  <update id="updateFollowingCount">
+    update t_user
+    set following_count = GREATEST(0, following_count + #{delta})
+    where id = #{userId}
+  </update>
+
+  <update id="updateNoteCount">
+    update t_user
+    set note_count = GREATEST(0, note_count + #{delta})
+    where id = #{userId}
+  </update>
+
+  <update id="updateLikeCount">
+    update t_user
+    set like_count = GREATEST(0, like_count + #{delta})
+    where id = #{userId}
+  </update>
+
+  <update id="updateCollectCount">
+    update t_user
+    set collect_count = GREATEST(0, collect_count + #{delta})
+    where id = #{userId}
   </update>
 </mapper>
