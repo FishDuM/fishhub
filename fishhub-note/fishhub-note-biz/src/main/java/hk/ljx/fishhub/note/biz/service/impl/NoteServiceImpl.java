@@ -1430,26 +1430,42 @@ public class NoteServiceImpl implements NoteService {
         }
         String lockKey = RedisKeyConstants.buildNoteAccessRebuildLockKey(noteId);
         RLock lock = redissonClient.getLock(lockKey);
-        boolean acquired = false;
-        try {
-            acquired = lock.tryLock(50, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            log.warn("获取笔记访问快照重建锁异常, lockKey={}", lockKey, e);
-        }
-
-        if (acquired) {
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            boolean acquired = false;
             try {
-                cachedSnapshot = readAccessSnapshot(key);
-                if (cachedSnapshot != null) {
-                    return cachedSnapshot;
+                acquired = lock.tryLock(20, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("获取笔记访问快照重建锁异常, lockKey={}", lockKey, e);
+            }
+
+            if (acquired) {
+                try {
+                    cachedSnapshot = readAccessSnapshot(key);
+                    if (cachedSnapshot != null) {
+                        return cachedSnapshot;
+                    }
+                    return loadAccessSnapshotFromMySql(noteId, key, true);
+                } finally {
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
-                return loadAccessSnapshotFromMySql(noteId, key, true);
-            } finally {
-                if (lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                }
+            }
+
+            try {
+                Thread.sleep(20L + (long) (Math.random() * 20));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+
+            cachedSnapshot = readAccessSnapshot(key);
+            if (cachedSnapshot != null) {
+                return cachedSnapshot;
             }
         }
 

@@ -52,13 +52,12 @@ class LikeUnlikeComment2DBConsumerTest {
     private LikeUnlikeComment2DBConsumer consumer;
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() {
         consumer = new LikeUnlikeComment2DBConsumer(
                 persistenceService,
                 commentDOMapper,
                 commentLikeRealtimeService,
-                rocketMQTemplate,
-                null
+                rocketMQTemplate
         );
     }
 

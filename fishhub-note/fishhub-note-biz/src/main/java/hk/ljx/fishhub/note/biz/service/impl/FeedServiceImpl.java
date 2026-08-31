@@ -134,30 +134,50 @@ public class FeedServiceImpl implements FeedService {
 
         String lockKey = RedisKeyConstants.buildDiscoverFeedCursorLockKey(channelId, cursor);
         RLock lock = redissonClient.getLock(lockKey);
-        boolean acquired = false;
-        try {
-            acquired = lock.tryLock(50, 3000, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            log.warn("获取 Feed 游标快照重建锁异常, lockKey={}", lockKey, e);
-        }
-
-        if (acquired) {
+        
+        // 自旋重试机制：最多重试 3 次，消除 50ms 临界点击穿裸打 MySQL 隐患
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            boolean acquired = false;
             try {
-                snapshot = readDiscoverPageSnapshot(cacheKey);
-                if (isValidDiscoverPageSnapshot(snapshot)) {
-                    feedPageLocalCache.put(cacheKey, snapshot);
-                    return snapshot;
+                acquired = lock.tryLock(20, 3000, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("获取 Feed 游标快照重建锁异常, lockKey={}", lockKey, e);
+            }
+
+            if (acquired) {
+                try {
+                    snapshot = readDiscoverPageSnapshot(cacheKey);
+                    if (isValidDiscoverPageSnapshot(snapshot)) {
+                        feedPageLocalCache.put(cacheKey, snapshot);
+                        return snapshot;
+                    }
+                    DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
+                    cacheDiscoverPageSnapshot(cacheKey, fresh);
+                    feedPageLocalCache.put(cacheKey, fresh);
+                    return fresh;
+                } finally {
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
-                DiscoverPageSnapshot fresh = loadDiscoverPageSnapshotFromMySql(channelId, cursor);
-                cacheDiscoverPageSnapshot(cacheKey, fresh);
-                feedPageLocalCache.put(cacheKey, fresh);
-                return fresh;
-            } finally {
-                if (lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                }
+            }
+
+            // 未获取到锁：微等待并重试读取 Redis 缓存（等待持锁线程回填完成）
+            try {
+                Thread.sleep(20L + (long) (Math.random() * 20));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+
+            snapshot = readDiscoverPageSnapshot(cacheKey);
+            if (isValidDiscoverPageSnapshot(snapshot)) {
+                feedPageLocalCache.put(cacheKey, snapshot);
+                return snapshot;
             }
         }
 

@@ -11,12 +11,12 @@ import hk.ljx.fishhub.comment.biz.enums.LikeUnlikeCommentTypeEnum;
 import hk.ljx.fishhub.comment.biz.model.dto.LikeUnlikeCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.service.CommentLikePersistenceService;
 import hk.ljx.fishhub.comment.biz.service.CommentLikeRealtimeService;
-import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
-import hk.ljx.framework.mq.consumer.BatchPushConsumer;
-import lombok.extern.slf4j.Slf4j;
 import hk.ljx.framework.mq.support.RocketMqHelper;
-import org.apache.rocketmq.client.exception.MQClientException;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
+import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
@@ -28,11 +28,16 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 评论点赞/取消点赞批量落库消费者
+ * 评论点赞/取消点赞微批落库消费者
  */
 @Component
 @Slf4j
-public class LikeUnlikeComment2DBConsumer {
+@RocketMQMessageListener(
+        consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE,
+        topic = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE,
+        consumeMode = ConsumeMode.ORDERLY
+)
+public class LikeUnlikeComment2DBConsumer implements RocketMQListener<List<MessageExt>> {
 
     private static final int BATCH_MAX_SIZE = 30;
     private static final int MAX_RECONSUME_TIMES = 16;
@@ -41,25 +46,26 @@ public class LikeUnlikeComment2DBConsumer {
     private final CommentDOMapper commentDOMapper;
     private final CommentLikeRealtimeService commentLikeRealtimeService;
     private final RocketMQTemplate rocketMQTemplate;
-    private final BatchPushConsumer batchPushConsumer;
 
     public LikeUnlikeComment2DBConsumer(CommentLikePersistenceService persistenceService,
                                         CommentDOMapper commentDOMapper,
                                         CommentLikeRealtimeService commentLikeRealtimeService,
-                                        RocketMQTemplate rocketMQTemplate,
-                                        BatchConsumerFactory batchConsumerFactory) throws MQClientException {
+                                        RocketMQTemplate rocketMQTemplate) {
         this.persistenceService = persistenceService;
         this.commentDOMapper = commentDOMapper;
         this.commentLikeRealtimeService = commentLikeRealtimeService;
         this.rocketMQTemplate = rocketMQTemplate;
-        this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
-                "fishhub_group_" + MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE,
-                MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE,
-                "*",
-                BATCH_MAX_SIZE,
-                MAX_RECONSUME_TIMES,
-                BatchConsumerFactory.Mode.ORDERLY,
-                this::consumeBatch);
+    }
+
+    @Override
+    public void onMessage(List<MessageExt> msgs) {
+        if (CollUtil.isEmpty(msgs)) {
+            return;
+        }
+        boolean success = consumeBatch(msgs);
+        if (!success) {
+            throw new RuntimeException("评论点赞微批消费失败，触发 RocketMQ 顺序重试");
+        }
     }
 
     private boolean consumeBatch(List<MessageExt> msgs) {

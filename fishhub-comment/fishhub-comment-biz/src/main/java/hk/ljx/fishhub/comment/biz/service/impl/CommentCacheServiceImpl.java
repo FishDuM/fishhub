@@ -183,28 +183,44 @@ public class CommentCacheServiceImpl implements CommentCacheService {
         }
 
         RLock lock = redissonClient.getLock(lockKey);
-        boolean acquired = false;
-        try {
-            acquired = lock.tryLock(50, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            log.warn("获取一级评论数重建锁异常, lockKey={}", lockKey, e);
-        }
-
-        if (acquired) {
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            boolean acquired = false;
             try {
-                cached = safeRedisUtil.get(key);
-                if (cached != null && StringUtils.isNumeric(cached)) {
-                    return Long.parseLong(cached);
+                acquired = lock.tryLock(20, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Exception e) {
+                log.warn("获取一级评论数重建锁异常, lockKey={}", lockKey, e);
+            }
+
+            if (acquired) {
+                try {
+                    cached = safeRedisUtil.get(key);
+                    if (cached != null && StringUtils.isNumeric(cached)) {
+                        return Long.parseLong(cached);
+                    }
+                    long total = Objects.requireNonNullElse(dbLoader.get(), 0L);
+                    safeRedisUtil.set(key, String.valueOf(total), CacheTtl.minutes(10, 5), TimeUnit.SECONDS);
+                    return total;
+                } finally {
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
                 }
-                long total = Objects.requireNonNullElse(dbLoader.get(), 0L);
-                safeRedisUtil.set(key, String.valueOf(total), CacheTtl.minutes(10, 5), TimeUnit.SECONDS);
-                return total;
-            } finally {
-                if (lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                }
+            }
+
+            try {
+                Thread.sleep(20L + (long) (Math.random() * 20));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+
+            cached = safeRedisUtil.get(key);
+            if (cached != null && StringUtils.isNumeric(cached)) {
+                return Long.parseLong(cached);
             }
         }
 

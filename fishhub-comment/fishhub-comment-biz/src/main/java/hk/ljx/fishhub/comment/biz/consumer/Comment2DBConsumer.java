@@ -12,14 +12,14 @@ import hk.ljx.fishhub.count.dto.CommentChangedEventMqDTO;
 import hk.ljx.fishhub.count.dto.CommentItemMqDTO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
 import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
-import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
-import hk.ljx.framework.mq.consumer.BatchPushConsumer;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
+import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -29,11 +29,16 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 评论发布批量落库消费者
+ * 评论发布微批落库消费者
  */
 @Component
 @Slf4j
-public class Comment2DBConsumer {
+@RocketMQMessageListener(
+        consumerGroup = "fishhub_group_" + MQConstants.TOPIC_PUBLISH_COMMENT,
+        topic = MQConstants.TOPIC_PUBLISH_COMMENT,
+        consumeMode = ConsumeMode.CONCURRENTLY
+)
+public class Comment2DBConsumer implements RocketMQListener<List<MessageExt>> {
 
     private static final int BATCH_MAX_SIZE = 30;
 
@@ -42,27 +47,28 @@ public class Comment2DBConsumer {
     private final TransactionalMqSender transactionalMqSender;
     private final TxJournalStore txJournalStore;
     private final CommentChangedLocalHandler commentChangedLocalHandler;
-    private final BatchPushConsumer batchPushConsumer;
 
     public Comment2DBConsumer(CommentDOMapper commentDOMapper,
                               TransactionTemplate transactionTemplate,
                               TransactionalMqSender transactionalMqSender,
                               TxJournalStore txJournalStore,
-                              CommentChangedLocalHandler commentChangedLocalHandler,
-                              BatchConsumerFactory batchConsumerFactory) throws MQClientException {
+                              CommentChangedLocalHandler commentChangedLocalHandler) {
         this.commentDOMapper = commentDOMapper;
         this.transactionTemplate = transactionTemplate;
         this.transactionalMqSender = transactionalMqSender;
         this.txJournalStore = txJournalStore;
         this.commentChangedLocalHandler = commentChangedLocalHandler;
-        this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
-                "fishhub_group_" + MQConstants.TOPIC_PUBLISH_COMMENT,
-                MQConstants.TOPIC_PUBLISH_COMMENT,
-                "*",
-                BATCH_MAX_SIZE,
-                0,
-                BatchConsumerFactory.Mode.CONCURRENTLY,
-                this::consume);
+    }
+
+    @Override
+    public void onMessage(List<MessageExt> msgs) {
+        if (CollUtil.isEmpty(msgs)) {
+            return;
+        }
+        boolean success = consume(msgs);
+        if (!success) {
+            throw new RuntimeException("评论发布微批消费失败，触发 RocketMQ 重试");
+        }
     }
 
     boolean consume(List<MessageExt> msgs) {

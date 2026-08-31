@@ -9,14 +9,15 @@ import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.enums.LikeUnlikeNoteTypeEnum;
 import hk.ljx.fishhub.note.biz.enums.NoteVisibleEnum;
 import hk.ljx.fishhub.note.biz.model.dto.LikeUnlikeNoteMqDTO;
-import hk.ljx.framework.mq.consumer.BatchConsumerFactory;
-import hk.ljx.framework.mq.consumer.BatchPushConsumer;
+import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionCacheService;
 import hk.ljx.fishhub.note.biz.service.NoteInteractionPersistenceService;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.spring.annotation.ConsumeMode;
+import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
+import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -28,11 +29,17 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 笔记点赞/取消点赞批量消费
+ * 笔记点赞/取消点赞微批消费
  */
 @Component
 @Slf4j
-public class LikeUnlikeNoteConsumer {
+@RocketMQMessageListener(
+        consumerGroup = "fishhub_group_" + MQConstants.TOPIC_LIKE_OR_UNLIKE,
+        topic = MQConstants.TOPIC_LIKE_OR_UNLIKE,
+        selectorExpression = MQConstants.TAG_LIKE + " || " + MQConstants.TAG_UNLIKE,
+        consumeMode = ConsumeMode.ORDERLY
+)
+public class LikeUnlikeNoteConsumer implements RocketMQListener<List<MessageExt>> {
 
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
     private static final String CONSUME_GROUP = "fishhub_group_" + MQConstants.TOPIC_LIKE_OR_UNLIKE;
@@ -41,26 +48,26 @@ public class LikeUnlikeNoteConsumer {
     private final NoteInteractionPersistenceService persistenceService;
     private final NoteDOMapper noteDOMapper;
     private final NoteInteractionCacheService noteInteractionCacheService;
-    private final BatchPushConsumer batchPushConsumer;
 
     public LikeUnlikeNoteConsumer(TransactionalMqSender transactionalMqSender,
                                   NoteInteractionPersistenceService persistenceService,
                                   NoteDOMapper noteDOMapper,
-                                  NoteInteractionCacheService noteInteractionCacheService,
-                                  BatchConsumerFactory batchConsumerFactory) throws MQClientException {
+                                  NoteInteractionCacheService noteInteractionCacheService) {
         this.transactionalMqSender = transactionalMqSender;
         this.persistenceService = persistenceService;
         this.noteDOMapper = noteDOMapper;
         this.noteInteractionCacheService = noteInteractionCacheService;
-        this.batchPushConsumer = batchConsumerFactory == null ? null : batchConsumerFactory.create(
-                CONSUME_GROUP,
-                MQConstants.TOPIC_LIKE_OR_UNLIKE,
-                MQConstants.TAG_LIKE + "||" + MQConstants.TAG_UNLIKE,
-                CONSUME_BATCH_MAX_SIZE,
-                0,
-                // 同用户点赞/取消必须有序落库（发送端已按 userId 路由），乱序会破坏最终状态
-                BatchConsumerFactory.Mode.ORDERLY,
-                this::consumeBatch);
+    }
+
+    @Override
+    public void onMessage(List<MessageExt> msgs) {
+        if (CollUtil.isEmpty(msgs)) {
+            return;
+        }
+        boolean success = consumeBatch(msgs);
+        if (!success) {
+            throw new RuntimeException("笔记点赞微批消费失败，触发 RocketMQ 顺序重试");
+        }
     }
 
     private boolean consumeBatch(List<MessageExt> msgs) {
