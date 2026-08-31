@@ -5,6 +5,7 @@ import hk.ljx.fishhub.comment.biz.constant.MQConstants;
 import hk.ljx.fishhub.comment.biz.domain.mapper.CommentDOMapper;
 import hk.ljx.fishhub.comment.biz.model.bo.CommentBO;
 import hk.ljx.fishhub.comment.biz.model.dto.PublishCommentMqDTO;
+import hk.ljx.fishhub.comment.biz.rpc.NoteRpcService;
 import hk.ljx.fishhub.comment.biz.service.CommentChangedLocalHandler;
 import hk.ljx.framework.mq.tx.TransactionalMqSender;
 import hk.ljx.framework.mq.tx.TxJournalStore;
@@ -49,6 +50,8 @@ class Comment2DBConsumerTest {
     @Mock
     private TxJournalStore txJournalStore;
     @Mock
+    private NoteRpcService noteRpcService;
+    @Mock
     private CommentChangedLocalHandler commentChangedLocalHandler;
     @InjectMocks
     private Comment2DBConsumer consumer;
@@ -56,6 +59,7 @@ class Comment2DBConsumerTest {
     @Test
     void shouldBatchInsertWholeBatchInSingleMapperCall() {
         when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(Collections.emptyList());
+        when(noteRpcService.findWritableNoteAccesses(anyList())).thenAnswer(inv -> inv.getArgument(0));
         when(commentDOMapper.batchInsert(anyList())).thenReturn(2);
         when(transactionTemplate.execute(any())).thenAnswer(inv -> {
             TransactionCallback<Object> callback = inv.getArgument(0);
@@ -97,6 +101,7 @@ class Comment2DBConsumerTest {
     @Test
     void shouldDiscardBatchWhenAllReplyTargetsAreInvalid() {
         when(commentDOMapper.selectByCommentIds(eq(List.of(10L)))).thenReturn(Collections.emptyList());
+        when(noteRpcService.findWritableNoteAccesses(anyList())).thenAnswer(inv -> inv.getArgument(0));
 
         MessageExt message = new MessageExt();
         message.setReconsumeTimes(4); // 超过重试阈值，直接校验丢弃

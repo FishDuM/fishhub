@@ -1,10 +1,8 @@
 package hk.ljx.fishhub.user.relation.biz.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
-import hk.ljx.fishhub.count.client.CountClient;
-import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
-import hk.ljx.fishhub.user.client.UserClient;
-import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
+import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.relation.biz.constant.RedisKeyConstants;
@@ -34,9 +32,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 
 @Service
 @Slf4j
@@ -47,12 +42,10 @@ public class RelationServiceImpl implements RelationService {
     private static final DefaultRedisScript<Long> UNFOLLOW_CHECK_AND_DELETE_SCRIPT = RedisScriptHelper.loadLongScript("/lua/unfollow_check_and_delete.lua");
 
     private final StringRedisTemplate stringRedisTemplate;
-    private final UserClient userClient;
+    private final UserDOMapper userDOMapper;
     private final FollowingDOMapper followingDOMapper;
     private final RocketMQTemplate rocketMQTemplate;
-    private final CountClient countClient;
     private final RelationListCacheService relationListCacheService;
-
 
     /**
      * 关注用户
@@ -69,8 +62,8 @@ public class RelationServiceImpl implements RelationService {
             throw new BizException(ResponseCodeEnum.CANT_FOLLOW_YOUR_SELF);
         }
 
-        FindUserByIdRspDTO findUserByIdRspDTO = userClient.findActiveById(followUserId);
-        if (Objects.isNull(findUserByIdRspDTO)) {
+        UserDO followUser = userDOMapper.selectActiveById(followUserId);
+        if (Objects.isNull(followUser)) {
             throw new BizException(ResponseCodeEnum.FOLLOW_USER_NOT_EXISTED);
         }
 
@@ -172,16 +165,21 @@ public class RelationServiceImpl implements RelationService {
 
     /**
      * 查询关注列表
+     *
+     * @param findFollowingListReqVO
      * @return
      */
     @Override
-    public RelationCursorPageResponse<FindFollowingUserRspVO> findFollowingList(FindFollowingListReqVO request) {
+    public RelationCursorPageResponse<FindFollowingUserRspVO> findFollowingList(FindFollowingListReqVO findFollowingListReqVO) {
+        Long targetUserId = findFollowingListReqVO.getUserId();
         long pageSize = 10L;
-        long offset = request.getCursor() == null ? 0L : request.getCursor();
-        List<String> memberIds = relationListCacheService.fetchFollowingMembers(request.getUserId(), offset, (int) pageSize + 1);
+        long offset = findFollowingListReqVO.getCursor() == null ? 0L : findFollowingListReqVO.getCursor();
+
+        List<String> memberIds = relationListCacheService.fetchFollowingMembers(targetUserId, offset, (int) pageSize + 1);
         if (memberIds.isEmpty()) {
             return RelationCursorPageResponse.success(Collections.emptyList(), pageSize, null);
         }
+
         boolean hasMore = memberIds.size() > pageSize;
         List<String> pageMembers = hasMore ? memberIds.subList(0, (int) pageSize) : memberIds;
         List<Long> userIds = pageMembers.stream().map(Long::valueOf).toList();
@@ -192,6 +190,8 @@ public class RelationServiceImpl implements RelationService {
 
     /**
      * 查询粉丝列表
+     *
+     * @param request
      * @return
      */
     @Override
@@ -211,7 +211,7 @@ public class RelationServiceImpl implements RelationService {
     }
 
     /**
-     * RPC: 调用用户服务、计数服务，并将 DTO 转换为 VO 粉丝列表
+     * 读取用户信息与内聚计数并转换为 VO 粉丝列表（直读本地 Mapper，彻底消除同模块内 Feign RPC 自调用）
      * @param userIds
      * @return
      */
@@ -219,35 +219,25 @@ public class RelationServiceImpl implements RelationService {
         if (CollUtil.isEmpty(userIds)) {
             return Collections.emptyList();
         }
-        // RPC: 批量查询用户信息
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
-        if (CollUtil.isEmpty(findUserByIdRspDTOS)) {
+        List<UserDO> userDOs = userDOMapper.selectByIds(userIds);
+        if (CollUtil.isEmpty(userDOs)) {
             return Collections.emptyList();
         }
-        List<FindUserCountsByIdRspDTO> counts = countClient.findByUserIds(userIds);
-        Map<Long, FindUserCountsByIdRspDTO> countMap = CollUtil.isEmpty(counts) ? Collections.emptyMap()
-                : counts.stream().collect(Collectors.toMap(FindUserCountsByIdRspDTO::getUserId, Function.identity(), (a, b) -> a));
-
         Set<Long> followedUserIds = findCurrentUserFollowedIds(userIds);
-        return findUserByIdRspDTOS.stream()
-                .map(dto -> {
-                    FindUserCountsByIdRspDTO count = countMap.get(dto.getId());
-                    long noteTotal = (count != null && count.getNoteTotal() != null) ? count.getNoteTotal() : 0L;
-                    long fansTotal = (count != null && count.getFansTotal() != null) ? count.getFansTotal() : 0L;
-                    return FindFansUserRspVO.builder()
-                            .userId(dto.getId())
-                            .avatar(dto.getAvatar())
-                            .nickname(dto.getNickName())
-                            .noteTotal(noteTotal)
-                            .fansTotal(fansTotal)
-                            .isFollowed(followedUserIds.contains(dto.getId()))
-                            .build();
-                })
+        return userDOs.stream()
+                .map(user -> FindFansUserRspVO.builder()
+                        .userId(user.getId())
+                        .avatar(user.getAvatar())
+                        .nickname(user.getNickname())
+                        .noteTotal(user.getNoteCount() != null ? user.getNoteCount().longValue() : 0L)
+                        .fansTotal(user.getFansCount() != null ? user.getFansCount().longValue() : 0L)
+                        .isFollowed(followedUserIds.contains(user.getId()))
+                        .build())
                 .toList();
     }
 
     /**
-     * RPC: 调用用户服务，并将 DTO 转换为 VO 关注列表
+     * 读取用户信息并转换为 VO 关注列表
      * @param userIds
      * @return
      */
@@ -255,18 +245,16 @@ public class RelationServiceImpl implements RelationService {
         if (CollUtil.isEmpty(userIds)) {
             return Collections.emptyList();
         }
-        // RPC: 批量查询用户信息
-        List<FindUserByIdRspDTO> findUserByIdRspDTOS = userClient.findByIds(userIds);
-
-        if (CollUtil.isEmpty(findUserByIdRspDTOS)) {
+        List<UserDO> userDOs = userDOMapper.selectByIds(userIds);
+        if (CollUtil.isEmpty(userDOs)) {
             return Collections.emptyList();
         }
-        return findUserByIdRspDTOS.stream()
-                .map(dto -> FindFollowingUserRspVO.builder()
-                        .userId(dto.getId())
-                        .avatar(dto.getAvatar())
-                        .nickname(dto.getNickName())
-                        .introduction(dto.getIntroduction())
+        return userDOs.stream()
+                .map(user -> FindFollowingUserRspVO.builder()
+                        .userId(user.getId())
+                        .avatar(user.getAvatar())
+                        .nickname(user.getNickname())
+                        .introduction(user.getIntroduction())
                         .isFollowed(true)
                         .build())
                 .toList();
@@ -276,7 +264,6 @@ public class RelationServiceImpl implements RelationService {
         Long currentUserId = LoginUserContextHolder.getUserId();
         return relationListCacheService.findFollowedUserIds(currentUserId, candidateUserIds);
     }
-
 
     /**
      * 校验 Lua 脚本结果，根据状态码抛出对应的业务异常
@@ -288,16 +275,11 @@ public class RelationServiceImpl implements RelationService {
         if (Objects.isNull(luaResultEnum)) {
             throw new BizException(ResponseCodeEnum.SYSTEM_ERROR);
         }
-        // 校验 Lua 脚本执行结果
         switch (luaResultEnum) {
-            // 关注数已达到上限
             case FOLLOW_LIMIT -> throw new BizException(ResponseCodeEnum.FOLLOWING_COUNT_LIMIT);
-            // 已经关注了该用户
             case ALREADY_FOLLOWED -> throw new BizException(ResponseCodeEnum.ALREADY_FOLLOWED);
         }
     }
-
-
 
     @Override
     public Response<Boolean> isFollowing(CheckFollowingReqVO checkFollowingReqVO) {

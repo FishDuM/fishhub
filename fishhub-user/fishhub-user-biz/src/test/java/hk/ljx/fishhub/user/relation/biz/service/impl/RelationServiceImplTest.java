@@ -3,8 +3,8 @@ package hk.ljx.fishhub.user.relation.biz.service.impl;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
-import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
-import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
+import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
+import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
 import hk.ljx.fishhub.user.relation.biz.cache.RelationListCacheService;
 import hk.ljx.fishhub.user.relation.biz.domain.mapper.FollowingDOMapper;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FindFansListReqVO;
@@ -14,8 +14,6 @@ import hk.ljx.fishhub.user.relation.biz.model.vo.FindFollowingUserRspVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.FollowUserReqVO;
 import hk.ljx.fishhub.user.relation.biz.model.vo.RelationCursorPageResponse;
 import hk.ljx.fishhub.user.relation.biz.model.vo.UnfollowUserReqVO;
-import hk.ljx.fishhub.count.client.CountClient;
-import hk.ljx.fishhub.user.client.UserClient;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -25,7 +23,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.messaging.Message;
 
 import java.util.*;
 
@@ -44,9 +41,7 @@ class RelationServiceImplTest {
     @Mock
     private RelationListCacheService relationListCacheService;
     @Mock
-    private UserClient userClient;
-    @Mock
-    private CountClient countClient;
+    private UserDOMapper userDOMapper;
     @Mock
     private StringRedisTemplate stringRedisTemplate;
     @Mock
@@ -65,7 +60,7 @@ class RelationServiceImplTest {
     void shouldReturnFirstPageOfFollowingListWithNextCursor() {
         when(relationListCacheService.fetchFollowingMembers(1L, 0L, 11))
                 .thenReturn(Arrays.asList("2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"));
-        when(userClient.findByIds(anyList())).thenReturn(users(2L, 12L));
+        when(userDOMapper.selectByIds(anyList())).thenReturn(users(2L, 12L));
 
         RelationCursorPageResponse<FindFollowingUserRspVO> resp =
                 relationService.findFollowingList(FindFollowingListReqVO.builder().userId(1L).cursor(0L).build());
@@ -80,7 +75,7 @@ class RelationServiceImplTest {
     void shouldReturnTailPageWithoutNextCursor() {
         when(relationListCacheService.fetchFollowingMembers(1L, 20L, 11))
                 .thenReturn(Arrays.asList("30", "31", "32"));
-        when(userClient.findByIds(anyList())).thenReturn(users(30L, 33L));
+        when(userDOMapper.selectByIds(anyList())).thenReturn(users(30L, 33L));
 
         RelationCursorPageResponse<FindFollowingUserRspVO> resp =
                 relationService.findFollowingList(FindFollowingListReqVO.builder().userId(1L).cursor(20L).build());
@@ -98,15 +93,14 @@ class RelationServiceImplTest {
 
         assertTrue(resp.getData().isEmpty());
         assertNull(resp.getNextCursor());
-        verify(userClient, never()).findByIds(anyList());
+        verify(userDOMapper, never()).selectByIds(anyList());
     }
 
     @Test
     void shouldReturnFansWithCountsAndFollowedFlags() {
         when(relationListCacheService.fetchFansMembers(9L, 0L, 11))
                 .thenReturn(Arrays.asList("2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"));
-        when(userClient.findByIds(anyList())).thenReturn(users(2L, 12L));
-        when(countClient.findByUserIds(anyList())).thenReturn(counts(2L, 12L));
+        when(userDOMapper.selectByIds(anyList())).thenReturn(users(2L, 12L));
         when(relationListCacheService.findFollowedUserIds(isNull(), anyList())).thenReturn(Collections.singleton(2L));
 
         RelationCursorPageResponse<FindFansUserRspVO> resp =
@@ -131,13 +125,13 @@ class RelationServiceImplTest {
 
         assertTrue(resp.getData().isEmpty());
         assertNull(resp.getNextCursor());
-        verify(userClient, never()).findByIds(anyList());
+        verify(userDOMapper, never()).selectByIds(anyList());
     }
 
     @Test
     void followShouldRejectDisabledOrDeletedUser() {
         LoginUserContextHolder.setUserId(1L);
-        when(userClient.findActiveById(2L)).thenReturn(null);
+        when(userDOMapper.selectActiveById(2L)).thenReturn(null);
 
         assertThrows(BizException.class, () -> relationService.follow(
                 FollowUserReqVO.builder().followUserId(2L).build()));
@@ -156,30 +150,20 @@ class RelationServiceImplTest {
                 UnfollowUserReqVO.builder().unfollowUserId(2L).build());
 
         assertTrue(response.isSuccess());
-        verify(userClient, never()).findById(anyLong());
-        verify(userClient, never()).findActiveById(anyLong());
+        verify(userDOMapper, never()).selectByPrimaryKey(anyLong());
+        verify(userDOMapper, never()).selectActiveById(anyLong());
     }
 
-    private List<FindUserByIdRspDTO> users(long from, long toExclusive) {
-        List<FindUserByIdRspDTO> list = new ArrayList<>();
+    private List<UserDO> users(long from, long toExclusive) {
+        List<UserDO> list = new ArrayList<>();
         for (long id = from; id < toExclusive; id++) {
-            list.add(FindUserByIdRspDTO.builder()
+            list.add(UserDO.builder()
                     .id(id)
-                    .nickName("u" + id)
+                    .nickname("u" + id)
                     .avatar("a" + id)
                     .introduction("i" + id)
-                    .build());
-        }
-        return list;
-    }
-
-    private List<FindUserCountsByIdRspDTO> counts(long from, long toExclusive) {
-        List<FindUserCountsByIdRspDTO> list = new ArrayList<>();
-        for (long id = from; id < toExclusive; id++) {
-            list.add(FindUserCountsByIdRspDTO.builder()
-                    .userId(id)
-                    .noteTotal(id * 10L)
-                    .fansTotal(id * 15L)
+                    .noteCount((int) (id * 10))
+                    .fansCount((int) (id * 15))
                     .build());
         }
         return list;

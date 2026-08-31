@@ -4,13 +4,11 @@ import cn.hutool.core.collection.CollUtil;
 import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.framework.common.util.NumberUtils;
-import hk.ljx.fishhub.count.dto.FindNoteCountsByIdRspDTO;
 import hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindNoteActionListRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.NoteItemRspVO;
-import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.client.UserClient;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +29,6 @@ public class UserNoteListService {
 
     private final NoteDOMapper noteDOMapper;
     private final UserClient userClient;
-    private final CountClient countClient;
     private final NoteInteractionCacheService noteInteractionCacheService;
 
     public Response<FindNoteActionListRspVO> findCollectedNotes(FindNoteActionListReqVO request) {
@@ -49,6 +46,7 @@ public class UserNoteListService {
             return Response.success(FindNoteActionListRspVO.builder().notes(Collections.emptyList()).build());
         }
 
+        // 直接读取 NoteDO 内聚的点赞数，免去跨服务 Feign 调用
         List<NoteItemRspVO> notes = noteDOS.stream().map(note -> NoteItemRspVO.builder()
                 .noteId(note.getId())
                 .type(note.getType())
@@ -56,7 +54,7 @@ public class UserNoteListService {
                 .videoUri(note.getVideoUri())
                 .title(note.getTitle())
                 .creatorId(note.getCreatorId())
-                .likeTotal("0")
+                .likeTotal(note.getLikeCount() != null ? NumberUtils.formatNumberString(note.getLikeCount()) : "0")
                 .isLiked(false)
                 .build()).collect(Collectors.toList());
 
@@ -78,11 +76,6 @@ public class UserNoteListService {
             log.warn("RPC 调用用户服务批量获取用户信息失败，执行降级处理", e);
         }
 
-        try {
-            applyLikeTotals(notes, countClient.findByNoteIds(noteDOS.stream().map(NoteDO::getId).toList()));
-        } catch (Exception e) {
-            log.warn("RPC 调用计数服务批量获取点赞数失败，执行降级处理", e);
-        }
         applyLikeState(notes);
         NoteDO lastNote = noteDOS.get(noteDOS.size() - 1);
         return Response.success(FindNoteActionListRspVO.builder()
@@ -100,19 +93,6 @@ public class UserNoteListService {
         Set<Long> likedNoteIds = noteInteractionCacheService.findLikedNoteIds(userId,
                 notes.stream().map(NoteItemRspVO::getNoteId).toList());
         notes.forEach(note -> note.setIsLiked(likedNoteIds.contains(note.getNoteId())));
-    }
-
-    private void applyLikeTotals(List<NoteItemRspVO> notes, List<FindNoteCountsByIdRspDTO> counts) {
-        if (CollUtil.isEmpty(counts)) {
-            return;
-        }
-        Map<Long, FindNoteCountsByIdRspDTO> countByNoteId = counts.stream()
-                .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, count -> count, (left, right) -> left));
-        notes.forEach(note -> {
-            FindNoteCountsByIdRspDTO count = countByNoteId.get(note.getNoteId());
-            note.setLikeTotal(count != null && count.getLikeTotal() != null
-                    ? NumberUtils.formatNumberString(count.getLikeTotal()) : "0");
-        });
     }
 
     private static String getFirstCover(String imgUris) {
