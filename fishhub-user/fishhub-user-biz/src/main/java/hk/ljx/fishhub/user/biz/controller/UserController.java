@@ -5,9 +5,7 @@ import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileRspVO;
 import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
-import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.biz.service.UserService;
-import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
@@ -31,7 +29,6 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
-    private final RolePermissionService rolePermissionService;
 
     /**
      * 用户信息修改
@@ -60,14 +57,6 @@ public class UserController {
     public Response<ResolveLoginableUserRspDTO> resolveOrRegisterLoginableUser(
             @Validated @RequestBody ResolveLoginableUserReqDTO request) {
         return userService.resolveOrRegisterLoginableUser(request);
-    }
-
-    /**
-     * 查询用户角色与权限（服务间内部接口，登录时写入会话使用）
-     */
-    @PostMapping("/findRoleAndPermissions")
-    public Response<UserRolePermissionRspDTO> findRoleAndPermissions(@RequestBody FindUserRolePermissionReqDTO request) {
-        return Response.success(rolePermissionService.findByUserId(request.getUserId()));
     }
 
     @PostMapping("/findByPhone")

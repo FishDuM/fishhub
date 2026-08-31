@@ -191,7 +191,6 @@ public class Comment2DBConsumer {
                         .createTime(publishCommentMqDTO.getCreateTime())
                         .updateTime(publishCommentMqDTO.getCreateTime())
                         .isTop(false)
-                        .replyTotal(0L)
                         .likeTotal(0L)
                         .replyCommentId(0L)
                         .replyUserId(0L)

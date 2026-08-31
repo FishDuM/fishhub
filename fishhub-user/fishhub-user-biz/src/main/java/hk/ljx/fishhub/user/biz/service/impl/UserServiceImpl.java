@@ -19,13 +19,8 @@ import hk.ljx.framework.common.util.ParamUtils;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.user.biz.constant.MQConstants;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.biz.constant.RoleConstants;
-import hk.ljx.fishhub.user.biz.domain.dataobject.RoleDO;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
-import hk.ljx.fishhub.user.biz.domain.dataobject.UserRoleDO;
-import hk.ljx.fishhub.user.biz.domain.mapper.RoleDOMapper;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
-import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.enums.SexEnum;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
@@ -34,7 +29,6 @@ import hk.ljx.fishhub.user.biz.model.vo.UpdateUserInfoReqVO;
 import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
 import hk.ljx.fishhub.user.biz.rpc.OssRpcService;
-import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
@@ -44,7 +38,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.transaction.support.TransactionTemplate;
 import hk.ljx.framework.mq.support.RocketMqHelper;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.data.redis.core.RedisOperations;
@@ -70,8 +63,6 @@ import java.util.stream.Collectors;
 public class UserServiceImpl implements UserService {
 
     private final UserDOMapper userDOMapper;
-    private final UserRoleDOMapper userRoleDOMapper;
-    private final RoleDOMapper roleDOMapper;
     private final OssRpcService ossRpcService;
     private final StringRedisTemplate stringRedisTemplate;
     private final DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
@@ -79,8 +70,6 @@ public class UserServiceImpl implements UserService {
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
     private final CountClient countClient;
     private final RocketMQTemplate rocketMQTemplate;
-    private final RolePermissionService rolePermissionService;
-    private final TransactionTemplate transactionTemplate;
 
     /** 可关注用户本地缓存：Caffeine.get 自带单飞，只做本节点合并，不做跨节点锁 */
     private final Cache<Long, Optional<FindUserByIdRspDTO>> activeUserLocalCache = Caffeine.newBuilder()
@@ -239,24 +228,8 @@ public class UserServiceImpl implements UserService {
                 .isDeleted(DeletedEnum.NO.getValue())
                 .build();
 
-        UserDO finalUser = transactionTemplate.execute(status -> {
-            if (userDOMapper.insertIfAbsent(newUser) == 0) {
-                throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
-            }
-
-            UserRoleDO userRoleDO = UserRoleDO.builder()
-                    .userId(userId)
-                    .roleId(RoleConstants.COMMON_USER_ROLE_ID)
-                    .createTime(LocalDateTime.now())
-                    .updateTime(LocalDateTime.now())
-                    .isDeleted(DeletedEnum.NO.getValue())
-                    .build();
-            userRoleDOMapper.insert(userRoleDO);
-            return newUser;
-        });
-
-        if (finalUser != null) {
-            rolePermissionService.evict(finalUser.getId());
+        if (userDOMapper.insertIfAbsent(newUser) == 0) {
+            throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
         }
 
         return Response.success(userId);
@@ -298,35 +271,17 @@ public class UserServiceImpl implements UserService {
                 .isDeleted(DeletedEnum.NO.getValue()) // 逻辑删除
                 .build();
 
-        // 3. 使用细粒度本地短事务保证：用户插入 + 默认角色绑定 的原子性
-        UserDO finalUser = transactionTemplate.execute(status -> {
-            if (userDOMapper.insertIfAbsent(newUser) == 0) {
-                // 并发注册冲突时，查询已由另一线程成功创建的账号
-                UserDO concurrentUser = userDOMapper.selectByPhone(phone);
-                if (concurrentUser == null) {
-                    throw new IllegalStateException("手机号账号创建后未找到");
-                }
-                return concurrentUser;
+        // 3. 并发安全创建用户
+        if (userDOMapper.insertIfAbsent(newUser) == 0) {
+            // 并发注册冲突时，查询已由另一线程成功创建的账号
+            UserDO concurrentUser = userDOMapper.selectByPhone(phone);
+            if (concurrentUser == null) {
+                throw new IllegalStateException("手机号账号创建后未找到");
             }
-
-            // 给该用户分配一个默认角色
-            UserRoleDO userRoleDO = UserRoleDO.builder()
-                    .userId(userId)
-                    .roleId(RoleConstants.COMMON_USER_ROLE_ID)
-                    .createTime(LocalDateTime.now())
-                    .updateTime(LocalDateTime.now())
-                    .isDeleted(DeletedEnum.NO.getValue())
-                    .build();
-            userRoleDOMapper.insert(userRoleDO);
-            return newUser;
-        });
-
-        // 4. 事务成功提交后失效旧快照
-        if (finalUser != null) {
-            rolePermissionService.evict(finalUser.getId());
+            return resolvedLoginableUserResponse(concurrentUser);
         }
 
-        return resolvedLoginableUserResponse(finalUser);
+        return resolvedLoginableUserResponse(newUser);
     }
 
     private Response<ResolveLoginableUserRspDTO> resolvedLoginableUserResponse(UserDO user) {

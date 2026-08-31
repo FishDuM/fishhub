@@ -6,7 +6,6 @@ import hk.ljx.fishhub.user.dto.req.*;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByIdRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.ResolveLoginableUserRspDTO;
-import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -70,13 +69,4 @@ public interface UserFeignApi {
      */
     @PostMapping(value = PREFIX + "/findByIds")
     Response<List<FindUserByIdRspDTO>> findByIds(@RequestBody FindUsersByIdsReqDTO findUsersByIdsReqDTO);
-
-    /**
-     * 查询用户角色与权限（登录时写入 sa-token 会话使用）
-     *
-     * @param request
-     * @return
-     */
-    @PostMapping(value = PREFIX + "/findRoleAndPermissions")
-    Response<UserRolePermissionRspDTO> findRoleAndPermissions(@RequestBody FindUserRolePermissionReqDTO request);
 }

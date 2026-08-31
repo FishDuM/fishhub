@@ -3,11 +3,8 @@ package hk.ljx.fishhub.gateway.auth;
 import cn.dev33.satoken.context.SaHolder;
 import cn.dev33.satoken.exception.NotLoginException;
 import cn.dev33.satoken.exception.NotPermissionException;
-import cn.dev33.satoken.exception.NotRoleException;
-import cn.dev33.satoken.exception.SaTokenException;
 import cn.dev33.satoken.reactor.context.SaReactorSyncHolder;
 import cn.dev33.satoken.reactor.filter.SaReactorFilter;
-import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -48,8 +45,30 @@ public class SaTokenConfigure {
             "/search/search/note",
             "/search/search/user");
 
+    /**
+     * 仅供微服务间 Feign 内部直连调用的接口，禁止通过网关对外暴露
+     */
+    private static final Set<String> INTERNAL_SERVICE_PATHS = Set.of(
+            "/user/user/resolve-loginable",
+            "/user/user/findByPhone",
+            "/user/user/password/update",
+            "/user/user/findById",
+            "/user/user/findActiveById",
+            "/user/user/findByIds",
+            "/note/note/exists",
+            "/note/note/accessible",
+            "/note/note/accessible/batch",
+            "/note/note/writable/batch",
+            "/oss/file/delete",
+            "/search/search/note/document/rebuild",
+            "/search/search/user/document/rebuild");
+
     public static boolean isWhitelisted(String path) {
         return LOGIN_WHITELIST_PATHS.contains(path);
+    }
+
+    public static boolean isInternalPath(String path) {
+        return INTERNAL_SERVICE_PATHS.contains(path);
     }
 
     /**
@@ -69,9 +88,16 @@ public class SaTokenConfigure {
                 .addInclude("/**")    /* 拦截全部path */
                 // 鉴权方法：每次访问进入
                 .setAuth(obj -> {
-                    log.debug("==================> SaReactorFilter, Path: {}", SaHolder.getRequest().getRequestPath());
-                    // 登录校验：非白名单路径只解析一次 token，并透传 loginId 到 exchange attribute
-                    if (!isWhitelisted(SaHolder.getRequest().getRequestPath())) {
+                    String requestPath = SaHolder.getRequest().getRequestPath();
+                    log.debug("==================> SaReactorFilter, Path: {}", requestPath);
+
+                    // 1. 内部接口拦截：禁止通过网关访问微服务间 RPC 接口
+                    if (isInternalPath(requestPath)) {
+                        throw new NotPermissionException("该接口仅供内部微服务调用，禁止外部访问", "internal:service");
+                    }
+
+                    // 2. 登录校验：非白名单路径校验 token，并透传 loginId 到 exchange attribute
+                    if (!isWhitelisted(requestPath)) {
                         Object loginId = StpUtil.getLoginIdDefaultNull();
                         if (loginId == null) {
                             throw new NotLoginException("未登录", NotLoginException.NOT_TOKEN, null);
@@ -81,30 +107,6 @@ public class SaTokenConfigure {
                             putLoginIdAttribute(exchange, loginId);
                         }
                     }
-
-                    // 对外业务接口按权限校验。
-                    SaRouter.match("/note/note/publish",
-                            r -> StpUtil.checkPermission("app:note:publish"));
-                    SaRouter.match("/comment/comment/publish",
-                            r -> StpUtil.checkPermission("app:comment:publish"));
-
-                    // 以下接口仅供服务间 Feign 直连调用，不允许经 Gateway 对外访问。
-                    SaRouter.match("/user/user/resolve-loginable", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/user/user/findByPhone", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/user/user/password/update", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/user/user/findById", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/user/user/findActiveById", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/user/user/findByIds", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/user/user/findRoleAndPermissions", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/note/note/exists", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/note/note/accessible", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/note/note/accessible/batch", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/note/note/writable/batch", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/oss/file/delete", r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/search/search/note/document/rebuild",
-                            r -> StpUtil.checkPermission("internal:service"));
-                    SaRouter.match("/search/search/user/document/rebuild",
-                            r -> StpUtil.checkPermission("internal:service"));
                 })
                 // 异常处理方法：每次setAuth函数出现异常时进入
                 .setError(e -> {

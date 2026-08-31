@@ -7,11 +7,9 @@ import hk.ljx.framework.common.enums.DeletedEnum;
 import hk.ljx.framework.common.enums.StatusEnum;
 import hk.ljx.fishhub.user.biz.domain.dataobject.UserDO;
 import hk.ljx.fishhub.user.biz.domain.mapper.UserDOMapper;
-import hk.ljx.fishhub.user.biz.domain.mapper.UserRoleDOMapper;
 import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.model.vo.FindUserProfileReqVO;
 import hk.ljx.fishhub.user.biz.rpc.DistributedIdGeneratorRpcService;
-import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.dto.req.FindUserByIdReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUsersByIdsReqDTO;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
@@ -27,8 +25,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.transaction.support.TransactionCallback;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Arrays;
 import java.util.List;
@@ -64,15 +60,6 @@ class UserServiceImplTest {
 
     @Mock
     private DistributedIdGeneratorRpcService distributedIdGeneratorRpcService;
-
-    @Mock
-    private UserRoleDOMapper userRoleDOMapper;
-
-    @Mock
-    private RolePermissionService rolePermissionService;
-
-    @Mock
-    private TransactionTemplate transactionTemplate;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -191,10 +178,6 @@ class UserServiceImplTest {
                         .build());
         when(distributedIdGeneratorRpcService.getFishhubId()).thenReturn("fish100");
         when(distributedIdGeneratorRpcService.getUserId()).thenReturn("100");
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<?> callback = invocation.getArgument(0);
-            return callback.doInTransaction(null);
-        });
         when(userDOMapper.insertIfAbsent(any())).thenReturn(0);
 
         Response<ResolveLoginableUserRspDTO> response = userService.resolveOrRegisterLoginableUser(request);
@@ -205,23 +188,20 @@ class UserServiceImplTest {
     }
 
     @Test
-    void resolveOrRegisterShouldGrantDefaultRole() {
+    void resolveOrRegisterShouldCreateUserSuccessfully() {
         ResolveLoginableUserReqDTO request = ResolveLoginableUserReqDTO.builder()
                 .phone("13800138000")
                 .build();
         when(userDOMapper.selectByPhone("13800138000")).thenReturn(null);
         when(distributedIdGeneratorRpcService.getFishhubId()).thenReturn("fish100");
         when(distributedIdGeneratorRpcService.getUserId()).thenReturn("100");
-        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
-            TransactionCallback<?> callback = invocation.getArgument(0);
-            return callback.doInTransaction(null);
-        });
         when(userDOMapper.insertIfAbsent(any())).thenReturn(1);
 
         Response<ResolveLoginableUserRspDTO> response = userService.resolveOrRegisterLoginableUser(request);
 
         assertTrue(response.getData().isLoginable());
-        verify(userRoleDOMapper).insert(any());
+        assertEquals(100L, response.getData().getUserId());
+        verify(userDOMapper).insertIfAbsent(any());
     }
 
     @Test

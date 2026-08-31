@@ -38,6 +38,13 @@ class SaTokenConfigureTest {
     }
 
     @Test
+    void shouldIdentifyInternalServicePaths() {
+        org.junit.jupiter.api.Assertions.assertTrue(SaTokenConfigure.isInternalPath("/user/user/resolve-loginable"));
+        org.junit.jupiter.api.Assertions.assertTrue(SaTokenConfigure.isInternalPath("/note/note/exists"));
+        org.junit.jupiter.api.Assertions.assertFalse(SaTokenConfigure.isInternalPath("/note/note/detail"));
+    }
+
+    @Test
     void shouldIgnoreNullLoginId() {
         ServerWebExchange exchange = mock(ServerWebExchange.class);
 

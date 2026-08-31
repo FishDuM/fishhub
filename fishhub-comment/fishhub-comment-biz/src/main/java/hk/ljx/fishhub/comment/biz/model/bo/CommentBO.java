@@ -27,9 +27,6 @@ public class CommentBO {
     private String imageUrl;
 
     private Integer level;
-
-    private Long replyTotal;
-
     private Long likeTotal;
 
     private Long parentId;

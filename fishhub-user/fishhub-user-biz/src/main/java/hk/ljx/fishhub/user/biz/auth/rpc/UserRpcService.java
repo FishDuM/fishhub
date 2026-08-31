@@ -3,14 +3,12 @@ package hk.ljx.fishhub.user.biz.auth.rpc;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum;
-import hk.ljx.fishhub.user.biz.service.RolePermissionService;
 import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
 import hk.ljx.fishhub.user.dto.req.ResolveLoginableUserReqDTO;
 import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
 import hk.ljx.fishhub.user.dto.rsp.ResolveLoginableUserRspDTO;
-import hk.ljx.fishhub.user.dto.rsp.UserRolePermissionRspDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +20,6 @@ import java.util.Objects;
 public class UserRpcService {
 
     private final UserService userService;
-    private final RolePermissionService rolePermissionService;
 
     /**
      * 用户注册
@@ -80,16 +77,6 @@ public class UserRpcService {
             }
             throw e;
         }
-    }
-
-    /**
-     * 查询用户角色与权限
-     *
-     * @param userId
-     * @return
-     */
-    public UserRolePermissionRspDTO findRoleAndPermissions(Long userId) {
-        return rolePermissionService.findByUserId(userId);
     }
 
     /**

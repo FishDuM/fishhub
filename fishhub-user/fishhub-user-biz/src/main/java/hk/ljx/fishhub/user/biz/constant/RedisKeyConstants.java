@@ -13,9 +13,6 @@ public class RedisKeyConstants {
      */
     private static final String USER_PROFILE_KEY_PREFIX = "user:profile:v3:";
 
-    /** 用户角色权限快照 Key 前缀 */
-    private static final String USER_ROLE_PERMISSION_KEY_PREFIX = "user:role-permission:";
-
     /** 可操作用户缓存 Key 前缀 */
     private static final String USER_ACTIVE_KEY_PREFIX = "user:active:";
 
@@ -35,11 +32,6 @@ public class RedisKeyConstants {
      */
     public static String buildUserProfileKey(Long userId) {
         return USER_PROFILE_KEY_PREFIX + userId;
-    }
-
-    /** 构建用户角色权限快照 KEY */
-    public static String buildUserRolePermissionKey(Long userId) {
-        return USER_ROLE_PERMISSION_KEY_PREFIX + userId;
     }
 
     public static String buildUserActiveKey(Long userId) {
