@@ -281,7 +281,6 @@ public class NoteServiceImpl implements NoteService {
                 .isTop(Boolean.FALSE)
                 .videoUri(videoUri)
                 .contentUuid(contentUuid)
-                .revision(1L)
                 .build();
 
         persistPublishedNote(creatorId, noteDO, content);
@@ -372,7 +371,8 @@ public class NoteServiceImpl implements NoteService {
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(findNoteDetailRspVOStrLocalCache, FindNoteDetailRspVO.class);
-            if (isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
+            if (findNoteDetailRspVO != null) {
+                checkNoteVisible(findNoteDetailRspVO.getVisible(), userId, findNoteDetailRspVO.getCreatorId());
                 loadContentAndCounts(findNoteDetailRspVO, userId);
                 return Response.success(findNoteDetailRspVO);
             }
@@ -387,14 +387,13 @@ public class NoteServiceImpl implements NoteService {
                 throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
             }
             FindNoteDetailRspVO findNoteDetailRspVO = JsonUtils.parseObject(noteDetailJson, FindNoteDetailRspVO.class);
-            if (!isCurrentAndAccessible(noteId, userId, findNoteDetailRspVO)) {
-                safeRedisUtil.delete(noteDetailRedisKey);
-            } else {
-                LOCAL_CACHE.put(noteId,
-                        Objects.isNull(findNoteDetailRspVO) ? "null" : JsonUtils.toJsonString(findNoteDetailRspVO));
+            if (findNoteDetailRspVO != null) {
+                checkNoteVisible(findNoteDetailRspVO.getVisible(), userId, findNoteDetailRspVO.getCreatorId());
+                LOCAL_CACHE.put(noteId, noteDetailJson);
                 loadContentAndCounts(findNoteDetailRspVO, userId);
                 return Response.success(findNoteDetailRspVO);
             }
+            safeRedisUtil.delete(noteDetailRedisKey);
         }
 
 
@@ -417,7 +416,6 @@ public class NoteServiceImpl implements NoteService {
 
         FindNoteDetailRspVO findNoteDetailRspVO = FindNoteDetailRspVO.builder()
                 .id(noteDO.getId())
-                .revision(noteDO.getRevision())
                 .type(noteDO.getType())
                 .title(noteDO.getTitle())
                 .contentUuid(noteDO.getContentUuid())
@@ -532,10 +530,6 @@ public class NoteServiceImpl implements NoteService {
             throw new BizException(ResponseCodeEnum.NOTE_CANT_OPERATE);
         }
 
-        if (!Objects.equals(updateNoteReqVO.getExpectedRevision(), selectNoteDO.getRevision())) {
-            throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
-        }
-
         ChannelDO channelDO = channelDOMapper.selectByPrimaryKey(updateNoteReqVO.getChannelId());
         if (Objects.isNull(channelDO) || Boolean.TRUE.equals(channelDO.getIsDeleted())) {
             throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
@@ -558,7 +552,6 @@ public class NoteServiceImpl implements NoteService {
                 .updateTime(LocalDateTime.now())
                 .videoUri(media.videoUri())
                 .contentUuid(newContentUuid)
-                .revision(updateNoteReqVO.getExpectedRevision())
                 .build();
 
         List<NoteContentTaskMqDTO> contentTasks = new ArrayList<>();
@@ -690,7 +683,6 @@ public class NoteServiceImpl implements NoteService {
                 .id(noteId)
                 .status(NoteStatusEnum.DELETED.getCode())
                 .updateTime(LocalDateTime.now())
-                .revision(selectNoteDO.getRevision())
                 .build();
 
         List<NoteContentTaskMqDTO> contentTasks = StringUtils.isBlank(selectNoteDO.getContentUuid()) ? List.of()
@@ -1330,29 +1322,11 @@ public class NoteServiceImpl implements NoteService {
         }
     }
 
-    private NoteAccessSnapshot requireAccessibleNote(Long noteId, Long userId) {
-        NoteAccessSnapshot accessInfo = loadAccessSnapshot(noteId);
-        if (accessInfo == null) {
-            throw new BizException(ResponseCodeEnum.NOTE_NOT_FOUND);
-        }
-        checkNoteVisible(accessInfo.getVisible(), userId, accessInfo.getCreatorId());
-        return accessInfo;
-    }
-
-    private boolean isCurrentAndAccessible(Long noteId, Long userId, FindNoteDetailRspVO snapshot) {
-        if (snapshot == null || snapshot.getRevision() == null) {
-            return false;
-        }
-        NoteAccessSnapshot accessInfo = requireAccessibleNote(noteId, userId);
-        return Objects.equals(snapshot.getRevision(), accessInfo.getRevision());
-    }
-
     /**
      * 访问控制允许短暂最终一致：笔记变更会由现有 MQ 立即删除该快照，未命中时回源 MySQL。
      */
     private NoteAccessSnapshot loadAccessSnapshot(Long noteId) {
         String key = RedisKeyConstants.buildNoteAccessKey(noteId);
-        // 负缓存（"null" 哨兵）直接短路，避免已删除/不存在的笔记反复回源重建
         String cachedValue = getAccessSnapshotCacheValue(key);
         if ("null".equals(cachedValue)) {
             return null;
@@ -1406,7 +1380,6 @@ public class NoteServiceImpl implements NoteService {
         return cachedSnapshot != null ? cachedSnapshot : loadAccessSnapshotFromMySql(noteId, key, false);
     }
 
-    /** 读取访问快照缓存；空白/"null"/解析失败统一走重建（解析失败先删脏值）。 */
     private NoteAccessSnapshot readAccessSnapshot(String key) {
         return safeRedisUtil.getObject(key, NoteAccessSnapshot.class);
     }
@@ -1474,7 +1447,6 @@ public class NoteServiceImpl implements NoteService {
             String key = RedisKeyConstants.buildNoteAccessKey(noteId);
             NoteAccessSnapshot snapshot = databaseSnapshots.get(noteId);
             if (snapshot == null) {
-                // status 非正常或不存在的笔记也做短期缓存，避免缓存穿透。
                 cacheAccessSnapshot(key, "null");
                 continue;
             }
@@ -1500,7 +1472,6 @@ public class NoteServiceImpl implements NoteService {
         NoteAccessSnapshot snapshot = new NoteAccessSnapshot();
         snapshot.setCreatorId(note.getCreatorId());
         snapshot.setVisible(note.getVisible());
-        snapshot.setRevision(note.getRevision());
         return snapshot;
     }
 

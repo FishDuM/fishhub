@@ -147,7 +147,7 @@ public class CommentChangedLocalHandler {
     }
 
     private void publishOneLevelComments(Long noteId, List<Long> commentIds) {
-        bumpOneLevelCommentTotalVersion(noteId);
+        stringRedisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId));
         String key = RedisKeyConstants.buildCommentListKey(noteId);
         if (!Boolean.TRUE.equals(stringRedisTemplate.hasKey(key))) {
             return;
@@ -159,7 +159,7 @@ public class CommentChangedLocalHandler {
     }
 
     private void deleteOneLevelComments(Long noteId, List<Long> commentIds) {
-        bumpOneLevelCommentTotalVersion(noteId);
+        stringRedisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId));
         String key = RedisKeyConstants.buildCommentListKey(noteId);
         ZSetOperations<String, String> zSet = stringRedisTemplate.opsForZSet();
         commentIds.forEach(commentId -> zSet.remove(key, String.valueOf(commentId)));
@@ -180,17 +180,6 @@ public class CommentChangedLocalHandler {
         Long size = zSet.zCard(key);
         if (size != null && size > maxSize) {
             zSet.removeRange(key, 0, -(maxSize + 1));
-        }
-    }
-
-    private void bumpOneLevelCommentTotalVersion(Long noteId) {
-        String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-        Long version = stringRedisTemplate.opsForValue().increment(versionKey);
-        if (version != null && version > 0) {
-            stringRedisTemplate.expire(versionKey,
-                    RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
-            stringRedisTemplate.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId,
-                    String.valueOf(version - 1)));
         }
     }
 

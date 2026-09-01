@@ -144,7 +144,7 @@ class NoteServiceImplAccessTest {
         when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
         when(rebuildLock.isHeldByCurrentThread()).thenReturn(true);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
-                NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
+                NoteDO.builder().id(11L).creatorId(1L).visible(0).build());
 
         var response = service.isAccessible(11L);
 
@@ -164,7 +164,7 @@ class NoteServiceImplAccessTest {
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(false);
         when(noteDOMapper.selectAccessInfoByNoteId(11L)).thenReturn(
-                NoteDO.builder().id(11L).creatorId(1L).visible(0).revision(1L).build());
+                NoteDO.builder().id(11L).creatorId(1L).visible(0).build());
 
         var response = service.isAccessible(11L);
 
@@ -179,10 +179,8 @@ class NoteServiceImplAccessTest {
     void shouldNotCallCountRpcWhenRedisHashHasCounts() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(valueOperations.get(RedisKeyConstants.buildNoteAccessKey(11L)))
-                .thenReturn("{\"creatorId\":1,\"visible\":0,\"revision\":1}");
         when(valueOperations.get(RedisKeyConstants.buildNoteDetailKey(11L)))
-                .thenReturn("{\"id\":11,\"revision\":1,\"type\":0,\"title\":\"t\"}");
+                .thenReturn("{\"id\":11,\"creatorId\":1,\"visible\":0,\"type\":0,\"title\":\"t\"}");
         when(hashOperations.multiGet("count:note:11", List.of("likeTotal", "collectTotal", "commentTotal")))
                 .thenReturn(List.of("7", "8", "9"));
 
@@ -200,10 +198,8 @@ class NoteServiceImplAccessTest {
     void shouldBackfillCountsFromRpcWhenRedisHashLacksCounts() {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(stringRedisTemplate.opsForHash()).thenReturn(hashOperations);
-        when(valueOperations.get(RedisKeyConstants.buildNoteAccessKey(11L)))
-                .thenReturn("{\"creatorId\":1,\"visible\":0,\"revision\":1}");
         when(valueOperations.get(RedisKeyConstants.buildNoteDetailKey(11L)))
-                .thenReturn("{\"id\":11,\"revision\":1,\"type\":0,\"title\":\"t\"}");
+                .thenReturn("{\"id\":11,\"creatorId\":1,\"visible\":0,\"type\":0,\"title\":\"t\"}");
         when(hashOperations.multiGet("count:note:11", List.of("likeTotal", "collectTotal", "commentTotal")))
                 .thenReturn(Collections.emptyList());
         when(countClient.findByNoteIds(List.of(11L))).thenReturn(List.of(

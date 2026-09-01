@@ -21,9 +21,6 @@ public class UpdateNoteReqVO {
     @NotNull(message = "笔记 ID 不能为空")
     private Long id;
 
-    @NotNull(message = "笔记版本不能为空")
-    private Long expectedRevision;
-
     @NotNull(message = "笔记类型不能为空")
     private Integer type;
 

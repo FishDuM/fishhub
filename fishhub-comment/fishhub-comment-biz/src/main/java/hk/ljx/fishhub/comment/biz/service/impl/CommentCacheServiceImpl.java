@@ -173,8 +173,7 @@ public class CommentCacheServiceImpl implements CommentCacheService {
         if (noteId == null) {
             return 0L;
         }
-        String version = readOneLevelCommentTotalVersion(noteId);
-        String key = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId, version);
+        String key = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId);
         String lockKey = RedisKeyConstants.buildOneLevelCommentTotalCacheLockKey(noteId);
 
         String cached = safeRedisUtil.get(key);
@@ -231,20 +230,8 @@ public class CommentCacheServiceImpl implements CommentCacheService {
     @Override
     public void invalidateOneLevelCommentTotal(Long noteId) {
         if (noteId != null) {
-            String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-            safeRedisUtil.set(versionKey, String.valueOf(System.currentTimeMillis()),
-                    RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
+            safeRedisUtil.delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId));
         }
-    }
-
-    private String readOneLevelCommentTotalVersion(Long noteId) {
-        String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-        String version = safeRedisUtil.get(versionKey);
-        if (version != null) {
-            safeRedisUtil.expire(versionKey, RedisKeyConstants.ONE_LEVEL_COMMENT_TOTAL_CACHE_VERSION_EXPIRE_SECONDS, TimeUnit.SECONDS);
-            return version;
-        }
-        return "0";
     }
 
     // 4. 评论列表/热度列表 ZSet

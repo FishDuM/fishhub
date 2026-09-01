@@ -51,7 +51,7 @@ public class NoteChangedCommentConsumer implements RocketMQListener<String> {
             NoteRpcService.invalidate(noteId);
             stringRedisTemplate.delete(List.of(
                     RedisKeyConstants.buildCommentListKey(noteId),
-                    RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId)
+                    RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId)
             ));
             log.info("评论服务收到笔记删除事件，已级联清理评论缓存, noteId={}", noteId);
         }

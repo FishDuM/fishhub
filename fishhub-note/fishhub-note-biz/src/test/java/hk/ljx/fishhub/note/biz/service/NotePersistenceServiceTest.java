@@ -38,8 +38,8 @@ class NotePersistenceServiceTest {
     }
 
     @Test
-    void shouldNotRecordJournalWhenUpdateLosesRevisionRace() {
-        when(noteDOMapper.updateByPrimaryKeyAndRevision(any())).thenReturn(0);
+    void shouldNotRecordJournalWhenUpdateFails() {
+        when(noteDOMapper.updateByPrimaryKeySelective(any())).thenReturn(0);
 
         assertThatThrownBy(() -> service.updateNote(NoteDO.builder().id(1001L).build(), "tx-1"))
                 .isInstanceOf(hk.ljx.framework.common.exception.BizException.class);
@@ -48,8 +48,8 @@ class NotePersistenceServiceTest {
     }
 
     @Test
-    void shouldNotRecordJournalWhenDeleteLosesRevisionRace() {
-        when(noteDOMapper.logicalDeleteByPrimaryKeyAndRevision(any())).thenReturn(0);
+    void shouldNotRecordJournalWhenDeleteFails() {
+        when(noteDOMapper.logicalDeleteByPrimaryKey(any())).thenReturn(0);
 
         assertThatThrownBy(() -> service.logicalDeleteNote(NoteDO.builder().id(1001L).build(), "tx-1"))
                 .isInstanceOf(hk.ljx.framework.common.exception.BizException.class);

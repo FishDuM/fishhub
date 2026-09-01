@@ -59,10 +59,8 @@ class CommentCacheServiceImplTest {
     @Test
     void shouldReturnCachedTotalWhenAvailable() {
         Long noteId = 100L;
-        String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-        String cacheKey = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId, "1");
+        String cacheKey = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId);
 
-        when(safeRedisUtil.get(versionKey)).thenReturn("1");
         when(safeRedisUtil.get(cacheKey)).thenReturn("42");
 
         long total = cacheService.getOneLevelCommentTotal(noteId, () -> 999L);
@@ -74,11 +72,9 @@ class CommentCacheServiceImplTest {
     @Test
     void shouldDoubleCheckAndLoadFromDbSupplierWhenCacheMiss() throws InterruptedException {
         Long noteId = 100L;
-        String versionKey = RedisKeyConstants.buildOneLevelCommentTotalCacheVersionKey(noteId);
-        String cacheKey = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId, "0");
+        String cacheKey = RedisKeyConstants.buildOneLevelCommentTotalCacheKey(noteId);
         String lockKey = RedisKeyConstants.buildOneLevelCommentTotalCacheLockKey(noteId);
 
-        when(safeRedisUtil.get(versionKey)).thenReturn(null);
         when(safeRedisUtil.get(cacheKey)).thenReturn(null, (String) null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);

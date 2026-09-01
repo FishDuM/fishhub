@@ -22,12 +22,11 @@
     <result column="content_uuid" jdbcType="VARCHAR" property="contentUuid" />
     <result column="action_id" jdbcType="BIGINT" property="actionId" />
     <result column="action_time" jdbcType="TIMESTAMP" property="actionTime" />
-    <result column="revision" jdbcType="BIGINT" property="revision" />
   </resultMap>
 
   <sql id="Base_Column_List">
     id, title, creator_id, channel_id, topic_id, topic_name, is_top, `type`, img_uris,
-    video_uri, visible, like_count, collect_count, comment_count, create_time, update_time, `status`, content_uuid, revision
+    video_uri, visible, like_count, collect_count, comment_count, create_time, update_time, `status`, content_uuid
   </sql>
 
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
@@ -46,7 +45,7 @@
   </select>
 
   <select id="selectAccessInfoByNoteId" resultMap="BaseResultMap">
-    select id, creator_id, visible, revision
+    select id, creator_id, visible
     from t_note
     where id = #{noteId} and status = 1
   </select>
@@ -67,7 +66,7 @@
   </select>
 
   <select id="selectAccessInfosByNoteIds" resultMap="BaseResultMap">
-    select id, creator_id, visible, revision
+    select id, creator_id, visible
     from t_note
     where id in
     <foreach collection="noteIds" item="noteId" open="(" separator="," close=")">
@@ -123,7 +122,7 @@
 
   <select id="selectLikedNoteListByUserIdAndCursor" resultMap="BaseResultMap">
     select n.id, n.title, n.creator_id, n.channel_id, n.topic_id, n.topic_name, n.is_top, n.`type`, n.img_uris,
-           n.video_uri, n.visible, n.like_count, n.collect_count, n.comment_count, n.create_time, n.update_time, n.`status`, n.content_uuid, n.revision,
+           n.video_uri, n.visible, n.like_count, n.collect_count, n.comment_count, n.create_time, n.update_time, n.`status`, n.content_uuid,
            l.id as action_id, l.create_time as action_time
     from t_note_like l
     inner join t_note n on l.note_id = n.id
@@ -148,14 +147,14 @@
       is_top, `type`, img_uris, video_uri, 
       visible, like_count, collect_count, comment_count,
       create_time, update_time, 
-      `status`, content_uuid, revision)
+      `status`, content_uuid)
     values (#{id,jdbcType=BIGINT}, #{title,jdbcType=VARCHAR}, 
       #{creatorId,jdbcType=BIGINT}, #{channelId,jdbcType=BIGINT}, #{topicId,jdbcType=BIGINT}, #{topicName,jdbcType=VARCHAR},
       #{isTop,jdbcType=BIT}, #{type,jdbcType=TINYINT}, #{imgUris,jdbcType=VARCHAR}, #{videoUri,jdbcType=VARCHAR}, 
       #{visible,jdbcType=TINYINT}, IFNULL(#{likeCount,jdbcType=INTEGER}, 0), IFNULL(#{collectCount,jdbcType=INTEGER}, 0),
       IFNULL(#{commentCount,jdbcType=INTEGER}, 0),
       #{createTime,jdbcType=TIMESTAMP}, #{updateTime,jdbcType=TIMESTAMP}, 
-      #{status,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR}, #{revision,jdbcType=BIGINT})
+      #{status,jdbcType=TINYINT}, #{contentUuid,jdbcType=VARCHAR})
   </insert>
 
   <insert id="insertSelective" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
@@ -215,9 +214,6 @@
       <if test="contentUuid != null">
         content_uuid,
       </if>
-      <if test="revision != null">
-        revision,
-      </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
       <if test="id != null">
@@ -273,9 +269,6 @@
       </if>
       <if test="contentUuid != null">
         #{contentUuid,jdbcType=VARCHAR},
-      </if>
-      <if test="revision != null">
-        #{revision,jdbcType=BIGINT},
       </if>
     </trim>
   </insert>
@@ -347,39 +340,17 @@
       `type` = #{type,jdbcType=TINYINT},
       img_uris = #{imgUris,jdbcType=VARCHAR},
       video_uri = #{videoUri,jdbcType=VARCHAR},
-      like_count = #{likeCount,jdbcType=INTEGER},
-      collect_count = #{collectCount,jdbcType=INTEGER},
-      comment_count = #{commentCount,jdbcType=INTEGER},
       update_time = #{updateTime,jdbcType=TIMESTAMP},
       content_uuid = #{contentUuid,jdbcType=VARCHAR}
     where id = #{id,jdbcType=BIGINT}
   </update>
 
-  <update id="updateByPrimaryKeyAndRevision" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
-    update t_note
-    set title = #{title,jdbcType=VARCHAR},
-      channel_id = #{channelId,jdbcType=BIGINT},
-      topic_id = #{topicId,jdbcType=BIGINT},
-      topic_name = #{topicName,jdbcType=VARCHAR},
-      `type` = #{type,jdbcType=TINYINT},
-      img_uris = #{imgUris,jdbcType=VARCHAR},
-      video_uri = #{videoUri,jdbcType=VARCHAR},
-      update_time = #{updateTime,jdbcType=TIMESTAMP},
-      content_uuid = #{contentUuid,jdbcType=VARCHAR},
-      revision = revision + 1
-    where id = #{id,jdbcType=BIGINT}
-      and `status` = 1
-      and revision = #{revision,jdbcType=BIGINT}
-  </update>
-
-  <update id="logicalDeleteByPrimaryKeyAndRevision" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
+  <update id="logicalDeleteByPrimaryKey" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">
     update t_note
     set status = 2,
-      update_time = #{updateTime,jdbcType=TIMESTAMP},
-      revision = revision + 1
+      update_time = #{updateTime,jdbcType=TIMESTAMP}
     where id = #{id,jdbcType=BIGINT}
       and `status` = 1
-      and revision = #{revision,jdbcType=BIGINT}
   </update>
 
   <update id="updateVisibility" parameterType="hk.ljx.fishhub.note.biz.domain.dataobject.NoteDO">

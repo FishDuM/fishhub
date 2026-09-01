@@ -9,5 +9,4 @@ import lombok.Data;
 public class NoteAccessSnapshot {
     private Long creatorId;
     private Integer visible;
-    private Long revision;
 }

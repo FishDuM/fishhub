@@ -71,12 +71,7 @@ public interface NoteDOMapper {
 
     int updateByPrimaryKey(NoteDO record);
 
-    /**
-     * 按聚合版本更新完整笔记快照，防止并发编辑覆盖。
-     */
-    int updateByPrimaryKeyAndRevision(NoteDO record);
-
-    int logicalDeleteByPrimaryKeyAndRevision(NoteDO record);
+    int logicalDeleteByPrimaryKey(NoteDO record);
 
     int updateVisibility(NoteDO noteDO);
 

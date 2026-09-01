@@ -67,8 +67,4 @@ public class NoteDO {
      */
     private LocalDateTime actionTime;
 
-    /**
-     * 笔记聚合版本，用于编辑乐观锁与缓存版本校验。
-     */
-    private Long revision;
 }

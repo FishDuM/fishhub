@@ -68,7 +68,6 @@ class CommentChangedLocalHandlerTest {
         when(stringRedisTemplate.hasKey(anyString())).thenReturn(true);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.increment(anyString())).thenReturn(1L);
         when(zSetOperations.zCard(anyString())).thenReturn(1L);
         when(valueOperations.multiGet(anyList())).thenReturn(Collections.singletonList(null));
         when(commentDOMapper.selectByCommentIds(anyList())).thenReturn(Collections.emptyList());
@@ -77,6 +76,7 @@ class CommentChangedLocalHandlerTest {
                 List.of(item(1L, 1, 10L), item(2L, 2, 1L))));
 
         String listKey = RedisKeyConstants.buildCommentListKey(10L);
+        verify(stringRedisTemplate).delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(10L));
         verify(zSetOperations).add(listKey, "1", 0D);
         verify(zSetOperations).add(eq(RedisKeyConstants.buildChildCommentListKey(1L)), eq("2"), anyDouble());
         verify(stringRedisTemplate).expire(listKey, 5 * 3600L, TimeUnit.SECONDS);
@@ -87,8 +87,6 @@ class CommentChangedLocalHandlerTest {
     void shouldTrimOneLevelListWhenOverCap() {
         when(stringRedisTemplate.hasKey(anyString())).thenReturn(true);
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.increment(anyString())).thenReturn(1L);
         when(zSetOperations.zCard(anyString())).thenReturn(501L);
 
         handler.handlePublish(event(MQConstants.COMMENT_CHANGE_TYPE_PUBLISH, List.of(item(1L, 1, 10L))));
@@ -99,12 +97,11 @@ class CommentChangedLocalHandlerTest {
     @Test
     void shouldRemoveOneLevelCommentOnDeleteAndInvalidateDetailCache() {
         when(stringRedisTemplate.opsForZSet()).thenReturn(zSetOperations);
-        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.increment(anyString())).thenReturn(1L);
 
         handler.handleDelete(event(MQConstants.COMMENT_CHANGE_TYPE_DELETE,
                 List.of(item(1L, 1, 10L), item(2L, 2, 1L))));
 
+        verify(stringRedisTemplate).delete(RedisKeyConstants.buildOneLevelCommentTotalCacheKey(10L));
         verify(zSetOperations).remove(RedisKeyConstants.buildCommentListKey(10L), "1");
         verify(zSetOperations).remove(RedisKeyConstants.buildChildCommentListKey(1L), "2");
         verify(stringRedisTemplate).delete(RedisKeyConstants.buildHaveFirstReplyCommentKey(1L));

@@ -83,7 +83,6 @@ CREATE TABLE IF NOT EXISTS `t_note` (
   `like_count` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '点赞总数',
   `collect_count` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '收藏总数',
   `comment_count` int UNSIGNED NOT NULL DEFAULT 0 COMMENT '评论总数',
-  `revision` bigint UNSIGNED NOT NULL DEFAULT 1 COMMENT '笔记聚合版本(编辑乐观锁与缓存版本)',
   
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -212,11 +211,11 @@ INSERT IGNORE INTO `t_following` (`user_id`, `following_user_id`) VALUES
 (1004, 1003);
 
 -- 5.4 初始推荐笔记
-INSERT IGNORE INTO `t_note` (`id`, `creator_id`, `title`, `content_uuid`, `type`, `img_uris`, `video_uri`, `channel_id`, `topic_id`, `topic_name`, `is_top`, `visible`, `status`, `like_count`, `collect_count`, `comment_count`, `revision`) VALUES
-(10001, 1001, '欢迎来到飞鱼社区！一起探索精彩的多元生活', '', 0, 'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=600', NULL, 1, 20, '日常分享', b'1', 0, 1, 128, 64, 2, 1),
-(10002, 1002, '基于 Spring Cloud Alibaba + JDK 21 现代微服务架构实战', '', 0, 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600', NULL, 5, 21, '程序员日常', b'0', 0, 1, 96, 48, 1, 1),
-(10003, 1003, '藏在胡同深处的百年地道老店！这口爆肚真的太绝了', '', 0, 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600', NULL, 3, 23, '深夜食堂', b'0', 0, 1, 85, 32, 0, 1),
-(10004, 1004, '川西自驾大环线超详细攻略，新手必看避坑指南', '', 0, 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600', NULL, 4, 22, '周末去哪儿', b'0', 0, 1, 45, 20, 0, 1);
+INSERT IGNORE INTO `t_note` (`id`, `creator_id`, `title`, `content_uuid`, `type`, `img_uris`, `video_uri`, `channel_id`, `topic_id`, `topic_name`, `is_top`, `visible`, `status`, `like_count`, `collect_count`, `comment_count`) VALUES
+(10001, 1001, '欢迎来到飞鱼社区！一起探索精彩的多元生活', '', 0, 'https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=600', NULL, 1, 20, '日常分享', b'1', 0, 1, 128, 64, 2),
+(10002, 1002, '基于 Spring Cloud Alibaba + JDK 21 现代微服务架构实战', '', 0, 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600', NULL, 5, 21, '程序员日常', b'0', 0, 1, 96, 48, 1),
+(10003, 1003, '藏在胡同深处的百年地道老店！这口爆肚真的太绝了', '', 0, 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600', NULL, 3, 23, '深夜食堂', b'0', 0, 1, 85, 32, 0),
+(10004, 1004, '川西自驾大环线超详细攻略，新手必看避坑指南', '', 0, 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600', NULL, 4, 22, '周末去哪儿', b'0', 0, 1, 45, 20, 0);
 
 -- 5.5 初始笔记点赞与收藏记录
 INSERT IGNORE INTO `t_note_like` (`user_id`, `note_id`) VALUES

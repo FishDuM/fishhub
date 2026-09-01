@@ -40,22 +40,22 @@ public class NotePersistenceService {
     }
 
     /**
-     * 编辑笔记（乐观锁校验版本）。
+     * 编辑笔记。
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateNote(NoteDO note, String txId) {
-        if (noteDOMapper.updateByPrimaryKeyAndRevision(note) != 1) {
+        if (noteDOMapper.updateByPrimaryKeySelective(note) != 1) {
             throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
         }
         txJournalStore.record(txId);
     }
 
     /**
-     * 逻辑删除笔记（乐观锁校验版本）。
+     * 逻辑删除笔记。
      */
     @Transactional(rollbackFor = Exception.class)
     public void logicalDeleteNote(NoteDO note, String txId) {
-        if (noteDOMapper.logicalDeleteByPrimaryKeyAndRevision(note) != 1) {
+        if (noteDOMapper.logicalDeleteByPrimaryKey(note) != 1) {
             throw new BizException(ResponseCodeEnum.NOTE_UPDATE_FAIL);
         }
         txJournalStore.record(txId);
