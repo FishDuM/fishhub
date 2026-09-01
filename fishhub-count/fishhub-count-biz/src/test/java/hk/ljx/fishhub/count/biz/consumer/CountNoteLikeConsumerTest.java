@@ -7,7 +7,6 @@ import hk.ljx.fishhub.count.biz.consumer.aggregation.AbstractNoteCountAggregatio
 import hk.ljx.fishhub.count.biz.model.dto.CountNoteMqDTO;
 import cn.hutool.crypto.digest.DigestUtil;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,8 +38,6 @@ class CountNoteLikeConsumerTest {
     private MqIdempotentExecutor mqIdempotentExecutor;
     @Mock
     private StringRedisTemplate stringRedisTemplate;
-    @Mock
-    private UserCountCacheVersionService userCountCacheVersionService;
 
     @InjectMocks
     private CountNoteLikeConsumer consumer;
@@ -70,8 +67,7 @@ class CountNoteLikeConsumerTest {
         verify(userCountDOMapper).insertOrUpdateLikeTotalByUserId(2, 7L);
         verify(userCountDOMapper).insertOrUpdateLikeTotalByUserId(-1, 8L);
         verify(stringRedisTemplate).delete(List.of("count:note:100", "count:note:200"));
-        verify(userCountCacheVersionService).advanceVersion(7L);
-        verify(userCountCacheVersionService).advanceVersion(8L);
+        verify(stringRedisTemplate).delete(List.of("count:user:7", "count:user:8"));
     }
 
     private CountNoteMqDTO event(String eventId, Long userId, Long noteId, Long creatorId, Integer type) {

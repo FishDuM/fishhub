@@ -20,336 +20,184 @@
     <result column="first_reply_comment_id" jdbcType="BIGINT" property="firstReplyCommentId" />
     <result column="heat" jdbcType="DOUBLE" property="heat" />
   </resultMap>
+
   <sql id="Base_Column_List">
     id, note_id, user_id, content_uuid, is_content_empty, image_url, `level`, child_comment_total,
-    like_total, parent_id, reply_comment_id, reply_user_id, is_top, create_time, update_time
+    like_total, parent_id, reply_comment_id, reply_user_id, is_top, create_time, update_time, heat, first_reply_comment_id
   </sql>
+
   <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
     select 
     <include refid="Base_Column_List" />
     from t_comment
-    where id = #{id,jdbcType=BIGINT}
+    where id = #{id,jdbcType=BIGINT} and is_deleted = 0
   </select>
 
   <select id="selectByReplyCommentId" resultMap="BaseResultMap" parameterType="long">
     select
     <include refid="Base_Column_List" />
     from t_comment
-    where reply_comment_id = #{commentId}
+    where reply_comment_id = #{commentId} and is_deleted = 0
   </select>
 
   <select id="selectByParentId" resultMap="BaseResultMap" parameterType="long">
     select <include refid="Base_Column_List" />
     from t_comment
-    where parent_id = #{parentId}
+    where parent_id = #{parentId} and is_deleted = 0
     order by id asc
   </select>
 
   <select id="selectByCommentIds" resultMap="BaseResultMap" parameterType="list">
     select
-    id, user_id, content_uuid, is_content_empty, image_url, like_total,
-    is_top, create_time, first_reply_comment_id, child_comment_total,
-    level, parent_id, heat, note_id, reply_comment_id, reply_user_id
+    <include refid="Base_Column_List" />
     from t_comment
     where id in
-    <foreach collection="commentIds" open="(" separator="," close=")" item="commentId">
+    <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
+      #{commentId}
+    </foreach>
+    and is_deleted = 0
+  </select>
+
+  <select id="selectNoteIdsByCommentIds" resultMap="BaseResultMap" parameterType="list">
+    select id, note_id from t_comment
+    where id in
+    <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
       #{commentId}
     </foreach>
   </select>
 
   <select id="selectCommentCountByIds" resultMap="BaseResultMap" parameterType="list">
-    select
-    id, child_comment_total, like_total, level
+    select id, child_comment_total, like_total, first_reply_comment_id
     from t_comment
     where id in
-    <foreach collection="commentIds" open="(" separator="," close=")" item="commentId">
+    <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
       #{commentId}
     </foreach>
+    and is_deleted = 0
   </select>
 
   <select id="selectChildCommentsByParentIdAndLimit" resultMap="BaseResultMap" parameterType="map">
-    select id, create_time
+    select
+    <include refid="Base_Column_List" />
     from t_comment
-    where parent_id = #{parentId} and level = 2
-    order by create_time asc
-      limit #{limit}
+    where parent_id = #{parentId} and is_deleted = 0
+    order by id asc
+    limit #{limit}
   </select>
 
   <select id="selectLatestChildCommentsByParentIdAndLimit" resultMap="BaseResultMap" parameterType="map">
-    select id, create_time
+    select
+    <include refid="Base_Column_List" />
     from t_comment
-    where parent_id = #{parentId} and level = 2
-    order by create_time desc, id desc
-      limit #{limit}
+    where parent_id = #{parentId} and is_deleted = 0
+    order by id desc
+    limit #{limit}
   </select>
 
   <select id="selectTwoLevelCommentByIds" resultMap="BaseResultMap" parameterType="list">
     select
-    id, user_id, content_uuid, is_content_empty, image_url, like_total, create_time, heat
+    <include refid="Base_Column_List" />
     from t_comment
     where id in
-    <foreach collection="commentIds" open="(" separator="," close=")" item="commentId">
+    <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
       #{commentId}
     </foreach>
+    and is_deleted = 0
   </select>
 
-  <select id="selectEarliestByParentId" resultMap="BaseResultMap" parameterType="map">
-    select id from t_comment
-    where parent_id = #{parentId} and level = 2 order by create_time asc limit 1
+  <select id="selectEarliestByParentId" resultMap="BaseResultMap" parameterType="long">
+    select
+    <include refid="Base_Column_List" />
+    from t_comment
+    where parent_id = #{parentId} and level = 2 and is_deleted = 0
+    order by create_time asc, id asc
+    limit 1
   </select>
 
   <select id="selectEarliestFirstReplyByParentIds" resultMap="BaseResultMap" parameterType="list">
-    select id, parent_id, create_time from (
-        select id, parent_id, create_time,
-               row_number() over (partition by parent_id order by create_time asc, id asc) rn
-        from t_comment
-        where parent_id in
+    SELECT tc.*
+    FROM (
+      SELECT parent_id, MIN(create_time) AS min_create_time
+      FROM t_comment
+      WHERE level = 2
+        AND is_deleted = 0
+        AND parent_id IN
         <foreach collection="parentIds" item="parentId" open="(" separator="," close=")">
-            #{parentId}
+          #{parentId}
         </foreach>
-        and level = 2
-    ) t where t.rn = 1
+      GROUP BY parent_id
+    ) earliest
+    JOIN t_comment tc
+      ON tc.parent_id = earliest.parent_id
+     AND tc.create_time = earliest.min_create_time
+     AND tc.level = 2
+     AND tc.is_deleted = 0
   </select>
 
   <select id="selectPageList" resultMap="BaseResultMap" parameterType="map">
-    select id, user_id, content_uuid, is_content_empty, image_url, like_total,
-           is_top, create_time, first_reply_comment_id, child_comment_total, heat
+    select
+    <include refid="Base_Column_List" />
     from t_comment
-    where note_id = #{noteId} and level = 1 order by heat desc
-      limit #{offset}, #{pageSize}
+    where note_id = #{noteId} and level = 1 and is_deleted = 0
+    order by is_top desc, heat desc, create_time desc
+    limit #{offset}, #{pageSize}
   </select>
 
-  <select id="selectNoteIdsByCommentIds" resultMap="BaseResultMap" parameterType="list">
-    select id, note_id, `level`
-    from t_comment
-    where id in
-    <foreach collection="commentIds" open="(" separator="," close=")" item="commentId">
-      #{commentId}
-    </foreach>
-  </select>
-
-  <select id="selectOneLevelCountByNoteId" resultType="long">
-    select count(1) from t_comment where note_id = #{noteId} and level = 1
+  <select id="selectOneLevelCountByNoteId" resultType="long" parameterType="long">
+    select count(1) from t_comment where note_id = #{noteId} and level = 1 and is_deleted = 0
   </select>
 
   <select id="selectChildPageList" resultMap="BaseResultMap" parameterType="map">
-    select id, user_id, note_id, content_uuid, is_content_empty, image_url, like_total,
-           create_time, reply_user_id, parent_id, reply_comment_id
+    select
+    <include refid="Base_Column_List" />
     from t_comment
-    where parent_id = #{parentId} and level = 2 order by create_time asc, id asc
-      limit #{offset}, #{pageSize}
+    where parent_id = #{parentId} and is_deleted = 0
+    order by id asc
+    limit #{offset}, #{pageSize}
   </select>
 
   <select id="selectHeatComments" resultMap="BaseResultMap">
     select id, heat
     from t_comment
-    where note_id = #{noteId} and level = 1 order by heat desc limit 500
+    where note_id = #{noteId} and level = 1 and is_deleted = 0
+    order by heat desc limit 500
   </select>
 
   <select id="selectChildCommentTotalById" resultType="long">
     select child_comment_total from t_comment
-    where id = #{commentId} and level = 1
+    where id = #{commentId} and level = 1 and is_deleted = 0
   </select>
 
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
-    delete from t_comment
-    where id = #{id,jdbcType=BIGINT}
+    update t_comment set is_deleted = 1 where id = #{id,jdbcType=BIGINT}
   </delete>
 
   <delete id="deleteByParentId" parameterType="long">
-    delete from t_comment
-    where parent_id = #{commentId}
+    update t_comment set is_deleted = 1 where parent_id = #{commentId}
   </delete>
 
   <delete id="deleteByIds" parameterType="map">
-    delete from t_comment
+    update t_comment set is_deleted = 1
     where id in
     <foreach collection="commentIds" item="commentId" open="(" separator="," close=")">
       #{commentId}
     </foreach>
   </delete>
 
-  <insert id="insert" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO">
-    insert into t_comment (id, content, avatar, 
-      nickname, mail, website, 
-      router_url, create_time, update_time, 
-      is_deleted, reply_comment_id, parent_comment_id, 
-      reason, `status`)
-    values (#{id,jdbcType=BIGINT}, #{content,jdbcType=VARCHAR}, #{avatar,jdbcType=VARCHAR}, 
-      #{nickname,jdbcType=VARCHAR}, #{mail,jdbcType=VARCHAR}, #{website,jdbcType=VARCHAR}, 
-      #{routerUrl,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP}, #{updateTime,jdbcType=TIMESTAMP}, 
-      #{isDeleted,jdbcType=TINYINT}, #{replyCommentId,jdbcType=BIGINT}, #{parentCommentId,jdbcType=BIGINT}, 
-      #{reason,jdbcType=VARCHAR}, #{status,jdbcType=TINYINT})
-  </insert>
-
   <insert id="batchInsert" parameterType="list">
     insert IGNORE into t_comment (id, note_id, user_id,
-    content_uuid, is_content_empty, image_url,
-    `level`, reply_total, like_total,
-    parent_id, reply_comment_id, reply_user_id,
-    is_top, create_time, update_time
+      content_uuid, is_content_empty, image_url,
+      `level`, child_comment_total, like_total,
+      parent_id, reply_comment_id, reply_user_id,
+      is_top, create_time, update_time
     )
     values
     <foreach collection="comments" item="comment" separator=",">
-      (#{comment.id}, #{comment.noteId}, #{comment.userId}, #{comment.contentUuid}, #{comment.isContentEmpty}
-      , #{comment.imageUrl}, #{comment.level}, #{comment.replyTotal}, #{comment.likeTotal}, #{comment.parentId}
+      (#{comment.id}, #{comment.noteId}, #{comment.userId}, #{comment.contentUuid}, IFNULL(#{comment.isContentEmpty}, 0)
+      , #{comment.imageUrl}, #{comment.level}, 0, IFNULL(#{comment.likeTotal}, 0), #{comment.parentId}
       , #{comment.replyCommentId}, #{comment.replyUserId}, #{comment.isTop}, #{comment.createTime}, #{comment.updateTime})
     </foreach>
   </insert>
-
-  <insert id="insertSelective" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO">
-    insert into t_comment
-    <trim prefix="(" suffix=")" suffixOverrides=",">
-      <if test="id != null">
-        id,
-      </if>
-      <if test="content != null">
-        content,
-      </if>
-      <if test="avatar != null">
-        avatar,
-      </if>
-      <if test="nickname != null">
-        nickname,
-      </if>
-      <if test="mail != null">
-        mail,
-      </if>
-      <if test="website != null">
-        website,
-      </if>
-      <if test="routerUrl != null">
-        router_url,
-      </if>
-      <if test="createTime != null">
-        create_time,
-      </if>
-      <if test="updateTime != null">
-        update_time,
-      </if>
-      <if test="isDeleted != null">
-        is_deleted,
-      </if>
-      <if test="replyCommentId != null">
-        reply_comment_id,
-      </if>
-      <if test="parentCommentId != null">
-        parent_comment_id,
-      </if>
-      <if test="reason != null">
-        reason,
-      </if>
-      <if test="status != null">
-        `status`,
-      </if>
-    </trim>
-    <trim prefix="values (" suffix=")" suffixOverrides=",">
-      <if test="id != null">
-        #{id,jdbcType=BIGINT},
-      </if>
-      <if test="content != null">
-        #{content,jdbcType=VARCHAR},
-      </if>
-      <if test="avatar != null">
-        #{avatar,jdbcType=VARCHAR},
-      </if>
-      <if test="nickname != null">
-        #{nickname,jdbcType=VARCHAR},
-      </if>
-      <if test="mail != null">
-        #{mail,jdbcType=VARCHAR},
-      </if>
-      <if test="website != null">
-        #{website,jdbcType=VARCHAR},
-      </if>
-      <if test="routerUrl != null">
-        #{routerUrl,jdbcType=VARCHAR},
-      </if>
-      <if test="createTime != null">
-        #{createTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="updateTime != null">
-        #{updateTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="isDeleted != null">
-        #{isDeleted,jdbcType=TINYINT},
-      </if>
-      <if test="replyCommentId != null">
-        #{replyCommentId,jdbcType=BIGINT},
-      </if>
-      <if test="parentCommentId != null">
-        #{parentCommentId,jdbcType=BIGINT},
-      </if>
-      <if test="reason != null">
-        #{reason,jdbcType=VARCHAR},
-      </if>
-      <if test="status != null">
-        #{status,jdbcType=TINYINT},
-      </if>
-    </trim>
-  </insert>
-  <update id="updateByPrimaryKeySelective" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO">
-    update t_comment
-    <set>
-      <if test="content != null">
-        content = #{content,jdbcType=VARCHAR},
-      </if>
-      <if test="avatar != null">
-        avatar = #{avatar,jdbcType=VARCHAR},
-      </if>
-      <if test="nickname != null">
-        nickname = #{nickname,jdbcType=VARCHAR},
-      </if>
-      <if test="mail != null">
-        mail = #{mail,jdbcType=VARCHAR},
-      </if>
-      <if test="website != null">
-        website = #{website,jdbcType=VARCHAR},
-      </if>
-      <if test="routerUrl != null">
-        router_url = #{routerUrl,jdbcType=VARCHAR},
-      </if>
-      <if test="createTime != null">
-        create_time = #{createTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="updateTime != null">
-        update_time = #{updateTime,jdbcType=TIMESTAMP},
-      </if>
-      <if test="isDeleted != null">
-        is_deleted = #{isDeleted,jdbcType=TINYINT},
-      </if>
-      <if test="replyCommentId != null">
-        reply_comment_id = #{replyCommentId,jdbcType=BIGINT},
-      </if>
-      <if test="parentCommentId != null">
-        parent_comment_id = #{parentCommentId,jdbcType=BIGINT},
-      </if>
-      <if test="reason != null">
-        reason = #{reason,jdbcType=VARCHAR},
-      </if>
-      <if test="status != null">
-        `status` = #{status,jdbcType=TINYINT},
-      </if>
-    </set>
-    where id = #{id,jdbcType=BIGINT}
-  </update>
-  <update id="updateByPrimaryKey" parameterType="hk.ljx.fishhub.comment.biz.domain.dataobject.CommentDO">
-    update t_comment
-    set content = #{content,jdbcType=VARCHAR},
-      avatar = #{avatar,jdbcType=VARCHAR},
-      nickname = #{nickname,jdbcType=VARCHAR},
-      mail = #{mail,jdbcType=VARCHAR},
-      website = #{website,jdbcType=VARCHAR},
-      router_url = #{routerUrl,jdbcType=VARCHAR},
-      create_time = #{createTime,jdbcType=TIMESTAMP},
-      update_time = #{updateTime,jdbcType=TIMESTAMP},
-      is_deleted = #{isDeleted,jdbcType=TINYINT},
-      reply_comment_id = #{replyCommentId,jdbcType=BIGINT},
-      parent_comment_id = #{parentCommentId,jdbcType=BIGINT},
-      reason = #{reason,jdbcType=VARCHAR},
-      `status` = #{status,jdbcType=TINYINT}
-    where id = #{id,jdbcType=BIGINT}
-  </update>
 
   <update id="batchUpdateHeatByCommentIds" parameterType="map">
     UPDATE t_comment
@@ -370,7 +218,7 @@
     where id = #{id}
   </update>
 
-    <update id="batchUpdateFirstReplyCommentIds" parameterType="map">
+  <update id="batchUpdateFirstReplyCommentIds" parameterType="map">
     update t_comment
     set first_reply_comment_id = case id
     <foreach collection="commentFirstReplyBOS" item="bo">
@@ -383,7 +231,6 @@
     </foreach>
   </update>
 
-  <!-- 增量为纯可交换累加，不做零点钳制：须与 count 模块的发布侧增量保持同一规则，混用钳制会重新引入乱序漂移。 -->
   <update id="updateChildCommentTotal" parameterType="map">
     update t_comment
     set child_comment_total = child_comment_total + #{delta}

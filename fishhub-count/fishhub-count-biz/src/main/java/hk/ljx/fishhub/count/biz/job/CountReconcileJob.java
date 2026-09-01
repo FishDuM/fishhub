@@ -6,7 +6,6 @@ import hk.ljx.fishhub.count.biz.domain.dataobject.NoteCountDO;
 import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.CountReconcileDOMapper;
 import hk.ljx.framework.common.util.SafeRedisUtil;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +29,6 @@ public class CountReconcileJob {
     private static final int BATCH_SIZE = 1000;
     private final CountReconcileDOMapper countReconcileDOMapper;
     private final SafeRedisUtil safeRedisUtil;
-    private final UserCountCacheVersionService userCountCacheVersionService;
 
     @Scheduled(cron = "0 30 3 * * ?")
     public void reconcile() {
@@ -108,8 +106,9 @@ public class CountReconcileJob {
             ).toList();
 
             countReconcileDOMapper.batchUpsertUserCounts(list);
-            // 批量推进用户计数缓存版本，旧快照立即失效
-            userCountCacheVersionService.advanceVersions(userIds);
+            // 批量失效 Redis 用户计数缓存，避免旧脏数据滞留
+            List<String> userRedisKeys = userIds.stream().map(CountKeyConstants::buildCountUserKey).toList();
+            safeRedisUtil.delete(userRedisKeys);
 
             totalUpdated += list.size();
             lastId = userIds.get(userIds.size() - 1);

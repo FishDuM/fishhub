@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
         topic = MQConstants.TOPIC_COMMENT_LIKE_OR_UNLIKE,
         consumeMode = ConsumeMode.ORDERLY
 )
-public class LikeUnlikeComment2DBConsumer implements RocketMQListener<List<MessageExt>> {
+public class LikeUnlikeComment2DBConsumer implements RocketMQListener<MessageExt> {
 
     private static final int BATCH_MAX_SIZE = 30;
     private static final int MAX_RECONSUME_TIMES = 16;
@@ -58,11 +58,11 @@ public class LikeUnlikeComment2DBConsumer implements RocketMQListener<List<Messa
     }
 
     @Override
-    public void onMessage(List<MessageExt> msgs) {
-        if (CollUtil.isEmpty(msgs)) {
+    public void onMessage(MessageExt msg) {
+        if (msg == null) {
             return;
         }
-        boolean success = consumeBatch(msgs);
+        boolean success = consumeBatch(List.of(msg));
         if (!success) {
             throw new RuntimeException("评论点赞微批消费失败，触发 RocketMQ 顺序重试");
         }

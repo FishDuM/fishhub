@@ -7,7 +7,6 @@ import hk.ljx.fishhub.count.client.CountClient;
 import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.note.api.NoteChangedEventMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -23,8 +22,8 @@ import java.util.Objects;
  * 2. 笔记删除或设为私密时，清理对应笔记的 Redis 计数缓存。
  */
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_NOTE_CHANGED, // Group 组
-        topic = MQConstants.TOPIC_NOTE_CHANGED // 主题 Topic
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_NOTE_CHANGED,
+        topic = MQConstants.TOPIC_NOTE_CHANGED
         )
 @Slf4j
 @RequiredArgsConstructor
@@ -35,7 +34,6 @@ public class CountNoteChangedConsumer implements RocketMQListener<String> {
 
     private final UserCountDOMapper userCountDOMapper;
     private final MqIdempotentExecutor mqIdempotentExecutor;
-    private final UserCountCacheVersionService userCountCacheVersionService;
     private final StringRedisTemplate stringRedisTemplate;
 
     @Override
@@ -67,7 +65,7 @@ public class CountNoteChangedConsumer implements RocketMQListener<String> {
         if (count != 0) {
             mqIdempotentExecutor.execute("count-note-publish", count + ":" + body,
                     () -> userCountDOMapper.insertOrUpdateNoteTotalByUserId(count, creatorId));
-            userCountCacheVersionService.advanceVersion(creatorId);
+            stringRedisTemplate.delete(CountKeyConstants.buildCountUserKey(creatorId));
         }
     }
 

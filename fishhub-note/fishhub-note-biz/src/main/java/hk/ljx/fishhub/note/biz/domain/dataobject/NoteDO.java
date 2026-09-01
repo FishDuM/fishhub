@@ -16,8 +16,6 @@ public class NoteDO {
 
     private String title;
 
-    private Boolean isContentEmpty;
-
     private Long creatorId;
 
     private Long channelId;

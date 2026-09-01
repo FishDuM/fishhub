@@ -8,7 +8,6 @@ import hk.ljx.fishhub.note.biz.domain.dataobject.TopicDO;
 import hk.ljx.fishhub.note.biz.domain.mapper.ChannelDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.NoteDOMapper;
 import hk.ljx.fishhub.note.biz.domain.mapper.TopicDOMapper;
-import hk.ljx.fishhub.note.biz.model.vo.FindChannelRspVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindDiscoverNoteListReqVO;
 import hk.ljx.fishhub.note.biz.model.vo.FindTopicListReqVO;
 import hk.ljx.fishhub.count.client.CountClient;
@@ -33,7 +32,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,9 +67,8 @@ class FeedServiceImplTest {
 
     @Test
     void shouldRequestCountsOnceWhenCursorPageCacheMisses() {
-        String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
+        String pageKey = "feed:discover:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
@@ -91,9 +88,8 @@ class FeedServiceImplTest {
 
     @Test
     void shouldDeleteCorruptedCursorPageCacheAndReloadIt() {
-        String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
+        String pageKey = "feed:discover:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn("{");
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
@@ -111,8 +107,9 @@ class FeedServiceImplTest {
 
     @Test
     void shouldFallBackToMySqlWhenDiscoverRedisIsUnavailable() {
+        String pageKey = "feed:discover:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenThrow(new IllegalStateException("redis unavailable"));
+        when(valueOperations.get(pageKey)).thenThrow(new IllegalStateException("redis unavailable"));
         when(noteDOMapper.selectDiscoverPageListByCursor(null, null, 21L)).thenReturn(List.of(
                 NoteDO.builder().id(101L).creatorId(10L).title("标题").build()));
         when(userClient.findByIds(List.of(10L))).thenReturn(List.of(
@@ -144,10 +141,9 @@ class FeedServiceImplTest {
     }
 
     @Test
-    void shouldUsePerChannelFeedVersionKey() {
-        String channelPageKey = "feed:discover:cursor:v2:channel:1:cursor:first";
+    void shouldUsePerChannelFeedKey() {
+        String channelPageKey = "feed:discover:channel:1:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(1L))).thenReturn("v2");
         when(valueOperations.get(channelPageKey))
                 .thenReturn("{\"notes\":[],\"nextCursor\":null}");
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
@@ -157,16 +153,13 @@ class FeedServiceImplTest {
         var response = service.findDiscoverNoteList(request);
 
         assertEquals(0, response.getData().size());
-        // 频道 1 版本 key 独立于首页
-        verify(valueOperations).get(RedisKeyConstants.buildDiscoverFeedVersionKey(1L));
         verify(valueOperations).get(channelPageKey);
     }
 
     @Test
     void shouldUseBakedCountsWithoutFeignWhenDiscoverSnapshotIsHit() {
-        String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
+        String pageKey = "feed:discover:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey))
                 .thenReturn("{\"notes\":[{\"noteId\":101,\"type\":0,\"title\":\"标题\",\"likeTotal\":\"5\",\"isLiked\":false}],\"nextCursor\":null}");
         FindDiscoverNoteListReqVO request = new FindDiscoverNoteListReqVO();
@@ -217,10 +210,9 @@ class FeedServiceImplTest {
 
     @Test
     void shouldUseDoubleCheckAfterAcquiringDiscoverPageRebuildLock() throws InterruptedException {
-        String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        String lockKey = "lock:feed:discover:cursor:channel:0:cursor:first";
+        String pageKey = "feed:discover:channel:0:cursor:first";
+        String lockKey = "lock:feed:discover:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null, "{\"notes\":[],\"nextCursor\":null}");
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);
@@ -235,10 +227,9 @@ class FeedServiceImplTest {
 
     @Test
     void shouldNotRetryMySqlWhenDiscoverPageRebuildFails() throws InterruptedException {
-        String pageKey = "feed:discover:cursor:v1:channel:0:cursor:first";
-        String lockKey = "lock:feed:discover:cursor:channel:0:cursor:first";
+        String pageKey = "feed:discover:channel:0:cursor:first";
+        String lockKey = "lock:feed:discover:channel:0:cursor:first";
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.get(RedisKeyConstants.buildDiscoverFeedVersionKey(null))).thenReturn("v1");
         when(valueOperations.get(pageKey)).thenReturn(null);
         when(redissonClient.getLock(lockKey)).thenReturn(rebuildLock);
         when(rebuildLock.tryLock(anyLong(), any(TimeUnit.class))).thenReturn(true);

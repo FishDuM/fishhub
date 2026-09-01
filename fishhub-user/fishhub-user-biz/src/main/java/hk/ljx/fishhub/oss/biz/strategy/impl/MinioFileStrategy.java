@@ -28,7 +28,6 @@ import java.util.regex.Pattern;
 @Slf4j
 @RequiredArgsConstructor
 @Service
-@ConditionalOnProperty(name = "storage.type", havingValue = "minio", matchIfMissing = true)
 public class MinioFileStrategy implements FileStrategy  {
 
     private static final Pattern OWNED_OBJECT_NAME = Pattern.compile("user/\\d+/[a-f0-9]{32}\\.[a-z0-9]+");

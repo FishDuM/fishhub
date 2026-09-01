@@ -4,17 +4,19 @@ import hk.ljx.framework.common.util.JsonUtils;
 import hk.ljx.fishhub.count.biz.constant.MQConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.FollowUnfollowTypeEnum;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.dto.CountFollowUnfollowMqDTO;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Objects;
 
 
@@ -23,8 +25,8 @@ import java.util.Objects;
  * 一条关注事件同时累加关注者 following_total 与被关注者 fans_total。
  */
 @Component
-@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING, // Group 组
-        topic = MQConstants.TOPIC_COUNT_FOLLOWING, // 主题 Topic
+@RocketMQMessageListener(consumerGroup = "fishhub_group_" + MQConstants.TOPIC_COUNT_FOLLOWING,
+        topic = MQConstants.TOPIC_COUNT_FOLLOWING,
         consumeMode = ConsumeMode.ORDERLY
         )
 @Slf4j
@@ -33,7 +35,7 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
 
     private final UserCountDOMapper userCountDOMapper;
     private final MqIdempotentExecutor mqIdempotentExecutor;
-    private final UserCountCacheVersionService userCountCacheVersionService;
+    private final StringRedisTemplate stringRedisTemplate;
 
     @Override
     public void onMessage(String body) {
@@ -68,9 +70,11 @@ public class CountFollowing2DBConsumer implements RocketMQListener<String> {
             }
         });
 
-        // 无论是否重复投递，都推进版本，确保旧缓存快照不再被读取。
-        userCountCacheVersionService.advanceVersion(event.getUserId());
-        userCountCacheVersionService.advanceVersion(event.getTargetUserId());
+        // 无论是否重复投递，都失效对应用户计数缓存
+        stringRedisTemplate.delete(List.of(
+                CountKeyConstants.buildCountUserKey(event.getUserId()),
+                CountKeyConstants.buildCountUserKey(event.getTargetUserId())
+        ));
         if (!applied) {
             log.info("关注计数消息已处理，忽略重复投递");
         }

@@ -6,7 +6,6 @@ import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.model.dto.CountNoteMqDTO;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -17,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.stream.Collectors;
 
 /**
  * 笔记计数聚合落库抽象基类
@@ -29,18 +27,15 @@ public abstract class AbstractNoteCountAggregationConsumer {
     protected final UserCountDOMapper userCountDOMapper;
     protected final MqIdempotentExecutor mqIdempotentExecutor;
     protected final StringRedisTemplate stringRedisTemplate;
-    protected final UserCountCacheVersionService userCountCacheVersionService;
 
     protected AbstractNoteCountAggregationConsumer(NoteCountDOMapper noteCountDOMapper,
                                                    UserCountDOMapper userCountDOMapper,
                                                    MqIdempotentExecutor mqIdempotentExecutor,
-                                                   StringRedisTemplate stringRedisTemplate,
-                                                   UserCountCacheVersionService userCountCacheVersionService) {
+                                                   StringRedisTemplate stringRedisTemplate) {
         this.noteCountDOMapper = noteCountDOMapper;
         this.userCountDOMapper = userCountDOMapper;
         this.mqIdempotentExecutor = mqIdempotentExecutor;
         this.stringRedisTemplate = stringRedisTemplate;
-        this.userCountCacheVersionService = userCountCacheVersionService;
     }
 
     /**
@@ -91,8 +86,6 @@ public abstract class AbstractNoteCountAggregationConsumer {
         }
 
         // 事件级幂等：以 sha256(eventId) 为键，只对本次新增事件累加，批次重组/重投不重复计数
-        // 注意：executeBatch 内部会再对传入的“消息身份”做一次 sha256，因此这里必须传原始 eventId，
-        // 用 sha256(eventId) -> event 的反向映射承接 freshKeys。
         Map<String, CountNoteMqDTO> eventByKey = new HashMap<>();
         List<String> eventIds = new ArrayList<>();
         for (CountNoteMqDTO event : events) {
@@ -136,15 +129,19 @@ public abstract class AbstractNoteCountAggregationConsumer {
             return true;
         });
 
-        // 无论是否重复投递，都失效对应计数缓存并推进版本，确保读侧尽快看到最新值
-        List<String> noteCountKeys = events.stream().map(CountNoteMqDTO::getNoteId).distinct()
+        // 无论是否重复投递，都失效对应笔记与用户计数缓存，确保读侧尽快看到最新值
+        List<String> noteCountKeys = events.stream().map(CountNoteMqDTO::getNoteId).filter(Objects::nonNull).distinct()
                 .map(CountKeyConstants::buildCountNoteKey)
                 .toList();
         if (!noteCountKeys.isEmpty()) {
             stringRedisTemplate.delete(noteCountKeys);
         }
-        events.stream().map(CountNoteMqDTO::getNoteCreatorId).distinct()
-                .forEach(userCountCacheVersionService::advanceVersion);
+        List<String> userCountKeys = events.stream().map(CountNoteMqDTO::getNoteCreatorId).filter(Objects::nonNull).distinct()
+                .map(CountKeyConstants::buildCountUserKey)
+                .toList();
+        if (!userCountKeys.isEmpty()) {
+            stringRedisTemplate.delete(userCountKeys);
+        }
         if (!applied) {
             log.info("{}计数消息已处理，忽略重复投递, eventCount={}", bizLabel(), events.size());
         }

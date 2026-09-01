@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
         selectorExpression = MQConstants.TAG_COLLECT + " || " + MQConstants.TAG_UN_COLLECT,
         consumeMode = ConsumeMode.ORDERLY
 )
-public class CollectUnCollectNoteConsumer implements RocketMQListener<List<MessageExt>> {
+public class CollectUnCollectNoteConsumer implements RocketMQListener<MessageExt> {
 
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
     private static final String CONSUME_GROUP = "fishhub_group_" + MQConstants.TOPIC_COLLECT_OR_UN_COLLECT;
@@ -60,11 +60,11 @@ public class CollectUnCollectNoteConsumer implements RocketMQListener<List<Messa
     }
 
     @Override
-    public void onMessage(List<MessageExt> msgs) {
-        if (CollUtil.isEmpty(msgs)) {
+    public void onMessage(MessageExt msg) {
+        if (msg == null) {
             return;
         }
-        boolean success = consumeBatch(msgs);
+        boolean success = consumeBatch(List.of(msg));
         if (!success) {
             throw new RuntimeException("笔记收藏微批消费失败，触发 RocketMQ 顺序重试");
         }

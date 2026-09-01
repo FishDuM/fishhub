@@ -216,7 +216,6 @@ public class NoteServiceImpl implements NoteService {
         }
 
         String imgUris = null;
-        Boolean isContentEmpty = true;
         String videoUri = null;
         switch (noteTypeEnum) {
             case IMAGE_TEXT: // 图文笔记
@@ -246,7 +245,6 @@ public class NoteServiceImpl implements NoteService {
         String content = publishNoteReqVO.getContent();
 
         if (StringUtils.isNotBlank(content)) {
-            isContentEmpty = false;
             contentUuid = UUID.randomUUID().toString();
         }
 
@@ -269,7 +267,6 @@ public class NoteServiceImpl implements NoteService {
 
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
-                .isContentEmpty(isContentEmpty)
                 .creatorId(creatorId)
                 .channelId(channelId)
                 .imgUris(imgUris)
@@ -341,7 +338,6 @@ public class NoteServiceImpl implements NoteService {
                 RedisKeyConstants.buildNoteAccessKey(noteId),
                 RedisKeyConstants.buildPublishedNoteListKey(creatorId)));
         LOCAL_CACHE.invalidate(noteId);
-        CountClient.invalidate(noteId);
         Set<Long> channels = new LinkedHashSet<>();
         channels.add(0L);
         if (channelIds != null) {
@@ -352,15 +348,8 @@ public class NoteServiceImpl implements NoteService {
             }
         }
         for (Long channelId : channels) {
-            bumpDiscoverFeedVersion(channelId);
+            safeRedisUtil.delete(RedisKeyConstants.buildDiscoverFeedCursorKey(channelId, null));
         }
-    }
-
-    // 发现页版本 bump：实时写入最新时间戳推进版本，使旧快照立即失效。
-    private void bumpDiscoverFeedVersion(Long channelId) {
-        safeRedisUtil.set(
-                RedisKeyConstants.buildDiscoverFeedVersionKey(channelId),
-                String.valueOf(System.currentTimeMillis()));
     }
 
     /**
@@ -432,7 +421,6 @@ public class NoteServiceImpl implements NoteService {
                 .type(noteDO.getType())
                 .title(noteDO.getTitle())
                 .contentUuid(noteDO.getContentUuid())
-                .isContentEmpty(noteDO.getIsContentEmpty())
                 .imgUris(imgUris)
                 .topicId(noteDO.getTopicId())
                 .topicName(noteDO.getTopicName())
@@ -453,7 +441,7 @@ public class NoteServiceImpl implements NoteService {
         }, threadPoolTaskExecutor);
 
         CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
-            if (Boolean.FALSE.equals(noteDO.getIsContentEmpty()) && StringUtils.isNotBlank(noteDO.getContentUuid())) {
+            if (StringUtils.isNotBlank(noteDO.getContentUuid())) {
                 try {
                     return noteContentRepository.findById(UUID.fromString(noteDO.getContentUuid()))
                             .map(NoteContentDO::getContent)
@@ -561,7 +549,6 @@ public class NoteServiceImpl implements NoteService {
 
         NoteDO noteDO = NoteDO.builder()
                 .id(noteId)
-                .isContentEmpty(content.isEmpty())
                 .channelId(updateNoteReqVO.getChannelId())
                 .imgUris(media.imgUris())
                 .title(updateNoteReqVO.getTitle())
@@ -656,14 +643,14 @@ public class NoteServiceImpl implements NoteService {
 
     private ContentSnapshot resolveContent(UpdateNoteReqVO request, NoteDO current) {
         return switch (request.getContentOperation()) {
-            case KEEP -> new ContentSnapshot(current.getContentUuid(), current.getIsContentEmpty(), null, false);
-            case CLEAR -> new ContentSnapshot(null, true, null, false);
+            case KEEP -> new ContentSnapshot(current.getContentUuid(), null, false);
+            case CLEAR -> new ContentSnapshot(null, null, false);
             case SET -> {
                 if (StringUtils.isBlank(request.getContent())) {
                     throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
                 }
                 String contentUuid = UUID.randomUUID().toString();
-                yield new ContentSnapshot(contentUuid, false, request.getContent(), true);
+                yield new ContentSnapshot(contentUuid, request.getContent(), true);
             }
             case REPLACE -> throw new BizException(ResponseCodeEnum.PARAM_NOT_VALID);
         };
@@ -675,15 +662,7 @@ public class NoteServiceImpl implements NoteService {
     private record MediaSnapshot(String imgUris, String videoUri) {
     }
 
-    private record ContentSnapshot(String contentUuid, Boolean isEmpty, String value, boolean createdNewContent) {
-    }
-
-    /**
-     * 删除本地笔记缓存
-     * @param noteId
-     */
-    public void deleteNoteLocalCache(Long noteId) {
-        LOCAL_CACHE.invalidate(noteId);
+    private record ContentSnapshot(String contentUuid, String value, boolean createdNewContent) {
     }
 
     /**
@@ -1101,9 +1080,6 @@ public class NoteServiceImpl implements NoteService {
                     // 实时回填当前用户点赞状态（计数复用快照内嵌基准值，零 Feign 零 Hash 往返）
                     batchGetAndSetNoteIsLiked(sortedList);
 
-                    // 作者本人查看时实时刷新点赞计数，避免命中缓存读到 30~60 分钟前的旧值
-                    getAndSetLatestLikeTotalIfAuthor(userId, sortedList);
-
                     Optional<Long> earliestNoteId = sortedList.stream().map(NoteItemRspVO::getNoteId).min(Long::compareTo);
 
                     findPublishedNoteListRspVO = FindPublishedNoteListRspVO.builder()
@@ -1120,49 +1096,36 @@ public class NoteServiceImpl implements NoteService {
         List<NoteDO> noteDOS = noteDOMapper.selectPublishedNoteListByUserIdAndCursor(userId, cursor, includePrivate);
 
         if (CollUtil.isNotEmpty(noteDOS)) {
+            FindUserByIdRspDTO author = null;
+            try {
+                author = userClient.findById(userId);
+            } catch (Exception e) {
+                log.warn("RPC 获取作者信息异常, userId={}", userId, e);
+            }
+            String avatar = author != null ? author.getAvatar() : null;
+            String nickname = author != null ? author.getNickName() : null;
+
             List<NoteItemRspVO> noteVOS = noteDOS.stream()
                     .map(noteDO -> {
                         String cover = StringUtils.isNotBlank(noteDO.getImgUris()) ?
                                 StringUtils.split(noteDO.getImgUris(), ",")[0] : null;
+                        Long likeCount = noteDO.getLikeCount() == null ? 0L : noteDO.getLikeCount();
 
-                        NoteItemRspVO noteItemRspVO = NoteItemRspVO.builder()
+                        return NoteItemRspVO.builder()
                                 .noteId(noteDO.getId())
                                 .type(noteDO.getType())
                                 .creatorId(noteDO.getCreatorId())
                                 .cover(cover)
                                 .videoUri(noteDO.getVideoUri())
                                 .title(noteDO.getTitle())
-                                .isLiked(false) // 默认为未点赞状态
+                                .avatar(avatar)
+                                .nickname(nickname)
+                                .likeTotal(NumberUtils.formatNumberString(likeCount))
+                                .isLiked(false)
                                 .build();
-                        return noteItemRspVO;
                     }).toList();
 
-            CompletableFuture<FindUserByIdRspDTO> userFuture = CompletableFuture
-                    .supplyAsync(() -> userClient.findById(userId), threadPoolTaskExecutor);
-
-            CompletableFuture<List<FindNoteCountsByIdRspDTO>> noteCountFuture = CompletableFuture
-                    .supplyAsync(() -> {
-                        List<Long> noteIds = noteDOS.stream().map(NoteDO::getId).toList();
-                        return countClient.findByNoteIds(noteIds);
-                    }, threadPoolTaskExecutor);
-
-            try {
-                FindUserByIdRspDTO findUserByIdRspDTO = userFuture.get();
-                List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS = noteCountFuture.get();
-
-                if (Objects.nonNull(findUserByIdRspDTO)) {
-                    noteVOS.forEach(noteItemRspVO -> {
-                        noteItemRspVO.setAvatar(findUserByIdRspDTO.getAvatar());
-                        noteItemRspVO.setNickname(findUserByIdRspDTO.getNickName());
-                    });
-                }
-
-                setVOListLikeTotal(noteVOS, findNoteCountsByIdRspDTOS);
-
-                batchGetAndSetNoteIsLiked(noteVOS);
-            } catch (Exception e) {
-                log.error("## 并发调用错误: ", e);
-            }
+            batchGetAndSetNoteIsLiked(noteVOS);
 
             Optional<Long> earliestNoteId = noteDOS.stream().map(NoteDO::getId).min(Long::compareTo);
 
@@ -1205,36 +1168,6 @@ public class NoteServiceImpl implements NoteService {
             List<Long> noteIds = noteItemRspVOS.stream().map(NoteItemRspVO::getNoteId).toList();
             Set<Long> likedNoteIds = noteInteractionCacheService.findLikedNoteIds(loginUserId, noteIds);
             noteItemRspVOS.forEach(note -> note.setIsLiked(likedNoteIds.contains(note.getNoteId())));
-        }
-    }
-
-    /**
-     * 作者本人查看已发布笔记时，实时从计数服务刷新点赞数，避免命中旧快照缓存
-     */
-    private void getAndSetLatestLikeTotalIfAuthor(Long userId, List<NoteItemRspVO> sortedList) {
-        Long loginUserId = LoginUserContextHolder.getUserId();
-        if (Objects.nonNull(loginUserId) && Objects.equals(loginUserId, userId)) {
-            List<Long> noteIds = sortedList.stream().map(NoteItemRspVO::getNoteId).toList();
-            List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS = countClient.findByNoteIds(noteIds);
-
-            setVOListLikeTotal(sortedList, findNoteCountsByIdRspDTOS);
-        }
-    }
-
-    /**
-     * 设置 VO 集合中每篇笔记的点赞量
-     */
-    private static void setVOListLikeTotal(List<NoteItemRspVO> noteItemRspVOS, List<FindNoteCountsByIdRspDTO> findNoteCountsByIdRspDTOS) {
-        if (CollUtil.isNotEmpty(findNoteCountsByIdRspDTOS)) {
-            Map<Long, FindNoteCountsByIdRspDTO> noteIdAndDTOMap = findNoteCountsByIdRspDTOS.stream()
-                    .collect(Collectors.toMap(FindNoteCountsByIdRspDTO::getNoteId, dto -> dto, (a, b) -> a));
-
-            noteItemRspVOS.forEach(noteItemRspVO -> {
-                Long currNoteId = noteItemRspVO.getNoteId();
-                FindNoteCountsByIdRspDTO findNoteCountsByIdRspDTO = noteIdAndDTOMap.get(currNoteId);
-                noteItemRspVO.setLikeTotal((Objects.nonNull(findNoteCountsByIdRspDTO) && Objects.nonNull(findNoteCountsByIdRspDTO.getLikeTotal())) ?
-                        NumberUtils.formatNumberString(findNoteCountsByIdRspDTO.getLikeTotal()) : "0");
-            });
         }
     }
 
@@ -1299,7 +1232,7 @@ public class NoteServiceImpl implements NoteService {
         Long noteId = findNoteDetailRspVO.getId();
         // 并行加载正文、计数与用户互动状态
         CompletableFuture<String> contentFuture = CompletableFuture.supplyAsync(() -> {
-            if (Boolean.FALSE.equals(findNoteDetailRspVO.getIsContentEmpty()) && StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
+            if (StringUtils.isNotBlank(findNoteDetailRspVO.getContentUuid())) {
                 try {
                     return noteContentRepository.findById(UUID.fromString(findNoteDetailRspVO.getContentUuid()))
                             .map(NoteContentDO::getContent)

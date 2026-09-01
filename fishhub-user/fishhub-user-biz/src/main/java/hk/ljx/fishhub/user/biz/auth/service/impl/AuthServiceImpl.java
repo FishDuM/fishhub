@@ -10,13 +10,15 @@ import hk.ljx.framework.biz.context.holder.LoginUserContextHolder;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import hk.ljx.fishhub.user.biz.constant.RedisKeyConstants;
-import hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.auth.model.vo.captcha.CaptchaRspVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UpdatePasswordReqVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserRegisterReqVO;
-import hk.ljx.fishhub.user.biz.auth.rpc.UserRpcService;
 import hk.ljx.fishhub.user.biz.auth.service.AuthService;
+import hk.ljx.fishhub.user.biz.service.UserService;
+import hk.ljx.fishhub.user.dto.req.FindUserByPhoneReqDTO;
+import hk.ljx.fishhub.user.dto.req.UpdateUserPasswordReqDTO;
 import hk.ljx.fishhub.user.dto.rsp.FindUserByPhoneRspDTO;
 import hk.ljx.framework.common.util.RedisScriptHelper;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +50,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final StringRedisTemplate stringRedisTemplate;
     private final PasswordEncoder passwordEncoder;
-    private final UserRpcService userRpcService;
+    private final UserService userService;
 
     /**
      * 获取图形验证码 (Hutool 生成，5分钟有效)
@@ -86,7 +88,11 @@ public class AuthServiceImpl implements AuthService {
         verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
         String encodePassword = passwordEncoder.encode(password);
-        Long userId = userRpcService.registerUser(phone, encodePassword);
+        Response<Long> regResponse = userService.register(phone, encodePassword);
+        if (regResponse == null || !regResponse.isSuccess()) {
+            throw new BizException(ResponseCodeEnum.REGISTER_FAIL);
+        }
+        Long userId = regResponse.getData();
 
         return performLogin(userId);
     }
@@ -106,7 +112,17 @@ public class AuthServiceImpl implements AuthService {
 
         verifyAndConsumeCaptcha(captchaKey, captchaCode);
 
-        FindUserByPhoneRspDTO findUserByPhoneRspDTO = userRpcService.findUserByPhone(phone);
+        FindUserByPhoneReqDTO phoneReq = new FindUserByPhoneReqDTO();
+        phoneReq.setPhone(phone);
+        Response<FindUserByPhoneRspDTO> userResponse = null;
+        try {
+            userResponse = userService.findByPhone(phoneReq);
+        } catch (BizException e) {
+            if (Objects.equals(e.getErrorCode(), ResponseCodeEnum.USER_NOT_FOUND.getErrorCode())) {
+                throw e;
+            }
+        }
+        FindUserByPhoneRspDTO findUserByPhoneRspDTO = userResponse != null ? userResponse.getData() : null;
         if (Objects.isNull(findUserByPhoneRspDTO)) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
@@ -146,7 +162,10 @@ public class AuthServiceImpl implements AuthService {
     public Response<?> updatePassword(UpdatePasswordReqVO updatePasswordReqVO) {
         String phone = updatePasswordReqVO.getPhone();
 
-        FindUserByPhoneRspDTO user = userRpcService.findUserByPhone(phone);
+        FindUserByPhoneReqDTO phoneReq = new FindUserByPhoneReqDTO();
+        phoneReq.setPhone(phone);
+        Response<FindUserByPhoneRspDTO> userResponse = userService.findByPhone(phoneReq);
+        FindUserByPhoneRspDTO user = userResponse != null ? userResponse.getData() : null;
         if (user == null || !Objects.equals(user.getId(), LoginUserContextHolder.getUserId())) {
             throw new BizException(ResponseCodeEnum.USER_NOT_FOUND);
         }
@@ -154,7 +173,12 @@ public class AuthServiceImpl implements AuthService {
         String newPassword = updatePasswordReqVO.getNewPassword();
         String encodePassword = passwordEncoder.encode(newPassword);
 
-        userRpcService.updatePassword(encodePassword);
+        UpdateUserPasswordReqDTO pwdReq = new UpdateUserPasswordReqDTO();
+        pwdReq.setEncodePassword(encodePassword);
+        Response<Boolean> pwdRsp = userService.updatePassword(pwdReq);
+        if (pwdRsp == null || !pwdRsp.isSuccess() || !Boolean.TRUE.equals(pwdRsp.getData())) {
+            throw new BizException(ResponseCodeEnum.PASSWORD_UPDATE_FAIL);
+        }
 
         StpUtil.logout(LoginUserContextHolder.getUserId());
 

@@ -39,7 +39,7 @@ import org.apache.rocketmq.common.message.MessageExt;
 )
 @Slf4j
 @RequiredArgsConstructor
-public class FollowUnfollowConsumer implements RocketMQListener<List<MessageExt>> {
+public class FollowUnfollowConsumer implements RocketMQListener<MessageExt> {
 
     private final FollowingDOMapper followingDOMapper;
     private final TransactionTemplate transactionTemplate;
@@ -48,14 +48,11 @@ public class FollowUnfollowConsumer implements RocketMQListener<List<MessageExt>
     private final TxJournalStore txJournalStore;
 
     @Override
-    public void onMessage(List<MessageExt> messages) {
-        if (CollUtil.isEmpty(messages)) {
+    public void onMessage(MessageExt message) {
+        if (message == null) {
             return;
         }
-        log.info("微批消费关注关系事件，batchSize={}", messages.size());
-        for (MessageExt message : messages) {
-            consumeSingleMessage(message);
-        }
+        consumeSingleMessage(message);
     }
 
     public void onMessage(Message message) {

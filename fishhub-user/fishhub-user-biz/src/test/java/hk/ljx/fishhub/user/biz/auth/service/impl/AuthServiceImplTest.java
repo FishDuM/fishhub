@@ -1,10 +1,10 @@
 package hk.ljx.fishhub.user.biz.auth.service.impl;
 
-import hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum;
+import hk.ljx.fishhub.user.biz.enums.ResponseCodeEnum;
 import hk.ljx.fishhub.user.biz.auth.model.vo.captcha.CaptchaRspVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserLoginReqVO;
 import hk.ljx.fishhub.user.biz.auth.model.vo.user.UserRegisterReqVO;
-import hk.ljx.fishhub.user.biz.auth.rpc.UserRpcService;
+import hk.ljx.fishhub.user.biz.service.UserService;
 import hk.ljx.framework.common.exception.BizException;
 import hk.ljx.framework.common.response.Response;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,13 +33,13 @@ class AuthServiceImplTest {
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
-    private UserRpcService userRpcService;
+    private UserService userService;
 
     private AuthServiceImpl authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthServiceImpl(stringRedisTemplate, passwordEncoder, userRpcService);
+        authService = new AuthServiceImpl(stringRedisTemplate, passwordEncoder, userService);
     }
 
     @Test
@@ -99,7 +99,7 @@ class AuthServiceImplTest {
         when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(anyString())).thenReturn("abcd"); // captcha pass
 
-        when(userRpcService.registerUser(eq("13800138000"), any()))
+        when(userService.register(eq("13800138000"), any()))
                 .thenThrow(new BizException(ResponseCodeEnum.PHONE_ALREADY_REGISTERED));
 
         UserRegisterReqVO reqVO = UserRegisterReqVO.builder()

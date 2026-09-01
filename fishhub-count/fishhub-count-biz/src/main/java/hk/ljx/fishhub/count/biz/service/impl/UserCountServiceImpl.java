@@ -1,20 +1,17 @@
 package hk.ljx.fishhub.count.biz.service.impl;
 
-import hk.ljx.framework.common.util.CacheTtl;
-
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.NumberUtil;
 import com.alibaba.csp.sentinel.annotation.SentinelResource;
 import com.alibaba.csp.sentinel.slots.block.BlockException;
 import com.google.common.collect.Maps;
 import hk.ljx.framework.common.response.Response;
+import hk.ljx.framework.common.util.CacheTtl;
 import hk.ljx.framework.common.util.JsonUtils;
-import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.biz.domain.dataobject.UserCountDO;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.service.UserCountService;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
-import hk.ljx.fishhub.count.biz.util.Counts;
+import hk.ljx.fishhub.count.constant.CountKeyConstants;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdReqDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdRspDTO;
 import hk.ljx.fishhub.count.dto.FindUserCountsByIdsReqDTO;
@@ -22,19 +19,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -49,7 +39,6 @@ public class UserCountServiceImpl implements UserCountService {
     private final StringRedisTemplate stringRedisTemplate;
     @Qualifier("fishhubTaskExecutor")
     private final ThreadPoolTaskExecutor threadPoolTaskExecutor;
-    private final UserCountCacheVersionService userCountCacheVersionService;
 
     private static final List<String> USER_COUNT_FIELDS = List.of(
             CountKeyConstants.FIELD_COLLECT_TOTAL,
@@ -58,6 +47,10 @@ public class UserCountServiceImpl implements UserCountService {
             CountKeyConstants.FIELD_FOLLOWING_TOTAL,
             CountKeyConstants.FIELD_LIKE_TOTAL
     );
+
+    private static long clamp0(Long val) {
+        return val == null ? 0L : Math.max(0L, val);
+    }
 
     private static Map<String, String> toCountMap(List<?> rawList) {
         if (rawList == null || rawList.isEmpty()) {
@@ -88,8 +81,7 @@ public class UserCountServiceImpl implements UserCountService {
                 .userId(userId)
                 .build();
 
-        long cacheVersion = userCountCacheVersionService.currentVersion(userId);
-        String userCountHashKey = CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersion);
+        String userCountHashKey = CountKeyConstants.buildCountUserKey(userId);
 
         List<String> counts = stringRedisTemplate.<String, String>opsForHash()
                 .multiGet(userCountHashKey, USER_COUNT_FIELDS);
@@ -113,19 +105,19 @@ public class UserCountServiceImpl implements UserCountService {
             UserCountDO userCountDO = userCountDOMapper.selectByUserId(userId);
             if (Objects.nonNull(userCountDO)) {
                 if (Objects.isNull(collectTotal)) {
-                    findUserCountByIdRspDTO.setCollectTotal(Counts.clamp0(userCountDO.getCollectTotal()));
+                    findUserCountByIdRspDTO.setCollectTotal(clamp0(userCountDO.getCollectTotal()));
                 }
                 if (Objects.isNull(fansTotal)) {
-                    findUserCountByIdRspDTO.setFansTotal(Counts.clamp0(userCountDO.getFansTotal()));
+                    findUserCountByIdRspDTO.setFansTotal(clamp0(userCountDO.getFansTotal()));
                 }
                 if (Objects.isNull(noteTotal)) {
-                    findUserCountByIdRspDTO.setNoteTotal(Counts.clamp0(userCountDO.getNoteTotal()));
+                    findUserCountByIdRspDTO.setNoteTotal(clamp0(userCountDO.getNoteTotal()));
                 }
                 if (Objects.isNull(followingTotal)) {
-                    findUserCountByIdRspDTO.setFollowingTotal(Counts.clamp0(userCountDO.getFollowingTotal()));
+                    findUserCountByIdRspDTO.setFollowingTotal(clamp0(userCountDO.getFollowingTotal()));
                 }
                 if (Objects.isNull(likeTotal)) {
-                    findUserCountByIdRspDTO.setLikeTotal(Counts.clamp0(userCountDO.getLikeTotal()));
+                    findUserCountByIdRspDTO.setLikeTotal(clamp0(userCountDO.getLikeTotal()));
                 }
             }
 
@@ -143,11 +135,7 @@ public class UserCountServiceImpl implements UserCountService {
         }
 
         userIds = userIds.stream().filter(Objects::nonNull).distinct().toList();
-        List<Long> cacheVersions = userCountCacheVersionService.currentVersions(userIds);
-        List<String> hashKeys = new ArrayList<>(userIds.size());
-        for (int i = 0; i < userIds.size(); i++) {
-            hashKeys.add(CountKeyConstants.buildCountUserSnapshotKey(userIds.get(i), cacheVersions.get(i)));
-        }
+        List<String> hashKeys = userIds.stream().map(CountKeyConstants::buildCountUserKey).toList();
 
         List<Object> countHashes = stringRedisTemplate.executePipelined(new SessionCallback<>() {
             @Override
@@ -207,23 +195,23 @@ public class UserCountServiceImpl implements UserCountService {
             Map<String, String> countMap = countMaps.get(i);
 
             if (dto.getCollectTotal() == null) {
-                dto.setCollectTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getCollectTotal()));
+                dto.setCollectTotal(userCountDO == null ? 0L : clamp0(userCountDO.getCollectTotal()));
             }
             if (dto.getFansTotal() == null) {
-                dto.setFansTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getFansTotal()));
+                dto.setFansTotal(userCountDO == null ? 0L : clamp0(userCountDO.getFansTotal()));
             }
             if (dto.getNoteTotal() == null) {
-                dto.setNoteTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getNoteTotal()));
+                dto.setNoteTotal(userCountDO == null ? 0L : clamp0(userCountDO.getNoteTotal()));
             }
             if (dto.getFollowingTotal() == null) {
-                dto.setFollowingTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getFollowingTotal()));
+                dto.setFollowingTotal(userCountDO == null ? 0L : clamp0(userCountDO.getFollowingTotal()));
             }
             if (dto.getLikeTotal() == null) {
-                dto.setLikeTotal(userCountDO == null ? 0L : Counts.clamp0(userCountDO.getLikeTotal()));
+                dto.setLikeTotal(userCountDO == null ? 0L : clamp0(userCountDO.getLikeTotal()));
             }
 
             if (needQuerySet.contains(userId)) {
-                syncHashCount2Redis(CountKeyConstants.buildCountUserSnapshotKey(userId, cacheVersions.get(i)), userCountDO,
+                syncHashCount2Redis(CountKeyConstants.buildCountUserKey(userId), userCountDO,
                         countMap.get(CountKeyConstants.FIELD_COLLECT_TOTAL),
                         countMap.get(CountKeyConstants.FIELD_FANS_TOTAL),
                         countMap.get(CountKeyConstants.FIELD_NOTE_TOTAL),

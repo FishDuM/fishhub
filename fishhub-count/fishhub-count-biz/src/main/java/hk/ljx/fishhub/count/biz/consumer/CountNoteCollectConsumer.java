@@ -5,7 +5,6 @@ import hk.ljx.fishhub.count.biz.consumer.aggregation.AbstractNoteCountAggregatio
 import hk.ljx.fishhub.count.biz.domain.mapper.NoteCountDOMapper;
 import hk.ljx.fishhub.count.biz.domain.mapper.UserCountDOMapper;
 import hk.ljx.fishhub.count.biz.enums.CollectUnCollectNoteTypeEnum;
-import hk.ljx.fishhub.count.biz.service.UserCountCacheVersionService;
 import hk.ljx.framework.mq.idempotent.MqIdempotentExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
@@ -28,9 +27,8 @@ public class CountNoteCollectConsumer extends AbstractNoteCountAggregationConsum
     public CountNoteCollectConsumer(NoteCountDOMapper noteCountDOMapper,
                                     UserCountDOMapper userCountDOMapper,
                                     MqIdempotentExecutor mqIdempotentExecutor,
-                                    StringRedisTemplate stringRedisTemplate,
-                                    UserCountCacheVersionService userCountCacheVersionService) {
-        super(noteCountDOMapper, userCountDOMapper, mqIdempotentExecutor, stringRedisTemplate, userCountCacheVersionService);
+                                    StringRedisTemplate stringRedisTemplate) {
+        super(noteCountDOMapper, userCountDOMapper, mqIdempotentExecutor, stringRedisTemplate);
     }
 
     @Override

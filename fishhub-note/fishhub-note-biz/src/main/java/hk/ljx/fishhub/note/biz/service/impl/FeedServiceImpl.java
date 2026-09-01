@@ -104,10 +104,7 @@ public class FeedServiceImpl implements FeedService {
     }
 
     private DiscoverNotePageResponse<NoteItemRspVO> findDiscoverNoteListByCursor(Long channelId, Long cursor) {
-        String version = discoverFeedVersion(channelId);
-        DiscoverPageSnapshot snapshot = version == null
-                ? loadDiscoverPageSnapshotFromMySql(channelId, cursor)
-                : loadDiscoverPageSnapshot(channelId, cursor, version);
+        DiscoverPageSnapshot snapshot = loadDiscoverPageSnapshot(channelId, cursor);
         List<NoteItemRspVO> notes = snapshot == null ? Collections.emptyList() : snapshot.getNotes();
         Long nextCursor = snapshot == null ? null : snapshot.getNextCursor();
 
@@ -119,8 +116,8 @@ public class FeedServiceImpl implements FeedService {
         return DiscoverNotePageResponse.success(notes, PAGE_SIZE, nextCursor);
     }
 
-    private DiscoverPageSnapshot loadDiscoverPageSnapshot(Long channelId, Long cursor, String version) {
-        String cacheKey = RedisKeyConstants.buildDiscoverFeedCursorKey(version, channelId, cursor);
+    private DiscoverPageSnapshot loadDiscoverPageSnapshot(Long channelId, Long cursor) {
+        String cacheKey = RedisKeyConstants.buildDiscoverFeedCursorKey(channelId, cursor);
         DiscoverPageSnapshot localSnap = feedPageLocalCache.getIfPresent(cacheKey);
         if (isValidDiscoverPageSnapshot(localSnap)) {
             return localSnap;
@@ -303,19 +300,6 @@ public class FeedServiceImpl implements FeedService {
             log.warn("RPC 调用计数服务批量获取点赞数失败，发现页列表执行降级默认值 0", e);
             return Collections.emptyList();
         }
-    }
-
-    private String discoverFeedVersion(Long channelId) {
-        // 版本按频道拆分：只影响所属频道与首页(0)。
-        String key = RedisKeyConstants.buildDiscoverFeedVersionKey(channelId);
-        String value = safeRedisUtil.get(key);
-        if (StringUtils.isNotBlank(value)) {
-            return value;
-        }
-        String initialVersion = String.valueOf(System.currentTimeMillis());
-        safeRedisUtil.setIfAbsent(key, initialVersion);
-        String current = safeRedisUtil.get(key);
-        return current == null ? initialVersion : current;
     }
 
     private DiscoverPageSnapshot readDiscoverPageSnapshot(String cacheKey) {

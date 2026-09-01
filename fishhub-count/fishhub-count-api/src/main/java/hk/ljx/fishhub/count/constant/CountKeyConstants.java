@@ -13,8 +13,6 @@ public final class CountKeyConstants {
      */
     private static final String COUNT_USER_KEY_PREFIX = "count:user:";
 
-    private static final String COUNT_USER_VERSION_KEY_PREFIX = "version:count:user:";
-
     /**
      * 笔记维度计数 Key 前缀
      */
@@ -60,12 +58,11 @@ public final class CountKeyConstants {
      */
     public static final String FIELD_CHILD_COMMENT_TOTAL = "childCommentTotal";
 
-    public static String buildCountUserCacheVersionKey(Long userId) {
-        return COUNT_USER_VERSION_KEY_PREFIX + userId;
-    }
-
-    public static String buildCountUserSnapshotKey(Long userId, long version) {
-        return COUNT_USER_KEY_PREFIX + userId + ":v:" + version;
+    /**
+     * 构建用户维度计数 Key
+     */
+    public static String buildCountUserKey(Long userId) {
+        return COUNT_USER_KEY_PREFIX + userId;
     }
 
     /**

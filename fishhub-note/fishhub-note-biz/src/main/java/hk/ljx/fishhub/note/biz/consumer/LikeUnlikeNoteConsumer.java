@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
         selectorExpression = MQConstants.TAG_LIKE + " || " + MQConstants.TAG_UNLIKE,
         consumeMode = ConsumeMode.ORDERLY
 )
-public class LikeUnlikeNoteConsumer implements RocketMQListener<List<MessageExt>> {
+public class LikeUnlikeNoteConsumer implements RocketMQListener<MessageExt> {
 
     private static final int CONSUME_BATCH_MAX_SIZE = 30;
     private static final String CONSUME_GROUP = "fishhub_group_" + MQConstants.TOPIC_LIKE_OR_UNLIKE;
@@ -60,11 +60,11 @@ public class LikeUnlikeNoteConsumer implements RocketMQListener<List<MessageExt>
     }
 
     @Override
-    public void onMessage(List<MessageExt> msgs) {
-        if (CollUtil.isEmpty(msgs)) {
+    public void onMessage(MessageExt msg) {
+        if (msg == null) {
             return;
         }
-        boolean success = consumeBatch(msgs);
+        boolean success = consumeBatch(List.of(msg));
         if (!success) {
             throw new RuntimeException("笔记点赞微批消费失败，触发 RocketMQ 顺序重试");
         }

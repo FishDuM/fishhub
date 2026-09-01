@@ -207,7 +207,7 @@ public class UserServiceImpl implements UserService {
     public Response<Long> register(String phone, String encodePassword) {
         UserDO existingUser = userDOMapper.selectByPhone(phone);
         if (Objects.nonNull(existingUser)) {
-            throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
+            throw new BizException(ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
         }
 
         String fishhubId = distributedIdGeneratorRpcService.getFishhubId();
@@ -229,7 +229,7 @@ public class UserServiceImpl implements UserService {
                 .build();
 
         if (userDOMapper.insertIfAbsent(newUser) == 0) {
-            throw new BizException(hk.ljx.fishhub.user.biz.auth.enums.ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
+            throw new BizException(ResponseCodeEnum.PHONE_ALREADY_REGISTERED);
         }
 
         return Response.success(userId);

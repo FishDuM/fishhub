@@ -11,7 +11,7 @@ public class RedisKeyConstants {
     /**
      * 用户主页信息数据 KEY 前缀
      */
-    private static final String USER_PROFILE_KEY_PREFIX = "user:profile:v3:";
+    private static final String USER_PROFILE_KEY_PREFIX = "user:profile:";
 
     /** 可操作用户缓存 Key 前缀 */
     private static final String USER_ACTIVE_KEY_PREFIX = "user:active:";
